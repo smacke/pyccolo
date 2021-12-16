@@ -1,0 +1,6 @@
+flake8
+mypy
+py
+pytest
+twine
+versioneer
