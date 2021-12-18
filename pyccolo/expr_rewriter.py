@@ -5,8 +5,8 @@ import sys
 from contextlib import contextmanager
 from typing import cast, TYPE_CHECKING
 
-from pyccolo.tracing.extra_builtins import TRACING_ENABLED, make_guard_name
-from pyccolo.tracing.trace_events import TraceEvent
+from pyccolo.extra_builtins import TRACING_ENABLED, make_guard_name
+from pyccolo.trace_events import TraceEvent
 from pyccolo.utils.ast_utils import EmitterMixin, make_test, make_composite_condition, subscript_to_slice
 from pyccolo.utils import fast
 

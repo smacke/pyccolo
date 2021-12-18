@@ -4,14 +4,14 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from pyccolo.tracing.syntax_augmentation import AugmentationSpec
-from pyccolo.tracing.expr_rewriter import ExprRewriter
-from pyccolo.tracing.stmt_inserter import StatementInserter
-from pyccolo.tracing.stmt_mapper import StatementMapper
+from pyccolo.syntax_augmentation import AugmentationSpec
+from pyccolo.expr_rewriter import ExprRewriter
+from pyccolo.stmt_inserter import StatementInserter
+from pyccolo.stmt_mapper import StatementMapper
 
 if TYPE_CHECKING:
     from typing import Dict, Optional, Set, Tuple
-    from pyccolo.tracing.tracer import SingletonTracerStateMachine
+    from pyccolo.tracer import SingletonTracerStateMachine
 
 
 logger = logging.getLogger(__name__)

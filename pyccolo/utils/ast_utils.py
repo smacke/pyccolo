@@ -4,8 +4,8 @@ import builtins
 import sys
 from typing import TYPE_CHECKING
 
-from pyccolo.tracing.extra_builtins import EMIT_EVENT
-from pyccolo.tracing.trace_events import TraceEvent
+from pyccolo.extra_builtins import EMIT_EVENT
+from pyccolo.trace_events import TraceEvent
 from pyccolo.utils import fast
 
 if TYPE_CHECKING:

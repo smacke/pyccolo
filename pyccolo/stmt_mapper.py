@@ -4,11 +4,11 @@ import copy
 import logging
 from typing import TYPE_CHECKING
 
-from pyccolo.tracing.syntax_augmentation import AugmentationSpec, AugmentationType
+from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
 
 if TYPE_CHECKING:
     from typing import Dict, List, Optional, Set, Tuple
-    from pyccolo.tracing.tracer import SingletonTracerStateMachine
+    from pyccolo.tracer import SingletonTracerStateMachine
 
 
 logger = logging.getLogger(__name__)

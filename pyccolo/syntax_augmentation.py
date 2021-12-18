@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from typing import Any, Callable, List, Tuple, Union
-    from pyccolo.tracing.ast_rewriter import AstRewriter
+    from pyccolo.ast_rewriter import AstRewriter
     CodeType = Union[str, List[str]]
     if sys.version_info >= (3, 8):
         Pattern = re.Pattern

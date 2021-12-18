@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from typing import Any, Callable, Dict, List, Set, Tuple
 
     # avoid circular imports
-    from pyccolo.tracing.tracer import SingletonTracerStateMachine
+    from pyccolo.tracer import SingletonTracerStateMachine
 
 
 class TraceStack:

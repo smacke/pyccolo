@@ -5,19 +5,20 @@ import functools
 import logging
 import os
 import sys
+import textwrap
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import TYPE_CHECKING
 
 from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
 
-from pyccolo.tracing.extra_builtins import EMIT_EVENT, TRACING_ENABLED
-from pyccolo.tracing.ast_rewriter import AstRewriter
-from pyccolo.tracing.import_hooks import TraceFinder
-from pyccolo.tracing.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
-from pyccolo.tracing.trace_events import TraceEvent
-from pyccolo.tracing.trace_stack import TraceStack
+from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED
+from pyccolo.ast_rewriter import AstRewriter
+from pyccolo.import_hooks import TraceFinder
+from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
+from pyccolo.trace_events import TraceEvent
+from pyccolo.trace_stack import TraceStack
 
 if TYPE_CHECKING:
     from typing import Any, Callable, DefaultDict, Dict, FrozenSet, Generator, List, Optional, Set, Tuple, Type, Union
@@ -161,17 +162,17 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
             frame = kwargs.get('_frame', sys._getframe().f_back)
             kwargs['_frame'] = frame
             for handler, use_raw_node_id in self._event_handlers[event]:
+                old_ret = kwargs.pop('ret', None)
                 try:
                     node_id_or_node = node_id if use_raw_node_id else self.ast_node_by_id[node_id]
-                    new_ret = handler(self, kwargs.get('ret', None), node_id_or_node, frame, event, **kwargs)
+                    new_ret = handler(self, old_ret, node_id_or_node, frame, event, **kwargs)
                 except Exception as exc:
                     if self.should_propagate_handler_exception(event, exc):
                         raise exc
                     else:
                         logger.exception('An exception while handling evt %s', evt)
                     new_ret = None
-                if new_ret is not None:
-                    kwargs['ret'] = new_ret
+                kwargs['ret'] = old_ret if new_ret is None else new_ret
             return kwargs.get('ret', None)
         except KeyboardInterrupt as ki:
             self._disable_tracing(check_enabled=False)
@@ -273,6 +274,38 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
             for guard in self.guards:
                 if hasattr(builtins, guard):
                     delattr(builtins, guard)
+
+    def exec(
+        self,
+        code: str,
+        filename: Optional[str] = "<file>",
+        global_env: Optional[dict] = None,
+        local_env: Optional[dict] = None,
+        instrument: bool = True,
+    ) -> None:
+        if global_env is None:
+            global_env = globals()
+        if local_env is None:
+            local_env = locals()
+        code = textwrap.dedent(code.strip())
+        code_ast = ast.parse(code, filename, "exec")
+        if instrument:
+            code_ast = self.make_ast_rewriter().visit(code_ast)
+        with self.tracing_context() if instrument else nullcontext():
+            exec(compile(code_ast, filename, "exec"), global_env, local_env)
+
+    def exec_sandboxed(self, code: str, instrument: bool = True) -> dict:
+        local_env = {}
+        code = textwrap.dedent(code.strip()) + "\nreturn locals()"
+        code = '\n'.join("    " + line for line in code.split('\n'))
+        code = f"def _sandbox():\n{code}\nlocal_env = _sandbox()"
+        self.exec(
+            code,
+            filename="<sandbox>",
+            local_env=local_env,
+            instrument=instrument,
+        )
+        return local_env["local_env"]
 
     def _should_attempt_to_reenable_tracing(self, frame: FrameType) -> bool:
         return NotImplemented
