@@ -25,11 +25,30 @@ def test_instrumented_sandbox():
     assert len(env) == 1
 
 
+def test_two_handlers():
+    class TwoAssignMutations(pyc.BaseTracerStateMachine):
+        @pyc.register_handler(pyc.TraceEvent.after_assign_rhs)
+        def handle_assign_1(self, ret, *_, **__):
+            return ret + 1
+
+        @pyc.register_handler(pyc.TraceEvent.after_assign_rhs)
+        def handle_assign_2(self, ret, *_, **__):
+            return ret * 2
+
+    env = TwoAssignMutations.instance().exec_sandboxed("x = 42")
+    assert env["x"] == 86  # tests that handlers are applied in order of defn
+    assert len(env) == 1
+
+
 def test_null():
     class IncrementsAssignValue(pyc.BaseTracerStateMachine):
         @pyc.register_handler(pyc.TraceEvent.after_assign_rhs)
-        def handle_assign(self, *_, **__):
+        def handle_assign_1(self, *_, **__):
             return pyc.Null
+
+        @pyc.register_handler(pyc.TraceEvent.after_assign_rhs)
+        def handle_assign_2(self, ret, *_, **__):
+            assert ret is None
 
     env = IncrementsAssignValue.instance().exec_sandboxed("x = 42")
     assert env["x"] is None
