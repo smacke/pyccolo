@@ -20,6 +20,10 @@ from .tracer import (
 	skip_when_tracing_disabled,
 )
 
+# TODO: generate stubs for this
+for evt in TraceEvent:
+	globals()[evt.value] = evt
+
 from ._version import get_versions
 __version__ = get_versions()['version']
 del get_versions
