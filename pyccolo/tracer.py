@@ -7,7 +7,7 @@ import os
 import sys
 import textwrap
 from collections import defaultdict
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager, suppress
 from typing import TYPE_CHECKING
 
 from traitlets.config.configurable import SingletonConfigurable
@@ -31,6 +31,7 @@ logger.setLevel(logging.ERROR)
 
 sys_settrace = sys.settrace
 internal_directories = (os.path.dirname(os.path.dirname((lambda: 0).__code__.co_filename)),)
+Null = object()
 
 
 def register_tracer_state_machine(tracer_cls: Type[SingletonTracerStateMachine]) -> None:
@@ -172,7 +173,11 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
                     else:
                         logger.exception('An exception while handling evt %s', evt)
                     new_ret = None
-                kwargs['ret'] = old_ret if new_ret is None else new_ret
+                if new_ret is None:
+                    new_ret = old_ret
+                elif new_ret is Null:
+                    new_ret = None
+                kwargs['ret'] = new_ret
             return kwargs.get('ret', None)
         except KeyboardInterrupt as ki:
             self._disable_tracing(check_enabled=False)
@@ -287,24 +292,39 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
             global_env = globals()
         if local_env is None:
             local_env = locals()
-        code = textwrap.dedent(code.strip())
-        code_ast = ast.parse(code, filename, "exec")
+        if isinstance(code, str):
+            code = textwrap.dedent(code.strip())
+            code_ast = ast.parse(code, filename, "exec")
+        else:
+            code_ast = code
         if instrument:
             code_ast = self.make_ast_rewriter().visit(code_ast)
-        with self.tracing_context() if instrument else nullcontext():
+        with self.tracing_context() if instrument else suppress():
             exec(compile(code_ast, filename, "exec"), global_env, local_env)
 
     def exec_sandboxed(self, code: str, instrument: bool = True) -> dict:
         local_env = {}
         code = textwrap.dedent(code.strip()) + "\nreturn locals()"
         code = '\n'.join("    " + line for line in code.split('\n'))
-        code = f"def _sandbox():\n{code}\nlocal_env = _sandbox()"
-        self.exec(
-            code,
-            filename="<sandbox>",
-            local_env=local_env,
-            instrument=instrument,
-        )
+        code = f"def _sandbox():\n{code}"
+        filename = "<sandbox>"
+        if instrument:
+            code = self.make_ast_rewriter().visit(ast.parse(code, filename, "exec"))
+            # hack to make sure the final assignment is not instrumented
+            append_stmt = ast.parse("local_env = _sandbox()").body[0]
+            append_stmt.lineno = code.body[-1].lineno + 1
+            if hasattr(append_stmt, "end_lineno"):
+                append_stmt.end_lineno = append_stmt.lineno
+            code.body.append(append_stmt)
+        else:
+            code = f"{code}\nlocal_env = _sandbox()"
+        with self.tracing_context() if instrument else suppress():
+            self.exec(
+                code,
+                filename="<sandbox>",
+                local_env=local_env,
+                instrument=False,
+            )
         return local_env["local_env"]
 
     def _should_attempt_to_reenable_tracing(self, frame: FrameType) -> bool:

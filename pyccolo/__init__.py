@@ -14,6 +14,7 @@ from .trace_events import TraceEvent
 from .trace_stack import TraceStack
 from .tracer import (
 	BaseTracerStateMachine,
+	Null,
 	register_handler,
 	register_raw_handler,
 	skip_when_tracing_disabled,
