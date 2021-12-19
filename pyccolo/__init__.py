@@ -30,12 +30,12 @@ def instance() -> BaseTracerStateMachine:
 	return tracer()
 
 
+def exec_raw(*args, **kwargs):
+	return tracer().exec_raw(*args, **kwargs)
+
+
 def exec(*args, **kwargs):
 	return tracer().exec(*args, **kwargs)
-
-
-def exec_sandboxed(*args, **kwargs):
-	return tracer().exec_sandboxed(*args, **kwargs)
 
 
 def clear_instance() -> None:

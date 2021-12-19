@@ -280,18 +280,14 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
                 if hasattr(builtins, guard):
                     delattr(builtins, guard)
 
-    def exec(
+    def exec_raw(
         self,
         code: Union[ast.Module, str],
+        global_env: dict,
+        local_env: dict,
         filename: Optional[str] = "<file>",
-        global_env: Optional[dict] = None,
-        local_env: Optional[dict] = None,
         instrument: bool = True,
     ) -> None:
-        if global_env is None:
-            global_env = globals()
-        if local_env is None:
-            local_env = sys._getframe().f_back.f_locals
         if isinstance(code, str):
             code = textwrap.dedent(code).strip()
             code = ast.parse(code, filename, "exec")
@@ -300,7 +296,7 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         with self.tracing_context() if instrument else suppress():
             exec(compile(code, filename, "exec"), global_env, local_env)
 
-    def exec_sandboxed(
+    def exec(
         self,
         code: Union[ast.Module, str],
         global_env: Optional[dict] = None,
@@ -339,7 +335,7 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
             + fundef.body[1:]
         )
         with self.tracing_context() if instrument else suppress():
-            self.exec(
+            self.exec_raw(
                 sandboxed_code,
                 filename=filename,
                 global_env=global_env,

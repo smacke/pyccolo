@@ -85,10 +85,6 @@ def throw_and_print_diff_if_recorded_not_equal_to(actual: List[pyc.TraceEvent]) 
     _RECORDED_EVENTS.clear()
 
 
-def run_cell(cell, **kwargs):
-    pyc.tracer().exec_sandboxed(cell)
-
-
 @st.composite
 def subsets(draw, elements):
     return {e for e in elements if draw(st.booleans())}
@@ -98,7 +94,7 @@ def subsets(draw, elements):
 @patch_events_with_registered_handlers_to_subset
 def test_recorded_events_simple(events):
     assert _RECORDED_EVENTS == []
-    run_cell('logging.info("foo")')
+    pyc.exec('logging.info("foo")')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -121,7 +117,7 @@ def test_recorded_events_simple(events):
 @patch_events_with_registered_handlers_to_subset
 def test_recorded_events_two_stmts(events):
     assert _RECORDED_EVENTS == []
-    run_cell(
+    pyc.exec(
         """
         x = [1, 2, 3]
         logging.info(x)
@@ -159,7 +155,7 @@ def test_recorded_events_two_stmts(events):
 @patch_events_with_registered_handlers_to_subset
 def test_nested_chains_no_call(events):
     assert _RECORDED_EVENTS == []
-    run_cell('logging.info("foo is %s", logging.info("foo"))')
+    pyc.exec('logging.info("foo is %s", logging.info("foo"))')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -194,7 +190,7 @@ def test_nested_chains_no_call(events):
 @patch_events_with_registered_handlers_to_subset
 def test_list_nested_in_dict(events):
     assert _RECORDED_EVENTS == []
-    run_cell('x = {1: [2, 3, 4]}')
+    pyc.exec('x = {1: [2, 3, 4]}')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -220,7 +216,7 @@ def test_list_nested_in_dict(events):
 @patch_events_with_registered_handlers_to_subset
 def test_function_call(events):
     assert _RECORDED_EVENTS == []
-    run_cell(
+    pyc.exec(
         """
         def foo(x):
             return [x]
@@ -265,7 +261,7 @@ def test_function_call(events):
 @patch_events_with_registered_handlers_to_subset
 def test_lambda_in_tuple(events):
     assert _RECORDED_EVENTS == []
-    run_cell('x = (lambda: 42,)')
+    pyc.exec('x = (lambda: 42,)')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -287,7 +283,7 @@ def test_lambda_in_tuple(events):
 @patch_events_with_registered_handlers_to_subset
 def test_fancy_slices(events):
     assert _RECORDED_EVENTS == []
-    run_cell(
+    pyc.exec(
         """
         import numpy as np
         class Foo:
@@ -398,7 +394,7 @@ def test_fancy_slices(events):
 @patch_events_with_registered_handlers_to_subset
 def test_for_loop(events):
     assert _RECORDED_EVENTS == []
-    run_cell(
+    pyc.exec(
         """
         for i in range(10):
             pass
@@ -430,7 +426,7 @@ def test_for_loop(events):
 @patch_events_with_registered_handlers_to_subset
 def test_while_loop(events):
     assert _RECORDED_EVENTS == []
-    run_cell(
+    pyc.exec(
         """
         i = 0
         while i < 10:
@@ -464,7 +460,7 @@ def test_while_loop(events):
 @patch_events_with_registered_handlers_to_subset
 def test_loop_with_continue(events):
     assert _RECORDED_EVENTS == []
-    run_cell(
+    pyc.exec(
         """
         for i in range(10):
             continue
@@ -496,7 +492,7 @@ def test_loop_with_continue(events):
 @patch_events_with_registered_handlers_to_subset
 def test_for_loop_nested_in_while_loop(events):
     assert _RECORDED_EVENTS == []
-    run_cell(
+    pyc.exec(
         """
         i = 0
         while i < 10:
@@ -545,7 +541,7 @@ def test_for_loop_nested_in_while_loop(events):
 @patch_events_with_registered_handlers_to_subset
 def test_lambda_wrapping_call(events):
     assert _RECORDED_EVENTS == []
-    run_cell(
+    pyc.exec(
         """
         z = 42
         def f():
