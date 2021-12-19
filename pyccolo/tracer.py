@@ -8,7 +8,7 @@ import sys
 import textwrap
 from collections import defaultdict
 from contextlib import contextmanager, suppress
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
@@ -282,7 +282,7 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
 
     def exec(
         self,
-        code: str,
+        code: Union[ast.Module, str],
         filename: Optional[str] = "<file>",
         global_env: Optional[dict] = None,
         local_env: Optional[dict] = None,
@@ -302,7 +302,7 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
 
     def exec_sandboxed(
         self,
-        code: str,
+        code: Union[ast.Module, str],
         global_env: Optional[dict] = None,
         local_env: Optional[dict] = None,
         instrument: bool = True
@@ -311,9 +311,10 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
             global_env = globals()
         if local_env is None:
             local_env = {}
-        code = textwrap.dedent(code).strip()
         filename = "<sandbox>"
-        code = ast.parse(code, filename, "exec")
+        if isinstance(code, str):
+            code = textwrap.dedent(code).strip()
+            code = ast.parse(code, filename, "exec")
         if instrument:
             code = self.make_ast_rewriter().visit(code)
         sandboxed_code = ast.parse(
@@ -331,10 +332,11 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
             "exec"
         )
         # prepend the stuff before "return locals()"
-        sandboxed_code.body[1].body = (
-            sandboxed_code.body[1].body[:1] +
-            code.body +
-            sandboxed_code.body[1].body[1:]
+        fundef: ast.FunctionDef = cast(ast.FunctionDef, sandboxed_code.body[1])
+        fundef.body = (
+            fundef.body[:1]
+            + cast(ast.Module, code).body
+            + fundef.body[1:]
         )
         with self.tracing_context() if instrument else suppress():
             self.exec(
