@@ -293,7 +293,7 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         if local_env is None:
             local_env = locals()
         if isinstance(code, str):
-            code = textwrap.dedent(code.strip())
+            code = textwrap.dedent(code).strip()
             code_ast = ast.parse(code, filename, "exec")
         else:
             code_ast = code
@@ -304,13 +304,14 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
 
     def exec_sandboxed(self, code: str, instrument: bool = True) -> dict:
         local_env = {}
-        code = textwrap.dedent(code.strip()) + "\nreturn locals()"
+        code = textwrap.dedent(code).strip()
         filename = "<sandbox>"
         code = ast.parse(code, filename, "exec")
         if instrument:
             code = self.make_ast_rewriter().visit(code)
-        sandboxed_code = ast.parse("def _sandbox(): pass\nlocal_env = _sandbox()", filename, "exec")
-        sandboxed_code.body[0].body = code.body
+        sandboxed_code = ast.parse("def _sandbox(): return locals()\nlocal_env = _sandbox()", filename, "exec")
+        # prepend the stuff before "return locals()"
+        sandboxed_code.body[0].body = code.body + sandboxed_code.body[0].body
         with self.tracing_context() if instrument else suppress():
             self.exec(
                 sandboxed_code,
