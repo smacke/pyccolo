@@ -8,8 +8,7 @@ if TYPE_CHECKING:
     import ast
 
 
-from .._fast.fast_ast import *
-from .._fast.misc_ast_utils import *
+from .._fast import *
 
 
 def location_of(*args, **kwargs) -> 'Any': ...

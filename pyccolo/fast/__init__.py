@@ -1,7 +1,6 @@
 # -*- coding: future_annotations -*-
-from pyccolo._fast.fast_ast import *
-from pyccolo._fast.misc_ast_utils import *
 import ast
+from pyccolo._fast import *
 
 
 location_of = FastAst.location_of
