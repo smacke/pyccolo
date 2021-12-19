@@ -1,5 +1,4 @@
 # -*- coding: future_annotations -*-
-import sys
 from enum import Enum
 
 from pyccolo.utils import fast
