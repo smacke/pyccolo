@@ -49,7 +49,7 @@ _DIFFER = difflib.Differ()
 def patch_events_with_registered_handlers_to_subset(testfunc):
 
     @functools.wraps(testfunc)
-    @settings(max_examples=20, deadline=None)
+    @settings(max_examples=25, deadline=None)
     @example(events=set(pyc.TraceEvent))
     def wrapped_testfunc(events):
         if events & {pyc.before_subscript_load, pyc.before_subscript_store, pyc.before_subscript_del}:

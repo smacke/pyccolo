@@ -1,0 +1,2 @@
+[run]
+omit = pyccolo/_version.py, pyccolo/version.py
