@@ -2,14 +2,15 @@
 import ast
 import builtins
 import sys
+import typing
 from typing import TYPE_CHECKING
 
+from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT
 from pyccolo.trace_events import TraceEvent
-from pyccolo.utils import fast
 
 if TYPE_CHECKING:
-    from typing import Dict, FrozenSet, List, Optional, Set, Union
+    from typing import Dict, FrozenSet, Optional, Set, Union
 
 
 def make_test(var_name: str, negate: bool = False) -> ast.expr:
@@ -19,7 +20,7 @@ def make_test(var_name: str, negate: bool = False) -> ast.expr:
     return ret
 
 
-def make_composite_condition(nullable_conditions: List[Optional[ast.expr]], op: Optional[ast.AST] = None):
+def make_composite_condition(nullable_conditions: typing.List[Optional[ast.expr]], op: Optional[ast.AST] = None):
     conditions = [cond for cond in nullable_conditions if cond is not None]
     if len(conditions) == 1:
         return conditions[0]

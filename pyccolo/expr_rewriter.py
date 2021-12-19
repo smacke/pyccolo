@@ -5,10 +5,10 @@ import sys
 from contextlib import contextmanager
 from typing import cast, TYPE_CHECKING
 
+from pyccolo import fast
 from pyccolo.extra_builtins import TRACING_ENABLED, make_guard_name
+from pyccolo.fast import EmitterMixin, make_test, make_composite_condition, subscript_to_slice
 from pyccolo.trace_events import TraceEvent
-from pyccolo.utils.ast_utils import EmitterMixin, make_test, make_composite_condition, subscript_to_slice
-from pyccolo.utils import fast
 
 if TYPE_CHECKING:
     from typing import Dict, FrozenSet, List, Optional, Set, Union

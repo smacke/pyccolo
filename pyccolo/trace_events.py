@@ -1,7 +1,7 @@
 # -*- coding: future_annotations -*-
 from enum import Enum
 
-from pyccolo.utils import fast
+from pyccolo import fast
 
 
 class TraceEvent(Enum):

@@ -43,5 +43,5 @@ for ctor_name in ast.__dict__:
     setattr(FastAst, ctor_name, staticmethod(_make_func(ctor_name)))
 
 if sys.version_info >= (3, 8):
-    FastAst.Str = staticmethod(_make_func('Constant'))
-    FastAst.Num = staticmethod(_make_func('Constant'))
+    FastAst.Str = staticmethod(_make_func('Constant'))  # type: ignore
+    FastAst.Num = staticmethod(_make_func('Constant'))  # type: ignore

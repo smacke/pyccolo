@@ -3,10 +3,10 @@ import ast
 import logging
 from typing import cast, TYPE_CHECKING
 
+from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED, make_guard_name
 from pyccolo.trace_events import TraceEvent
-from pyccolo.utils.ast_utils import EmitterMixin, make_test, make_composite_condition
-from pyccolo.utils import fast
+from pyccolo.fast import EmitterMixin, make_test, make_composite_condition
 
 if TYPE_CHECKING:
     from typing import Dict, FrozenSet, List, Set, Union
