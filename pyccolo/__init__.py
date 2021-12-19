@@ -20,6 +20,19 @@ from .tracer import (
 	skip_when_tracing_disabled,
 )
 
+
+# convenience functions for managing tracer singleton
+def tracer() -> BaseTracerStateMachine:
+	return BaseTracerStateMachine.instance()
+
+
+def instance() -> BaseTracerStateMachine:
+	return tracer()
+
+
+def clear_instance() -> None:
+	return BaseTracerStateMachine.clear_instance()
+
 # redundant; do this just in case we forgot to add stubs in trace_events.py
 for evt in TraceEvent:
 	globals()[evt.name] = evt

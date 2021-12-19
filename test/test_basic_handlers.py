@@ -4,7 +4,7 @@ import pyccolo as pyc
 
 @pytest.fixture(autouse=True)
 def reset_tracer_instance():
-    pyc.BaseTracerStateMachine.clear_instance()
+    pyc.clear_instance()
 
 
 def test_sandbox():

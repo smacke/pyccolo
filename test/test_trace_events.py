@@ -37,7 +37,7 @@ def patched_emit_event_fixture():
         if frame.f_code.co_filename == '<sandbox>':
             _RECORDED_EVENTS.append(event)
         return original_emit_event(self, evt, *args, **kwargs)
-    pyc.BaseTracerStateMachine.clear_instance()
+    pyc.clear_instance()
     pyc.BaseTracerStateMachine._emit_event = _patched_emit_event
     yield
     pyc.BaseTracerStateMachine._emit_event = original_emit_event
@@ -63,13 +63,13 @@ def patch_events_with_registered_handlers_to_subset(testfunc):
             pyc.line, pyc.call, pyc.c_call, pyc.return_, pyc.c_return, pyc.exception, pyc.c_exception, pyc.opcode
         }
 
-        orig_handlers = pyc.BaseTracerStateMachine.instance().events_with_registered_handlers
+        orig_handlers = pyc.tracer().events_with_registered_handlers
         try:
-            pyc.BaseTracerStateMachine.instance().events_with_registered_handlers = frozenset(events)
+            pyc.tracer().events_with_registered_handlers = frozenset(events)
             _RECORDED_EVENTS.clear()
             testfunc(events)
         finally:
-            pyc.BaseTracerStateMachine.instance().events_with_registered_handlers = orig_handlers
+            pyc.tracer().events_with_registered_handlers = orig_handlers
 
     return wrapped_testfunc
 
@@ -86,7 +86,7 @@ def throw_and_print_diff_if_recorded_not_equal_to(actual: List[pyc.TraceEvent]) 
 
 
 def run_cell(cell, **kwargs):
-    pyc.BaseTracerStateMachine.instance().exec_sandboxed(cell)
+    pyc.tracer().exec_sandboxed(cell)
 
 
 @st.composite
