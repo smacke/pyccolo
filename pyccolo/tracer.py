@@ -291,31 +291,56 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         if global_env is None:
             global_env = globals()
         if local_env is None:
-            local_env = locals()
+            local_env = sys._getframe().f_back.f_locals
         if isinstance(code, str):
             code = textwrap.dedent(code).strip()
-            code_ast = ast.parse(code, filename, "exec")
-        else:
-            code_ast = code
+            code = ast.parse(code, filename, "exec")
         if instrument:
-            code_ast = self.make_ast_rewriter().visit(code_ast)
+            code = self.make_ast_rewriter().visit(code)
         with self.tracing_context() if instrument else suppress():
-            exec(compile(code_ast, filename, "exec"), global_env, local_env)
+            exec(compile(code, filename, "exec"), global_env, local_env)
 
-    def exec_sandboxed(self, code: str, instrument: bool = True) -> dict:
-        local_env = {}
+    def exec_sandboxed(
+        self,
+        code: str,
+        global_env: Optional[dict] = None,
+        local_env: Optional[dict] = None,
+        instrument: bool = True
+    ) -> dict:
+        if global_env is None:
+            global_env = globals()
+        if local_env is None:
+            local_env = {}
         code = textwrap.dedent(code).strip()
         filename = "<sandbox>"
         code = ast.parse(code, filename, "exec")
         if instrument:
             code = self.make_ast_rewriter().visit(code)
-        sandboxed_code = ast.parse("def _sandbox(): return locals()\nlocal_env = _sandbox()", filename, "exec")
+        sandboxed_code = ast.parse(
+            textwrap.dedent(
+                """
+                local_env = dict(locals())
+                def _sandbox(local_env):
+                    locals().update(local_env)
+                    return locals()
+                local_env = _sandbox(local_env)
+                del local_env["local_env"]
+                """
+            ).strip(),
+            filename,
+            "exec"
+        )
         # prepend the stuff before "return locals()"
-        sandboxed_code.body[0].body = code.body + sandboxed_code.body[0].body
+        sandboxed_code.body[1].body = (
+            sandboxed_code.body[1].body[:1] +
+            code.body +
+            sandboxed_code.body[1].body[1:]
+        )
         with self.tracing_context() if instrument else suppress():
             self.exec(
                 sandboxed_code,
                 filename=filename,
+                global_env=global_env,
                 local_env=local_env,
                 instrument=False,
             )

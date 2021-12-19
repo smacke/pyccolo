@@ -22,6 +22,7 @@ def test_instrumented_sandbox():
 
     env = IncrementsAssignValue.instance().exec_sandboxed("x = 42")
     assert env["x"] == 43
+    print(env)
     assert len(env) == 1
 
 
@@ -53,3 +54,13 @@ def test_null():
     env = IncrementsAssignValue.instance().exec_sandboxed("x = 42")
     assert env["x"] is None
     assert len(env) == 1
+
+
+def pass_sandboxed_environ():
+    env = pyc.exec_sandboxed("x = 42")
+    assert env["x"] == 42
+    assert len(env) == 1
+    env = pyc.exec_sandboxed("y = x + 1", local_env=env)
+    assert len(env) == 2
+    assert env["x"] == 42
+    assert env["y"] == 43
