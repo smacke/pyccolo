@@ -16,7 +16,7 @@ def test_sandbox():
 
 def test_instrumented_sandbox():
     class IncrementsAssignValue(pyc.BaseTracerStateMachine):
-        @pyc.register_handler(pyc.TraceEvent.after_assign_rhs)
+        @pyc.register_handler(pyc.after_assign_rhs)
         def handle_assign(self, ret, *_, **__):
             return ret + 1
 
@@ -27,11 +27,11 @@ def test_instrumented_sandbox():
 
 def test_two_handlers():
     class TwoAssignMutations(pyc.BaseTracerStateMachine):
-        @pyc.register_handler(pyc.TraceEvent.after_assign_rhs)
+        @pyc.register_handler(pyc.after_assign_rhs)
         def handle_assign_1(self, ret, *_, **__):
             return ret + 1
 
-        @pyc.register_handler(pyc.TraceEvent.after_assign_rhs)
+        @pyc.register_handler(pyc.after_assign_rhs)
         def handle_assign_2(self, ret, *_, **__):
             return ret * 2
 
@@ -42,11 +42,11 @@ def test_two_handlers():
 
 def test_null():
     class IncrementsAssignValue(pyc.BaseTracerStateMachine):
-        @pyc.register_handler(pyc.TraceEvent.after_assign_rhs)
+        @pyc.register_handler(pyc.after_assign_rhs)
         def handle_assign_1(self, *_, **__):
             return pyc.Null
 
-        @pyc.register_handler(pyc.TraceEvent.after_assign_rhs)
+        @pyc.register_handler(pyc.after_assign_rhs)
         def handle_assign_2(self, ret, *_, **__):
             assert ret is None
 

@@ -10,7 +10,7 @@ from .syntax_augmentation import (
 	AugmentationType,
 	replace_tokens_and_get_augmented_positions,
 )
-from .trace_events import TraceEvent
+from .trace_events import *
 from .trace_stack import TraceStack
 from .tracer import (
 	BaseTracerStateMachine,
@@ -20,9 +20,9 @@ from .tracer import (
 	skip_when_tracing_disabled,
 )
 
-# TODO: generate stubs for this
+# redundant; do this just in case we forgot to add stubs in trace_events.py
 for evt in TraceEvent:
-	globals()[evt.value] = evt
+	globals()[evt.name] = evt
 
 from ._version import get_versions
 __version__ = get_versions()['version']
