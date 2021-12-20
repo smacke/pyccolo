@@ -78,7 +78,7 @@ def make_syntax_augmenter(rewriter: AstRewriter, aug_spec: AugmentationSpec) -> 
         if isinstance(lines, list):
             code_lines: List[str] = lines
         else:
-            code_lines = lines.split('\n')
+            code_lines = lines.splitlines()
         transformed_lines = []
         for idx, line in enumerate(code_lines):
             line, positions = replace_tokens_and_get_augmented_positions(line, aug_spec, regex)
