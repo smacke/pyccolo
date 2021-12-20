@@ -296,6 +296,12 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         with self.tracing_context() if instrument else suppress():
             exec(compile(code, filename, "exec"), global_env, local_env)
 
+    def parse(self, code: str) -> ast.Module:
+        rewriter = self.make_ast_rewriter()
+        for augmenter in self.make_syntax_augmenters(rewriter):
+            code = augmenter(code)
+        return rewriter.visit(ast.parse(code))
+
     def exec(
         self,
         code: Union[ast.Module, str],
@@ -310,9 +316,10 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         filename = "<sandbox>"
         if isinstance(code, str):
             code = textwrap.dedent(code).strip()
-            code = ast.parse(code, filename, "exec")
         if instrument:
-            code = self.make_ast_rewriter().visit(code)
+            code = self.parse(code)
+        else:
+            code = ast.parse(code)
         sandboxed_code = ast.parse(
             textwrap.dedent(
                 """

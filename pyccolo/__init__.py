@@ -1,4 +1,5 @@
 # -*- coding: future_annotations -*-
+import ast
 from .ast_rewriter import AstRewriter
 from .extra_builtins import EMIT_EVENT, TRACING_ENABLED, make_guard_name
 from .expr_rewriter import ExprRewriter
@@ -28,6 +29,10 @@ def tracer() -> BaseTracerStateMachine:
 
 def instance() -> BaseTracerStateMachine:
 	return tracer()
+
+
+def parse(*args, **kwargs) -> ast.Module:
+	return tracer().parse(*args, **kwargs)
 
 
 def exec_raw(*args, **kwargs):
