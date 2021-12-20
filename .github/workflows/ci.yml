@@ -34,12 +34,17 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         #flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
         flake8 . --exit-zero  
-    - name: Run unit tests with pytest, without coverage
-      if: matrix.os != 'ubuntu-latest'
-      run: make check_ci
-    - name: Run integration tests with pytest, including coverage
+    - name: Run unit tests with pytest (skip typechecking, coverage)
+      if: matrix.os == 'windows-latest'
+      run: pytest
+    - name: Run typechecking with mypy and unit tests with pytest (skip coverage)
+      if: matrix.os == 'macos-latest'
+      run: |
+        make typecheck
+        pytest
+    - name: Run typechecking with mypy and unit tests with pytest (including coverage)
       if: matrix.os == 'ubuntu-latest'
-      run: make check_ci_coverage
+      run: make check_ci
     - name: Upload coverage report
       if: matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v1
