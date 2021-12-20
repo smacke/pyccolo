@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, cast
 from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
 
+from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.import_hooks import TraceFinder
@@ -243,7 +244,7 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
             sys.settrace = original_settrace
 
     def should_trace_source_path(self, path) -> bool:
-        return not path.startswith(internal_directories)
+        return False
 
     def make_ast_rewriter(self, module_id: Optional[int] = None) -> AstRewriter:
         return self.ast_rewriter_cls(self, module_id=module_id)
@@ -280,6 +281,12 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
                 if hasattr(builtins, guard):
                     delattr(builtins, guard)
 
+    def parse(self, code: str) -> ast.Module:
+        rewriter = self.make_ast_rewriter()
+        for augmenter in self.make_syntax_augmenters(rewriter):
+            code = augmenter(code)
+        return rewriter.visit(ast.parse(code))
+
     def exec_raw(
         self,
         code: Union[ast.Module, str],
@@ -290,17 +297,11 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
     ) -> None:
         if isinstance(code, str):
             code = textwrap.dedent(code).strip()
-            code = ast.parse(code, filename, "exec")
+            code = self.parse(code)
         if instrument:
             code = self.make_ast_rewriter().visit(code)
         with self.tracing_context() if instrument else suppress():
             exec(compile(code, filename, "exec"), global_env, local_env)
-
-    def parse(self, code: str) -> ast.Module:
-        rewriter = self.make_ast_rewriter()
-        for augmenter in self.make_syntax_augmenters(rewriter):
-            code = augmenter(code)
-        return rewriter.visit(ast.parse(code))
 
     def exec(
         self,
@@ -316,10 +317,10 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         filename = "<sandbox>"
         if isinstance(code, str):
             code = textwrap.dedent(code).strip()
-        if instrument:
-            code = self.parse(code)
-        else:
-            code = ast.parse(code)
+            if instrument:
+                code = self.parse(code)
+            else:
+                code = ast.parse(code)
         if len(local_env) > 0:
             sandbox_args = ", ".join(["*"] + list(local_env.keys()) + ["**__"])
         else:
@@ -329,7 +330,6 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
                 f"""
                 local_env = dict(locals())
                 def _sandbox({sandbox_args}):
-                    '''test'''
                     return locals()
                 local_env = _sandbox(**local_env)
                 del local_env["__"]

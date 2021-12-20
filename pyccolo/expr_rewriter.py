@@ -75,6 +75,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 args=[lower, upper] + ([] if subscript.step is None else [self.visit(subscript.step)]),
                 keywords=[],
             )
+        elif isinstance(subscript, ast.Constant):
+            return self.visit(subscript)
         else:
             return cast(ast.expr, subscript)
 
@@ -495,9 +497,17 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         else:
             return node
 
-    def visit_Ellipsis(self, node: ast.Ellipsis):
-        if TraceEvent.ellipses in self.events_with_handlers:
-            with fast.location_of(node):
-                return self.emit(TraceEvent.ellipses, node, ret=node)
-        else:
-            return node
+    if sys.version_info < (3, 8):
+        def visit_Ellipsis(self, node: ast.Ellipsis):
+            if TraceEvent.ellipses in self.events_with_handlers:
+                with fast.location_of(node):
+                    return self.emit(TraceEvent.ellipses, node, ret=node)
+            else:
+                return node
+    else:
+        def visit_Constant(self, node: ast.Constant):
+            if node.value is ... and TraceEvent.ellipses in self.events_with_handlers:
+                with fast.location_of(node):
+                    return self.emit(TraceEvent.ellipses, node, ret=node)
+            else:
+                return node

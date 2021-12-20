@@ -355,6 +355,7 @@ def test_fancy_slices(events):
             pyc.after_stmt,
             pyc.after_module_stmt,
 
+            # logging.info(arr[foo.x:foo.x+1,...])
             pyc.before_stmt,
             pyc.before_load_complex_symbol,
             pyc.load_name,
@@ -376,6 +377,7 @@ def test_fancy_slices(events):
             pyc.left_binop_arg,
             pyc.right_binop_arg,
             pyc.add,
+            pyc.ellipses,
             pyc.subscript_slice,
             pyc.before_subscript_load,
             pyc._load_saved_slice,
