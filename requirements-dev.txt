@@ -3,5 +3,6 @@ hypothesis
 mypy
 py
 pytest
+pytest-cov
 twine
 versioneer
