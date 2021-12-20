@@ -113,12 +113,13 @@ class StatementMapper(ast.NodeVisitor):
         for no, nc in zip(orig_traversal, copy_traversal):
             orig_to_copy_mapping[id(no)] = nc
             self._tracer.ast_node_by_id[id(nc)] = nc
-            for spec, mod_positions in self.augmented_positions_by_spec.items():
-                col_offset = self._get_col_offset_for(spec.aug_type, nc)
-                if col_offset is None:
-                    continue
-                if (nc.lineno, col_offset) in mod_positions:
-                    self._tracer.augmented_node_ids_by_spec[spec].add(id(nc))
+            if hasattr(nc, 'lineno'):
+                for spec, mod_positions in self.augmented_positions_by_spec.items():
+                    col_offset = self._get_col_offset_for(spec.aug_type, nc)
+                    if col_offset is None:
+                        continue
+                    if (nc.lineno, col_offset) in mod_positions:
+                        self._tracer.augmented_node_ids_by_spec[spec].add(id(nc))
             if isinstance(nc, ast.stmt):
                 self.line_to_stmt_map[nc.lineno] = nc
                 ContainingStatementMapper(self._tracer.node_id_to_containing_stmt, nc).visit(nc)

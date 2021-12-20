@@ -1,4 +1,10 @@
 # -*- coding: future_annotations -*-
+"""
+Pyccolo: embedded instrumentation for Python.
+
+Pyccolo brings metaprogramming to everybody via general
+event-emitting AST transformations.
+"""
 import ast
 from .ast_rewriter import AstRewriter
 from .extra_builtins import EMIT_EVENT, TRACING_ENABLED, make_guard_name

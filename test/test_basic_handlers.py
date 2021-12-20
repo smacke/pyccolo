@@ -56,7 +56,7 @@ def test_null():
     assert len(env) == 1
 
 
-def pass_sandboxed_environ():
+def test_pass_sandboxed_environ():
     env = pyc.exec("x = 42")
     assert env["x"] == 42
     assert len(env) == 1

@@ -29,10 +29,8 @@ def test_augmented_plus():
             else:
                 return ret
 
-    env = Add42.instance().exec("x = 21 + 21")
-    assert env["x"] == 42
-    assert len(env) == 1
+    env = Add42.instance().exec("x = 21 ++ 21")
+    assert env["x"] == 84, "got %s" % env["x"]
 
-    env = pyc.exec("x = 21 ++ 21")
-    assert env["x"] == 84
-    assert len(env) == 1
+    env = pyc.exec("x = x + 21", local_env=env)
+    assert env["x"] == 105

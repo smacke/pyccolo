@@ -320,15 +320,19 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
             code = self.parse(code)
         else:
             code = ast.parse(code)
+        if len(local_env) > 0:
+            sandbox_args = ", ".join(["*"] + list(local_env.keys()) + ["**__"])
+        else:
+            sandbox_args = "**__"
         sandboxed_code = ast.parse(
             textwrap.dedent(
-                """
+                f"""
                 local_env = dict(locals())
-                def _sandbox(local_env):
-                    locals().update(local_env)
+                def _sandbox({sandbox_args}):
+                    '''test'''
                     return locals()
-                local_env = _sandbox(local_env)
-                del local_env["local_env"]
+                local_env = _sandbox(**local_env)
+                del local_env["__"]
                 """
             ).strip(),
             filename,
@@ -336,11 +340,7 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         )
         # prepend the stuff before "return locals()"
         fundef: ast.FunctionDef = cast(ast.FunctionDef, sandboxed_code.body[1])
-        fundef.body = (
-            fundef.body[:1]
-            + cast(ast.Module, code).body
-            + fundef.body[1:]
-        )
+        fundef.body = cast(ast.Module, code).body + fundef.body
         with self.tracing_context() if instrument else suppress():
             self.exec_raw(
                 sandboxed_code,
