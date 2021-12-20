@@ -75,10 +75,10 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 args=[lower, upper] + ([] if subscript.step is None else [self.visit(subscript.step)]),
                 keywords=[],
             )
-        elif isinstance(subscript, ast.Constant):
-            return self.visit(subscript)
-        else:
+        elif isinstance(subscript, (ast.ExtSlice, ast.Tuple)):
             return cast(ast.expr, subscript)
+        else:
+            return self.visit(subscript)
 
     def visit_Subscript(self, node: ast.Subscript, call_context=False):
         with self.attrsub_context(None):
