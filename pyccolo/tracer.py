@@ -13,10 +13,10 @@ from typing import TYPE_CHECKING, cast
 from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
 
-from pyccolo import fast
+from pyccolo.emit_event import _emit_event, _TRACER_STACK
 from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED
 from pyccolo.ast_rewriter import AstRewriter
-from pyccolo.import_hooks import TraceFinder
+from pyccolo.import_hooks import patch_meta_path
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
 from pyccolo.trace_events import TraceEvent
 from pyccolo.trace_stack import TraceStack
@@ -35,13 +35,18 @@ internal_directories = (os.path.dirname(os.path.dirname((lambda: 0).__code__.co_
 Null = object()
 
 
-def register_tracer_state_machine(tracer_cls: Type[SingletonTracerStateMachine]) -> None:
+def register_tracer_state_machine(tracer_cls: Type[BaseTracerStateMachine]) -> None:
     tracer_cls.EVENT_HANDLERS_BY_CLASS[tracer_cls] = defaultdict(list, tracer_cls.EVENT_HANDLERS_PENDING_REGISTRATION)
     tracer_cls.EVENT_HANDLERS_PENDING_REGISTRATION.clear()
     tracer_cls._MANAGER_CLASS_REGISTERED = True
 
 
 class MetaTracerStateMachine(MetaHasTraits):
+    def __new__(mcs, name, bases, *args, **kwargs):
+        if name not in ('SingletonTracerStateMachine', 'BaseTracerStateMachine'):
+            bases += (SingletonConfigurable,)
+        return MetaHasTraits.__new__(mcs, name, bases, *args, **kwargs)
+
     def __init__(cls, *args, **kwargs):
         super().__init__(*args, **kwargs)
         register_tracer_state_machine(cls)
@@ -52,7 +57,7 @@ class MetaTracerStateMachine(MetaHasTraits):
         return obj
 
 
-class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerStateMachine):
+class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
     ast_rewriter_cls = AstRewriter
 
     _MANAGER_CLASS_REGISTERED = False
@@ -68,6 +73,14 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
 
     EVENT_LOGGER = logging.getLogger('events')
     EVENT_LOGGER.setLevel(logging.WARNING)
+
+    guards: Set[str] = set()
+
+    # shared ast-related fields
+    ast_node_by_id: Dict[int, ast.AST] = {}
+    parent_node_by_id: Dict[int, ast.AST] = {}
+    line_to_stmt_by_module_id: Dict[int, Dict[int, ast.stmt]] = defaultdict(dict)
+    node_id_to_containing_stmt: Dict[int, ast.stmt] = {}
 
     def __init__(self, is_reset: bool = False):
         if is_reset:
@@ -89,14 +102,7 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         self.tracing_enabled = False
         self.sys_tracer = self._sys_tracer
         self.existing_tracer = None
-
-        # ast-related fields
-        self.ast_node_by_id: Dict[int, ast.AST] = {}
-        self.parent_node_by_id: Dict[int, ast.AST] = {}
         self.augmented_node_ids_by_spec: Dict[AugmentationSpec, Set[int]] = defaultdict(set)
-        self.line_to_stmt_by_module_id: Dict[int, Dict[int, ast.stmt]] = defaultdict(dict)
-        self.node_id_to_containing_stmt: Dict[int, ast.stmt] = {}
-        self.guards: Set[str] = set()
 
         self._transient_fields: Set[str] = set()
         self._persistent_fields: Set[str] = set()
@@ -147,22 +153,22 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
             del self.__dict__[field]
         self.__init__(is_reset=True)
 
-    def activate_guard(self, guard: str) -> None:
-        assert guard in self.guards
+    @classmethod
+    def activate_guard(cls, guard: str) -> None:
+        assert guard in cls.guards
         setattr(builtins, guard, False)
 
-    def deactivate_guard(self, guard: str) -> None:
-        assert guard in self.guards
+    @classmethod
+    def deactivate_guard(cls, guard: str) -> None:
+        assert guard in cls.guards
         setattr(builtins, guard, True)
 
     def should_propagate_handler_exception(self, evt: TraceEvent, exc: Exception) -> bool:
         return False
 
-    def _emit_event(self, evt: Union[TraceEvent, str], node_id: int, **kwargs: Any):
+    def _emit_event(self, evt: Union[str, TraceEvent], node_id: int, frame: FrameType, **kwargs: Any):
         try:
-            event = TraceEvent(evt) if isinstance(evt, str) else evt
-            frame = kwargs.get('_frame', sys._getframe().f_back)
-            kwargs['_frame'] = frame
+            event = evt if isinstance(evt, TraceEvent) else TraceEvent(evt)
             for handler, use_raw_node_id in self._event_handlers[event]:
                 old_ret = kwargs.pop('ret', None)
                 try:
@@ -172,7 +178,7 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
                     if self.should_propagate_handler_exception(event, exc):
                         raise exc
                     else:
-                        logger.exception('An exception while handling evt %s', evt)
+                        logger.exception('An exception while handling evt %s', event)
                     new_ret = None
                 if new_ret is None:
                     new_ret = old_ret
@@ -232,7 +238,8 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         self.tracing_enabled = False
         if has_sys_trace_events:
             sys_settrace(self.existing_tracer)
-        setattr(builtins, TRACING_ENABLED, False)
+        if len(_TRACER_STACK) == 0:
+            setattr(builtins, TRACING_ENABLED, False)
 
     @contextmanager
     def _patch_sys_settrace(self) -> Generator[None, None, None]:
@@ -247,44 +254,51 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         return False
 
     def make_ast_rewriter(self, module_id: Optional[int] = None) -> AstRewriter:
-        return self.ast_rewriter_cls(self, module_id=module_id)
+        return self.ast_rewriter_cls(_TRACER_STACK, module_id=module_id)
 
     def make_syntax_augmenters(self, ast_rewriter: AstRewriter) -> List[Callable]:
         return [make_syntax_augmenter(ast_rewriter, spec) for spec in self.syntax_augmentation_specs]
 
     @contextmanager
-    def _patch_meta_path(self) -> Generator[None, None, None]:
-        if self.should_patch_meta_path:
-            try:
-                sys.meta_path.insert(0, TraceFinder(self))
-                yield
-            finally:
-                del sys.meta_path[0]
-        else:
-            yield
-
-    @contextmanager
     def tracing_context(self) -> Generator[None, None, None]:
-        setattr(builtins, EMIT_EVENT, self._emit_event)
-        for guard in self.guards:
-            self.deactivate_guard(guard)
+        should_push = True
+        activate_ctx_managers = False
         try:
-            with self._patch_meta_path():
-                with self._patch_sys_settrace():
-                    self._enable_tracing()
+            if getattr(builtins, EMIT_EVENT, None) is not _emit_event:
+                setattr(builtins, EMIT_EVENT, _emit_event)
+                for guard in self.guards:
+                    self.deactivate_guard(guard)
+            if len(_TRACER_STACK) == 0:
+                activate_ctx_managers = True
+            elif _TRACER_STACK[-1] is self:
+                should_push = False
+            if should_push:
+                _TRACER_STACK.append(self)  # type: ignore
+            with patch_meta_path(_TRACER_STACK) if activate_ctx_managers else suppress():
+                with self._patch_sys_settrace() if activate_ctx_managers else suppress():
+                    self._enable_tracing(check_disabled=activate_ctx_managers)
                     yield
         finally:
+            if should_push:
+                del _TRACER_STACK[-1]
             self._disable_tracing(check_enabled=False)
-            delattr(builtins, EMIT_EVENT)
-            delattr(builtins, TRACING_ENABLED)
-            for guard in self.guards:
-                if hasattr(builtins, guard):
-                    delattr(builtins, guard)
+            if len(_TRACER_STACK) == 0:
+                delattr(builtins, EMIT_EVENT)
+                delattr(builtins, TRACING_ENABLED)
+                for guard in self.guards:
+                    if hasattr(builtins, guard):
+                        delattr(builtins, guard)
 
-    def parse(self, code: str) -> ast.Module:
-        rewriter = self.make_ast_rewriter()
+    def preprocess(self, code: str, rewriter: AstRewriter) -> str:
         for augmenter in self.make_syntax_augmenters(rewriter):
             code = augmenter(code)
+        return code
+
+    def parse(self, code: str) -> ast.Module:
+        assert _TRACER_STACK[-1] is self
+        rewriter = self.make_ast_rewriter()
+        for tracer in _TRACER_STACK:
+            code = tracer.preprocess(code, rewriter)
         return rewriter.visit(ast.parse(code))
 
     def exec_raw(
@@ -295,12 +309,12 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         filename: Optional[str] = "<file>",
         instrument: bool = True,
     ) -> None:
-        if isinstance(code, str):
-            code = textwrap.dedent(code).strip()
-            code = self.parse(code)
-        if instrument:
-            code = self.make_ast_rewriter().visit(code)
         with self.tracing_context() if instrument else suppress():
+            if isinstance(code, str):
+                code = textwrap.dedent(code).strip()
+                code = self.parse(code)
+            if instrument:
+                code = self.make_ast_rewriter().visit(code)
             exec(compile(code, filename, "exec"), global_env, local_env)
 
     def exec(
@@ -308,19 +322,13 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         code: Union[ast.Module, str],
         global_env: Optional[dict] = None,
         local_env: Optional[dict] = None,
-        instrument: bool = True
-    ) -> dict:
+        instrument: bool = True,
+    ) -> Dict[str, Any]:
         if global_env is None:
             global_env = globals()
         if local_env is None:
             local_env = {}
         filename = "<sandbox>"
-        if isinstance(code, str):
-            code = textwrap.dedent(code).strip()
-            if instrument:
-                code = self.parse(code)
-            else:
-                code = ast.parse(code)
         if len(local_env) > 0:
             sandbox_args = ", ".join(["*"] + list(local_env.keys()) + ["**__"])
         else:
@@ -328,20 +336,27 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
         sandboxed_code = ast.parse(
             textwrap.dedent(
                 f"""
-                local_env = dict(locals())
-                def _sandbox({sandbox_args}):
-                    return locals()
-                local_env = _sandbox(**local_env)
-                del local_env["__"]
-                """
+                    local_env = dict(locals())
+                    def _sandbox({sandbox_args}):
+                        return locals()
+                    local_env = _sandbox(**local_env)
+                    local_env.pop("__", None)
+                    local_env.pop("builtins", None)
+                    """
             ).strip(),
             filename,
             "exec"
         )
-        # prepend the stuff before "return locals()"
-        fundef: ast.FunctionDef = cast(ast.FunctionDef, sandboxed_code.body[1])
-        fundef.body = cast(ast.Module, code).body + fundef.body
         with self.tracing_context() if instrument else suppress():
+            if isinstance(code, str):
+                code = textwrap.dedent(code).strip()
+                if instrument:
+                    code = self.parse(code)
+                else:
+                    code = ast.parse(code)
+            # prepend the stuff before "return locals()"
+            fundef: ast.FunctionDef = cast(ast.FunctionDef, sandboxed_code.body[1])
+            fundef.body = cast(ast.Module, code).body + fundef.body
             self.exec_raw(
                 sandboxed_code,
                 filename=filename,
@@ -367,7 +382,14 @@ class SingletonTracerStateMachine(SingletonConfigurable, metaclass=MetaTracerSta
             if TraceEvent.opcode in self.events_with_registered_handlers:
                 frame.f_trace_opcodes = True  # type: ignore
 
-        return self._emit_event(evt, 0, _frame=frame, ret=arg)
+        return self._emit_event(evt, 0, frame, ret=arg)
+
+    if TYPE_CHECKING:
+        @classmethod
+        def instance(cls, *args, **kwargs) -> BaseTracerStateMachine: ...
+
+        @classmethod
+        def clear_instance(cls) -> None: ...
 
 
 def register_handler(event: Union[TraceEvent, Tuple[TraceEvent, ...]], use_raw_node_id: bool = False):

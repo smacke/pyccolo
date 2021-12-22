@@ -1,11 +1,5 @@
 import sys
-import pytest
 import pyccolo as pyc
-
-
-@pytest.fixture(autouse=True)
-def reset_tracer_instance():
-    pyc.clear_instance()
 
 
 add_42_spec = pyc.AugmentationSpec(aug_type=pyc.AugmentationType.binop, token='++', replacement='+')
@@ -31,8 +25,9 @@ if sys.version_info >= (3, 8):
                 else:
                     return ret
 
-        env = Add42.instance().exec("x = 21 ++ 21")
+        tracer = Add42.instance()
+        env = tracer.exec("x = 21 ++ 21")
         assert env["x"] == 84, "got %s" % env["x"]
 
-        env = pyc.exec("x = x + 21", local_env=env)
+        env = tracer.exec("x = x + 21", local_env=env)
         assert env["x"] == 105

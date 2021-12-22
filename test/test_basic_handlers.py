@@ -1,17 +1,10 @@
-import pytest
 import pyccolo as pyc
 
 
-@pytest.fixture(autouse=True)
-def reset_tracer_instance():
-    pyc.clear_instance()
-
-
 def test_sandbox():
-    tracer = pyc.BaseTracerStateMachine.instance()
-    env = tracer.exec("x = 42")
+    env = pyc.exec("x = 42")
     assert env["x"] == 42
-    assert len(env) == 1
+    assert len(env) == 1, 'got %s' % env
 
 
 def test_instrumented_sandbox():
@@ -21,8 +14,7 @@ def test_instrumented_sandbox():
             return ret + 1
 
     env = IncrementsAssignValue.instance().exec("x = 42")
-    assert env["x"] == 43
-    print(env)
+    assert env["x"] == 43, 'got %s' % env["x"]
     assert len(env) == 1
 
 
@@ -36,8 +28,29 @@ def test_two_handlers():
         def handle_assign_2(self, ret, *_, **__):
             return ret * 2
 
-    env = TwoAssignMutations.instance().exec("x = 42")
-    assert env["x"] == 86  # tests that handlers are applied in order of defn
+    with TwoAssignMutations.instance().tracing_context():
+        env = pyc.exec("x = 42")
+    # env = TwoAssignMutations.instance().exec("x = 42")
+    assert env["x"] == 86, 'got %s' % env["x"]  # tests that handlers are applied in order of defn
+    assert len(env) == 1
+
+
+def test_two_handlers_from_separate_classes():
+    class AssignMutation1(pyc.BaseTracerStateMachine):
+        @pyc.register_handler(pyc.after_assign_rhs)
+        def handle_assign_1(self, ret, *_, **__):
+            return ret + 1
+
+    class AssignMutation2(pyc.BaseTracerStateMachine):
+        @pyc.register_handler(pyc.after_assign_rhs)
+        def handle_assign_2(self, ret, *_, **__):
+            return ret * 2
+
+    with AssignMutation1.instance().tracing_context():
+        with AssignMutation2.instance().tracing_context():
+            env = pyc.exec("x = 42")
+
+    assert env["x"] == 86, 'got %s' % env["x"]  # tests that handlers are applied in order of defn
     assert len(env) == 1
 
 
@@ -59,7 +72,7 @@ def test_null():
 def test_pass_sandboxed_environ():
     env = pyc.exec("x = 42")
     assert env["x"] == 42
-    assert len(env) == 1
+    assert len(env) == 1, 'got %s' % env
     env = pyc.exec("y = x + 1", local_env=env)
     assert len(env) == 2
     assert env["x"] == 42

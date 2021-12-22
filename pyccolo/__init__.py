@@ -6,7 +6,9 @@ Pyccolo brings metaprogramming to everybody via general
 event-emitting AST transformations.
 """
 import ast
+from typing import Any, Dict
 from .ast_rewriter import AstRewriter
+from .emit_event import _TRACER_STACK, allow_reentrant_event_handling
 from .extra_builtins import EMIT_EVENT, TRACING_ENABLED, make_guard_name
 from .expr_rewriter import ExprRewriter
 from .stmt_inserter import StatementInserter
@@ -17,6 +19,7 @@ from .syntax_augmentation import (
 	AugmentationType,
 	replace_tokens_and_get_augmented_positions,
 )
+from .trace_events import TraceEvent
 from .trace_events import *
 from .trace_stack import TraceStack
 from .tracer import (
@@ -30,27 +33,23 @@ from .tracer import (
 
 # convenience functions for managing tracer singleton
 def tracer() -> BaseTracerStateMachine:
-	return BaseTracerStateMachine.instance()
+	if len(_TRACER_STACK) > 0:
+		return _TRACER_STACK[-1]
+	else:
+		return BaseTracerStateMachine()
 
 
 def instance() -> BaseTracerStateMachine:
 	return tracer()
 
 
-def parse(*args, **kwargs) -> ast.Module:
-	return tracer().parse(*args, **kwargs)
+def parse(code: str) -> ast.Module:
+	return tracer().parse(code)
 
 
-def exec_raw(*args, **kwargs):
-	return tracer().exec_raw(*args, **kwargs)
+def exec(code: str, *args, **kwargs) -> Dict[str, Any]:
+	return tracer().exec(code, *args, **kwargs)
 
-
-def exec(*args, **kwargs):
-	return tracer().exec(*args, **kwargs)
-
-
-def clear_instance() -> None:
-	return BaseTracerStateMachine.clear_instance()
 
 # redundant; do this just in case we forgot to add stubs in trace_events.py
 for evt in TraceEvent:

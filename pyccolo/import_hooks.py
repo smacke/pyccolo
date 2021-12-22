@@ -12,11 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 class TraceLoader(SourceFileLoader):
-    def __init__(self, tracer, *args, **kwargs):
+    def __init__(self, tracers, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._tracer = tracer
-        self._ast_rewriter = tracer.make_ast_rewriter()
-        self._syntax_augmenters = tracer.make_syntax_augmenters(self._ast_rewriter)
+        self._ast_rewriter = tracers[-1].make_ast_rewriter()
+        self._syntax_augmenters = []
+        for tracer in tracers:
+            self._syntax_augmenters.extend(tracer.make_syntax_augmenters(self._ast_rewriter))
         self._augmentation_context: bool = False
 
     @contextmanager
@@ -29,7 +30,7 @@ class TraceLoader(SourceFileLoader):
             self._augmentation_context = orig_aug_context
 
     def get_data(self, path) -> bytes:
-        if self._augmentation_context or not self._tracer.should_trace_source_path(path):
+        if self._augmentation_context:
             return super().get_data(path)
         with self.syntax_augmentation_context():
             source = self.get_augmented_source(path)
@@ -37,8 +38,6 @@ class TraceLoader(SourceFileLoader):
 
     def get_code(self, fullname):
         source_path = self.get_filename(fullname)
-        if not self._tracer.should_trace_source_path(source_path):
-            return super().get_code(fullname)
         source_bytes = self.get_data(source_path)
         return self.source_to_code(source_bytes, source_path)
 
@@ -63,25 +62,19 @@ class TraceLoader(SourceFileLoader):
         return source
 
     def source_to_code(self, data, path, *, _optimize=-1):
-        ret = None
         try:
-            if self._tracer.should_trace_source_path(path):
-                ret = compile(
-                    self._ast_rewriter.visit(ast.parse(data)), path, 'exec', dont_inherit=True, optimize=_optimize
-                )
+            return compile(
+                self._ast_rewriter.visit(ast.parse(data)), path, 'exec', dont_inherit=True, optimize=_optimize
+            )
         except Exception:
-            pass
-        finally:
-            if ret is None:
-                ret = super().source_to_code(data, path, _optimize=_optimize)
-        return ret
+            return super().source_to_code(data, path, _optimize=_optimize)
 
 
 # this is based on the birdseye finder (which uses import hooks based on MacroPy's):
 # https://github.com/alexmojaki/birdseye/blob/9974af715b1801f9dd99fef93ff133d0ab5223af/birdseye/import_hook.py
 class TraceFinder(MetaPathFinder):
-    def __init__(self, tracer) -> None:
-        self.tracer = tracer
+    def __init__(self, tracers) -> None:
+        self.tracers = tracers
 
     def _find_plain_spec(self, fullname, path, target):
         """Try to find the original module using all the
@@ -116,8 +109,21 @@ class TraceFinder(MetaPathFinder):
         if not isinstance(spec.loader, SourceFileLoader):
             return None
         source_path = spec.loader.get_filename(fullname)
-        if not self.tracer.should_trace_source_path(source_path):
-            return None
+        tracers_to_use = []
+        for tracer in self.tracers:
+            if tracer.should_trace_source_path(source_path):
+                tracers_to_use.append(tracer)
 
-        spec.loader = TraceLoader(self.tracer, spec.loader.name, spec.loader.path)
+        if len(tracers_to_use) == 0:
+            return None
+        spec.loader = TraceLoader(tracers_to_use, spec.loader.name, spec.loader.path)
         return spec
+
+
+@contextmanager
+def patch_meta_path(tracers):
+    try:
+        sys.meta_path.insert(0, TraceFinder(tracers))
+        yield
+    finally:
+        del sys.meta_path[0]

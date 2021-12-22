@@ -2,11 +2,9 @@
 import difflib
 import functools
 import logging
-import sys
 from typing import TYPE_CHECKING
 
 import hypothesis.strategies as st
-import pytest
 from hypothesis import example, given, settings
 
 import pyccolo as pyc
@@ -25,28 +23,10 @@ def subsets(draw, elements):
     return {e for e in elements if draw(st.booleans())}
 
 
-@pytest.fixture(autouse=True)
-def patched_emit_event_fixture():
-    _RECORDED_EVENTS.clear()
-    original_emit_event = pyc.BaseTracerStateMachine._emit_event
-
-    def _patched_emit_event(self, evt: Union[pyc.TraceEvent, str], *args, **kwargs):
-        event = pyc.TraceEvent(evt) if isinstance(evt, str) else evt
-        frame: FrameType = kwargs.get('_frame', sys._getframe().f_back)
-        kwargs['_frame'] = frame
-        if frame.f_code.co_filename == '<sandbox>':
-            _RECORDED_EVENTS.append(event)
-        return original_emit_event(self, evt, *args, **kwargs)
-    pyc.clear_instance()
-    pyc.BaseTracerStateMachine._emit_event = _patched_emit_event
-    yield
-    pyc.BaseTracerStateMachine._emit_event = original_emit_event
-
-
 _DIFFER = difflib.Differ()
 
 
-def patch_events_with_registered_handlers_to_subset(testfunc):
+def patch_events_and_emitter(testfunc):
 
     @functools.wraps(testfunc)
     @settings(max_examples=25, deadline=None)
@@ -63,13 +43,26 @@ def patch_events_with_registered_handlers_to_subset(testfunc):
             pyc.line, pyc.call, pyc.c_call, pyc.return_, pyc.c_return, pyc.exception, pyc.c_exception, pyc.opcode
         }
 
-        orig_handlers = pyc.tracer().events_with_registered_handlers
+        orig_init = pyc.BaseTracerStateMachine.__init__
+        original_emit_event = pyc.BaseTracerStateMachine._emit_event
+
+        def patched_init(self, *args, **kwargs):
+            orig_init(self, *args, **kwargs)
+            self.events_with_registered_handlers = frozenset(events)
+
+        def _patched_emit_event(self, event: Union[str, pyc.TraceEvent], node_id: int, frame: FrameType, **kwargs):
+            if frame.f_code.co_filename == '<sandbox>':
+                _RECORDED_EVENTS.append(pyc.TraceEvent(event))
+            return original_emit_event(self, event, node_id, frame, **kwargs)
+
         try:
-            pyc.tracer().events_with_registered_handlers = frozenset(events)
+            pyc.BaseTracerStateMachine.__init__ = patched_init
+            pyc.BaseTracerStateMachine._emit_event = _patched_emit_event
             _RECORDED_EVENTS.clear()
             testfunc(events)
         finally:
-            pyc.tracer().events_with_registered_handlers = orig_handlers
+            pyc.BaseTracerStateMachine.__init__ = orig_init
+            pyc.BaseTracerStateMachine._emit_event = original_emit_event
 
     return wrapped_testfunc
 
@@ -91,10 +84,10 @@ def subsets(draw, elements):
 
 
 @given(events=subsets(set(pyc.TraceEvent)))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_recorded_events_simple(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec('logging.info("foo")')
+    pyc.BaseTracerStateMachine().exec('logging.debug("foo")')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -114,13 +107,13 @@ def test_recorded_events_simple(events):
 
 
 @given(events=subsets(pyc.TraceEvent))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_recorded_events_two_stmts(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec(
+    pyc.BaseTracerStateMachine().exec(
         """
         x = [1, 2, 3]
-        logging.info(x)
+        logging.debug(x)
         """
     )
     throw_and_print_diff_if_recorded_not_equal_to(
@@ -152,10 +145,10 @@ def test_recorded_events_two_stmts(events):
 
 
 @given(events=subsets(set(pyc.TraceEvent)))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_nested_chains_no_call(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec('logging.info("foo is %s", logging.info("foo"))')
+    pyc.BaseTracerStateMachine().exec('logging.debug("foo is %s", logging.debug("foo"))')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -187,10 +180,10 @@ def test_nested_chains_no_call(events):
 
 
 @given(events=subsets(pyc.TraceEvent))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_list_nested_in_dict(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec('x = {1: [2, 3, 4]}')
+    pyc.BaseTracerStateMachine().exec('x = {1: [2, 3, 4]}')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -213,10 +206,10 @@ def test_list_nested_in_dict(events):
 
 
 @given(events=subsets(pyc.TraceEvent))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_function_call(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec(
+    pyc.BaseTracerStateMachine().exec(
         """
         def foo(x):
             return [x]
@@ -258,10 +251,10 @@ def test_function_call(events):
 
 
 @given(events=subsets(set(pyc.TraceEvent)))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_lambda_in_tuple(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec('x = (lambda: 42,)')
+    pyc.BaseTracerStateMachine().exec('x = (lambda: 42,)')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -280,10 +273,10 @@ def test_lambda_in_tuple(events):
 
 
 @given(events=subsets(set(pyc.TraceEvent)))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_fancy_slices(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec(
+    pyc.BaseTracerStateMachine().exec(
         """
         import numpy as np
         class Foo:
@@ -291,7 +284,7 @@ def test_fancy_slices(events):
                 self.x = x
         foo = Foo(1)
         arr = np.zeros((3, 3, 3))
-        logging.info(arr[foo.x:foo.x+1,...])
+        logging.debug(arr[foo.x:foo.x+1,...])
         """
     )
     throw_and_print_diff_if_recorded_not_equal_to(
@@ -393,10 +386,10 @@ def test_fancy_slices(events):
 
 
 @given(events=subsets(set(pyc.TraceEvent)))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_for_loop(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec(
+    pyc.BaseTracerStateMachine().exec(
         """
         for i in range(10):
             pass
@@ -425,10 +418,10 @@ def test_for_loop(events):
 
 
 @given(events=subsets(set(pyc.TraceEvent)))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_while_loop(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec(
+    pyc.BaseTracerStateMachine().exec(
         """
         i = 0
         while i < 10:
@@ -459,10 +452,10 @@ def test_while_loop(events):
 
 
 @given(events=subsets(set(pyc.TraceEvent)))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_loop_with_continue(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec(
+    pyc.BaseTracerStateMachine().exec(
         """
         for i in range(10):
             continue
@@ -491,10 +484,10 @@ def test_loop_with_continue(events):
 
 
 @given(events=subsets(set(pyc.TraceEvent)))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_for_loop_nested_in_while_loop(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec(
+    pyc.BaseTracerStateMachine().exec(
         """
         i = 0
         while i < 10:
@@ -540,10 +533,10 @@ def test_for_loop_nested_in_while_loop(events):
 
 
 @given(events=subsets(set(pyc.TraceEvent)))
-@patch_events_with_registered_handlers_to_subset
+@patch_events_and_emitter
 def test_lambda_wrapping_call(events):
     assert _RECORDED_EVENTS == []
-    pyc.exec(
+    pyc.BaseTracerStateMachine().exec(
         """
         z = 42
         def f():

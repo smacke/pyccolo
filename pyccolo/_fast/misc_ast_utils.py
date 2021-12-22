@@ -28,6 +28,13 @@ def make_composite_condition(nullable_conditions: typing.List[Optional[ast.expr]
     return fast.BoolOp(op=op, values=conditions)
 
 
+def subscript_to_slice(node: ast.Subscript) -> ast.expr:
+    if isinstance(node.slice, ast.Index):
+        return node.slice.value  # type: ignore
+    else:
+        return node.slice  # type: ignore
+
+
 class EmitterMixin:
     def __init__(
         self, orig_to_copy_mapping: Dict[int, ast.AST], events_with_handlers: FrozenSet[TraceEvent], guards: Set[str]
@@ -94,10 +101,3 @@ class PositionAdjuster(ast.NodeVisitor):
                         self.visit(inner_node)
             else:
                 continue
-
-
-def subscript_to_slice(node: ast.Subscript) -> ast.expr:
-    if isinstance(node.slice, ast.Index):
-        return node.slice.value  # type: ignore
-    else:
-        return node.slice  # type: ignore
