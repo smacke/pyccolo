@@ -21,6 +21,7 @@ join = os.path.join
 
 
 EXCEPTED_FILES = {
+    'version.py',
     '_version.py',
     # weird shit happens if we instrument _emit_event, so exclude it.
     # can be removed for coverage of non-pyccolo projects.
