@@ -37,10 +37,4 @@ send -- "$(lpass show pypi.org --field=password)\r"
 expect
 EOF
 
-branch="$(git branch --show-current)"
-git checkout latest
-git rebase "$branch"
-git push -f
-git checkout "$branch"
-
 git push --tags
