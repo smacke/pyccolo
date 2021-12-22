@@ -1,4 +1,5 @@
 # -*- coding: future_annotations -*-
+import ast
 from enum import Enum
 
 from pyccolo import fast
@@ -169,3 +170,9 @@ opcode = TraceEvent.opcode
 c_call = TraceEvent.c_call
 c_return = TraceEvent.c_return
 c_exception = TraceEvent.c_exception
+
+
+AST_TO_EVENT_MAPPING = {
+    ast.stmt: after_stmt,
+    ast.Attribute: before_attribute_load,
+}

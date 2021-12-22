@@ -92,7 +92,7 @@ class CoverageTracer(pyc.BaseTracerStateMachine):
             path.endswith(excepted) for excepted in EXCEPTED_FILES
         )
 
-    @pyc.register_raw_handler(pyc.after_stmt)
+    @pyc.register_raw_handler(ast.stmt)
     def handle_stmt(self, _ret, stmt_id, frame, *_, **__):
         fname = frame.f_code.co_filename
         if fname == "<sandbox>":

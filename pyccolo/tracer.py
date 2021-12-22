@@ -18,7 +18,7 @@ from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.import_hooks import patch_meta_path
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
-from pyccolo.trace_events import TraceEvent
+from pyccolo.trace_events import TraceEvent, AST_TO_EVENT_MAPPING
 from pyccolo.trace_stack import TraceStack
 
 if TYPE_CHECKING:
@@ -392,7 +392,10 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
         def clear_instance(cls) -> None: ...
 
 
-def register_handler(event: Union[TraceEvent, Tuple[TraceEvent, ...]], use_raw_node_id: bool = False):
+def register_handler(
+    event: Union[Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]],
+    use_raw_node_id: bool = False,
+):
     events = event if isinstance(event, tuple) else (event,)
 
     if TraceEvent.opcode in events and sys.version_info < (3, 7):
@@ -400,12 +403,14 @@ def register_handler(event: Union[TraceEvent, Tuple[TraceEvent, ...]], use_raw_n
 
     def _inner_registrar(handler):
         for evt in events:
-            SingletonTracerStateMachine.EVENT_HANDLERS_PENDING_REGISTRATION[evt].append((handler, use_raw_node_id))
+            SingletonTracerStateMachine.EVENT_HANDLERS_PENDING_REGISTRATION[
+                AST_TO_EVENT_MAPPING[evt] if type(evt) is type and issubclass(evt, ast.AST) else evt
+            ].append((handler, use_raw_node_id))
         return handler
     return _inner_registrar
 
 
-def register_raw_handler(event: Union[TraceEvent, Tuple[TraceEvent, ...]]):
+def register_raw_handler(event: Union[Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]]):
     return register_handler(event, use_raw_node_id=True)
 
 

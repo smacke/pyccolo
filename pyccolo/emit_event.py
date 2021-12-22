@@ -26,6 +26,7 @@ def allow_reentrant_event_handling():
 
 def _emit_event(event, node_id, **kwargs):
     global _allow_event_handling
+    orig_allow_event_handling = _allow_event_handling
     if _allow_event_handling or _allow_reentrant_event_handling:
         _allow_event_handling = False
         frame = sys._getframe().f_back
@@ -33,5 +34,5 @@ def _emit_event(event, node_id, **kwargs):
             for tracer in _TRACER_STACK:
                 kwargs['ret'] = tracer._emit_event(event, node_id, frame, **kwargs)
         finally:
-            _allow_event_handling = True
+            _allow_event_handling = orig_allow_event_handling
     return kwargs.get('ret', None)
