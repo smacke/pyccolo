@@ -57,7 +57,7 @@ def count_statements():
     return total, total_by_fname
 
 
-class CoverageTracer(pyc.BaseTracerStateMachine):
+class CoverageTracer(pyc.BaseTracer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

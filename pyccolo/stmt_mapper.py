@@ -8,7 +8,7 @@ from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
 
 if TYPE_CHECKING:
     from typing import Dict, List, Optional, Set, Tuple
-    from pyccolo.tracer import BaseTracerStateMachine
+    from pyccolo.tracer import BaseTracer
 
 
 logger = logging.getLogger(__name__)
@@ -29,11 +29,11 @@ class StatementMapper(ast.NodeVisitor):
     def __init__(
         self,
         line_to_stmt_map: Dict[int, ast.stmt],
-        tracers: List[BaseTracerStateMachine],
+        tracers: List[BaseTracer],
         augmented_positions_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]],
     ):
         self.line_to_stmt_map: Dict[int, ast.stmt] = line_to_stmt_map
-        self._tracers: List[BaseTracerStateMachine] = tracers
+        self._tracers: List[BaseTracer] = tracers
         self.augmented_positions_by_spec = augmented_positions_by_spec
         self.traversal: List[ast.AST] = []
 

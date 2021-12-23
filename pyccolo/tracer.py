@@ -38,7 +38,7 @@ Null = object()
 SANDBOX_FNAME = "<sandbox>"
 
 
-def register_tracer_state_machine(tracer_cls: Type[BaseTracerStateMachine]) -> None:
+def register_tracer_state_machine(tracer_cls: Type[BaseTracer]) -> None:
     tracer_cls.EVENT_HANDLERS_BY_CLASS[tracer_cls] = defaultdict(list, tracer_cls.EVENT_HANDLERS_PENDING_REGISTRATION)
     tracer_cls.EVENT_HANDLERS_PENDING_REGISTRATION.clear()
     tracer_cls._MANAGER_CLASS_REGISTERED = True
@@ -46,7 +46,7 @@ def register_tracer_state_machine(tracer_cls: Type[BaseTracerStateMachine]) -> N
 
 class MetaTracerStateMachine(MetaHasTraits):
     def __new__(mcs, name, bases, *args, **kwargs):
-        if name not in ('SingletonTracerStateMachine', 'BaseTracerStateMachine'):
+        if name not in ('_InternalBaseTracer', 'BaseTracer'):
             bases += (SingletonConfigurable,)
         return MetaHasTraits.__new__(mcs, name, bases, *args, **kwargs)
 
@@ -60,7 +60,7 @@ class MetaTracerStateMachine(MetaHasTraits):
         return obj
 
 
-class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
+class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     ast_rewriter_cls = AstRewriter
 
     _MANAGER_CLASS_REGISTERED = False
@@ -68,7 +68,7 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
         TraceEvent, List[Tuple[Callable[..., Any], bool]]
     ] = defaultdict(list)
     EVENT_HANDLERS_BY_CLASS: Dict[
-        Type[BaseTracerStateMachine],
+        Type[BaseTracer],
         DefaultDict[
             TraceEvent, List[Tuple[Callable[..., Any], bool]]
         ],
@@ -99,7 +99,7 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
         for clazz in reversed(self.__class__.mro()):
             for evt, handlers in self.EVENT_HANDLERS_BY_CLASS.get(clazz, {}).items():
                 self._event_handlers[evt].extend(handlers)
-                if not issubclass(BaseTracerStateMachine, clazz) and len(handlers) > 0:
+                if not issubclass(BaseTracer, clazz) and len(handlers) > 0:
                     events_with_registered_handlers.add(evt)
         self.events_with_registered_handlers: FrozenSet[TraceEvent] = frozenset(events_with_registered_handlers)
         self._is_tracing_enabled = False
@@ -451,7 +451,7 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
         return self._emit_event(evt, None, frame, ret=arg)
 
     if TYPE_CHECKING:
-        TracerT = TypeVar('TracerT', bound=SingletonTracerStateMachine)
+        TracerT = TypeVar('TracerT', bound=_InternalBaseTracer)
 
         @classmethod
         def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT: ...
@@ -471,7 +471,7 @@ def register_handler(
 
     def _inner_registrar(handler):
         for evt in events:
-            SingletonTracerStateMachine.EVENT_HANDLERS_PENDING_REGISTRATION[
+            _InternalBaseTracer.EVENT_HANDLERS_PENDING_REGISTRATION[
                 AST_TO_EVENT_MAPPING[evt] if type(evt) is type and issubclass(evt, ast.AST) else evt
             ].append((handler, use_raw_node_id))
         return handler
@@ -495,7 +495,7 @@ def register_universal_handler(handler):
     return register_handler(tuple(evt for evt in TraceEvent))(handler)
 
 
-class BaseTracerStateMachine(SingletonTracerStateMachine):
+class BaseTracer(_InternalBaseTracer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

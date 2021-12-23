@@ -7,7 +7,7 @@ add_42_spec = pyc.AugmentationSpec(aug_type=pyc.AugmentationType.binop, token='+
 
 if sys.version_info >= (3, 8):
     def test_augmented_plus():
-        class Add42(pyc.BaseTracerStateMachine):
+        class Add42(pyc.BaseTracer):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 with self.persistent_fields():

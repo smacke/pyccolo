@@ -7,11 +7,11 @@ if TYPE_CHECKING:
     from typing import Any, Callable, Dict, List, Set, Tuple
 
     # avoid circular imports
-    from pyccolo.tracer import SingletonTracerStateMachine
+    from pyccolo.tracer import _InternalBaseTracer
 
 
 class TraceStack:
-    def __init__(self, manager: SingletonTracerStateMachine):
+    def __init__(self, manager: _InternalBaseTracer):
         self._manager = manager
         self._stack: List[Tuple[Any, ...]] = []
         self._stack_item_initializers: Dict[str, Callable[[], Any]] = {}

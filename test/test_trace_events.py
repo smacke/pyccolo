@@ -43,8 +43,8 @@ def patch_events_and_emitter(testfunc):
             pyc.line, pyc.call, pyc.c_call, pyc.return_, pyc.c_return, pyc.exception, pyc.c_exception, pyc.opcode
         }
 
-        orig_init = pyc.BaseTracerStateMachine.__init__
-        original_emit_event = pyc.BaseTracerStateMachine._emit_event
+        orig_init = pyc.BaseTracer.__init__
+        original_emit_event = pyc.BaseTracer._emit_event
 
         def patched_init(self, *args, **kwargs):
             orig_init(self, *args, **kwargs)
@@ -56,13 +56,13 @@ def patch_events_and_emitter(testfunc):
             return original_emit_event(self, event, node_id, frame, **kwargs)
 
         try:
-            pyc.BaseTracerStateMachine.__init__ = patched_init
-            pyc.BaseTracerStateMachine._emit_event = _patched_emit_event
+            pyc.BaseTracer.__init__ = patched_init
+            pyc.BaseTracer._emit_event = _patched_emit_event
             _RECORDED_EVENTS.clear()
             testfunc(events)
         finally:
-            pyc.BaseTracerStateMachine.__init__ = orig_init
-            pyc.BaseTracerStateMachine._emit_event = original_emit_event
+            pyc.BaseTracer.__init__ = orig_init
+            pyc.BaseTracer._emit_event = original_emit_event
 
     return wrapped_testfunc
 
@@ -87,7 +87,7 @@ def subsets(draw, elements):
 @patch_events_and_emitter
 def test_recorded_events_simple(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec('logging.debug("foo")')
+    pyc.BaseTracer().exec('logging.debug("foo")')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -110,7 +110,7 @@ def test_recorded_events_simple(events):
 @patch_events_and_emitter
 def test_recorded_events_two_stmts(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec(
+    pyc.BaseTracer().exec(
         """
         x = [1, 2, 3]
         logging.debug(x)
@@ -148,7 +148,7 @@ def test_recorded_events_two_stmts(events):
 @patch_events_and_emitter
 def test_nested_chains_no_call(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec('logging.debug("foo is %s", logging.debug("foo"))')
+    pyc.BaseTracer().exec('logging.debug("foo is %s", logging.debug("foo"))')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -183,7 +183,7 @@ def test_nested_chains_no_call(events):
 @patch_events_and_emitter
 def test_list_nested_in_dict(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec('x = {1: [2, 3, 4]}')
+    pyc.BaseTracer().exec('x = {1: [2, 3, 4]}')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -209,7 +209,7 @@ def test_list_nested_in_dict(events):
 @patch_events_and_emitter
 def test_function_call(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec(
+    pyc.BaseTracer().exec(
         """
         def foo(x):
             return [x]
@@ -254,7 +254,7 @@ def test_function_call(events):
 @patch_events_and_emitter
 def test_lambda_in_tuple(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec('x = (lambda: 42,)')
+    pyc.BaseTracer().exec('x = (lambda: 42,)')
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset([
             pyc.init_module,
@@ -276,7 +276,7 @@ def test_lambda_in_tuple(events):
 @patch_events_and_emitter
 def test_fancy_slices(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec(
+    pyc.BaseTracer().exec(
         """
         import numpy as np
         class Foo:
@@ -389,7 +389,7 @@ def test_fancy_slices(events):
 @patch_events_and_emitter
 def test_for_loop(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec(
+    pyc.BaseTracer().exec(
         """
         for i in range(10):
             pass
@@ -421,7 +421,7 @@ def test_for_loop(events):
 @patch_events_and_emitter
 def test_while_loop(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec(
+    pyc.BaseTracer().exec(
         """
         i = 0
         while i < 10:
@@ -455,7 +455,7 @@ def test_while_loop(events):
 @patch_events_and_emitter
 def test_loop_with_continue(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec(
+    pyc.BaseTracer().exec(
         """
         for i in range(10):
             continue
@@ -487,7 +487,7 @@ def test_loop_with_continue(events):
 @patch_events_and_emitter
 def test_for_loop_nested_in_while_loop(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec(
+    pyc.BaseTracer().exec(
         """
         i = 0
         while i < 10:
@@ -536,7 +536,7 @@ def test_for_loop_nested_in_while_loop(events):
 @patch_events_and_emitter
 def test_lambda_wrapping_call(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracerStateMachine().exec(
+    pyc.BaseTracer().exec(
         """
         z = 42
         def f():

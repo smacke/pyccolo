@@ -23,7 +23,7 @@ from .trace_events import TraceEvent
 from .trace_events import *
 from .trace_stack import TraceStack
 from .tracer import (
-	BaseTracerStateMachine,
+	BaseTracer,
 	Null,
 	register_handler,
 	register_raw_handler,
@@ -32,14 +32,14 @@ from .tracer import (
 
 
 # convenience functions for managing tracer singleton
-def tracer() -> BaseTracerStateMachine:
+def tracer() -> BaseTracer:
 	if len(_TRACER_STACK) > 0:
 		return _TRACER_STACK[-1]
 	else:
-		return BaseTracerStateMachine()
+		return BaseTracer()
 
 
-def instance() -> BaseTracerStateMachine:
+def instance() -> BaseTracer:
 	return tracer()
 
 

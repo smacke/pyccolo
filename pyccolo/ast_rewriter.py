@@ -12,7 +12,7 @@ from pyccolo.syntax_augmentation import AugmentationSpec
 
 if TYPE_CHECKING:
     from typing import Dict, List, Optional, Set, Tuple
-    from pyccolo.tracer import BaseTracerStateMachine
+    from pyccolo.tracer import BaseTracer
 
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger.setLevel(logging.WARNING)
 
 
 class AstRewriter(ast.NodeTransformer):
-    def __init__(self, tracers: List[BaseTracerStateMachine], module_id: Optional[int] = None):
+    def __init__(self, tracers: List[BaseTracer], module_id: Optional[int] = None):
         self._tracers = tracers
         self._module_id: Optional[int] = module_id
         self._augmented_positions_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]] = defaultdict(set)

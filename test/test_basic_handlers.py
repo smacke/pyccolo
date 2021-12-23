@@ -9,7 +9,7 @@ def test_sandbox():
 
 
 def test_instrumented_sandbox():
-    class IncrementsAssignValue(pyc.BaseTracerStateMachine):
+    class IncrementsAssignValue(pyc.BaseTracer):
         @pyc.register_handler(pyc.after_assign_rhs)
         def handle_assign(self, ret, *_, **__):
             return ret + 1
@@ -20,7 +20,7 @@ def test_instrumented_sandbox():
 
 
 def test_two_handlers():
-    class TwoAssignMutations(pyc.BaseTracerStateMachine):
+    class TwoAssignMutations(pyc.BaseTracer):
         @pyc.register_handler(pyc.after_assign_rhs)
         def handle_assign_1(self, ret, *_, **__):
             return ret + 1
@@ -37,12 +37,12 @@ def test_two_handlers():
 
 
 def test_two_handlers_from_separate_classes():
-    class AssignMutation1(pyc.BaseTracerStateMachine):
+    class AssignMutation1(pyc.BaseTracer):
         @pyc.register_handler(pyc.after_assign_rhs)
         def handle_assign_1(self, ret, *_, **__):
             return ret + 1
 
-    class AssignMutation2(pyc.BaseTracerStateMachine):
+    class AssignMutation2(pyc.BaseTracer):
         @pyc.register_handler(pyc.after_assign_rhs)
         def handle_assign_2(self, ret, *_, **__):
             return ret * 2
@@ -56,7 +56,7 @@ def test_two_handlers_from_separate_classes():
 
 
 def test_null():
-    class IncrementsAssignValue(pyc.BaseTracerStateMachine):
+    class IncrementsAssignValue(pyc.BaseTracer):
         @pyc.register_handler(pyc.after_assign_rhs)
         def handle_assign_1(self, *_, **__):
             return pyc.Null
@@ -82,7 +82,7 @@ def test_pass_sandboxed_environ():
 
 def test_sys_tracing_call():
 
-    class TracesCalls(pyc.BaseTracerStateMachine):
+    class TracesCalls(pyc.BaseTracer):
         def __init__(self):
             super().__init__()
             self.num_calls_seen = 0
@@ -132,7 +132,7 @@ def test_composed_sys_tracing_calls():
     num_calls_seen_2 = 0
     num_calls_seen_3 = 0
 
-    class TracesCalls1(pyc.BaseTracerStateMachine):
+    class TracesCalls1(pyc.BaseTracer):
         @pyc.register_handler(pyc.call)
         def handle_call(self, *_, **__):
             nonlocal num_calls_seen_1
@@ -144,7 +144,7 @@ def test_composed_sys_tracing_calls():
         def handle_return(self, *_, **__):
             assert num_calls_seen_1 >= 1
 
-    class TracesCalls2(pyc.BaseTracerStateMachine):
+    class TracesCalls2(pyc.BaseTracer):
         @pyc.register_handler(pyc.call)
         def handle_call(self, *_, **__):
             nonlocal num_calls_seen_2
@@ -155,7 +155,7 @@ def test_composed_sys_tracing_calls():
         def handle_return(self, *_, **__):
             assert num_calls_seen_2 >= 1
 
-    class TracesCalls3(pyc.BaseTracerStateMachine):
+    class TracesCalls3(pyc.BaseTracer):
         @pyc.register_handler(pyc.call)
         def handle_call(self, *_, **__):
             nonlocal num_calls_seen_3

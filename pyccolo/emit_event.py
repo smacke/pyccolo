@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from typing import List
-    from pyccolo.tracer import BaseTracerStateMachine
+    from pyccolo.tracer import BaseTracer
 
 
-_TRACER_STACK: List[BaseTracerStateMachine] = []
+_TRACER_STACK: List[BaseTracer] = []
 _allow_event_handling = True
 _allow_reentrant_event_handling = False
 
