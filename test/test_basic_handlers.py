@@ -181,3 +181,48 @@ def test_composed_sys_tracing_calls():
     assert num_calls_seen_1 == 2
     assert num_calls_seen_2 == 2
     assert num_calls_seen_3 == 2
+
+
+if sys.gettrace() is None:
+    def test_composes_with_existing_sys_tracer():
+
+        num_calls_seen_from_existing_tracer = 0
+
+        def existing_tracer(_frame, evt, *_, **__):
+            if evt == "call" and _frame.f_code.co_filename == "<sandbox>":
+                nonlocal num_calls_seen_from_existing_tracer
+                num_calls_seen_from_existing_tracer += 1
+
+        class TracesCalls(pyc.BaseTracer):
+            def __init__(self):
+                super().__init__()
+                self.num_calls_seen = 0
+
+            @pyc.register_handler(pyc.call)
+            def handle_call(self, *_, **__):
+                self.num_calls_seen += 1
+
+            @pyc.register_handler(pyc.return_)
+            def handle_return(self, *_, **__):
+                assert self.num_calls_seen >= 1
+
+        tracer = TracesCalls.instance()
+        try:
+            with TracesCalls.instance().tracing_disabled():
+                pyc.exec(
+                    """
+                    sys.settrace(existing_tracer)
+                    sys_tracer = sys.gettrace()
+                    def foo():
+                        with TracesCalls.instance().tracing_enabled():
+                            def bar():
+                                pass
+                            bar()
+                    foo(); foo()
+                    assert sys.gettrace() is existing_tracer
+                    """
+                )
+        finally:
+            sys.settrace(None)
+        assert tracer.num_calls_seen == 2
+        assert num_calls_seen_from_existing_tracer == 4
