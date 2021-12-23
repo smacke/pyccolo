@@ -102,11 +102,12 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
                 if not issubclass(BaseTracerStateMachine, clazz) and len(handlers) > 0:
                     events_with_registered_handlers.add(evt)
         self.events_with_registered_handlers: FrozenSet[TraceEvent] = frozenset(events_with_registered_handlers)
-        self.tracing_enabled = False
+        self._is_tracing_enabled = False
+        self._is_tracing_hard_disabled = False
         self.sys_tracer = self._sys_tracer
         self.existing_tracer = None
         self.augmented_node_ids_by_spec: Dict[AugmentationSpec, Set[int]] = defaultdict(set)
-        self._num_sandbox_call_seens: int = 0
+        self._num_sandbox_calls_seen: int = 0
 
         self._transient_fields: Set[str] = set()
         self._persistent_fields: Set[str] = set()
@@ -133,6 +134,10 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
     @property
     def should_patch_meta_path(self) -> bool:
         return True
+
+    @property
+    def is_tracing_enabled(self) -> bool:
+        return self._is_tracing_enabled
 
     def _post_init_hook_start(self):
         self._persistent_fields = set(self.__dict__.keys())
@@ -172,6 +177,8 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
 
     def _emit_event(self, evt: Union[str, TraceEvent], node_id: Optional[int], frame: FrameType, **kwargs: Any):
         try:
+            if self._is_tracing_hard_disabled:
+                return kwargs.get('ret', None)
             event = evt if isinstance(evt, TraceEvent) else TraceEvent(evt)
             for handler, use_raw_node_id in self._event_handlers[event]:
                 old_ret = kwargs.pop('ret', None)
@@ -201,10 +208,15 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
 
         @functools.wraps(self._sys_tracer)
         def _composed_tracer(frame: FrameType, evt: str, arg: Any, **kwargs):
+            orig_sys_tracer = sys.gettrace()
             existing_ret = existing_tracer(frame, evt, arg, **kwargs)
-            if not self.tracing_enabled:
-                return existing_ret
-            my_ret = self._sys_tracer(frame, evt, arg, **kwargs)
+            if sys.gettrace() is not orig_sys_tracer:
+                # to deal with the existing tracer messing with things
+                sys_settrace(orig_sys_tracer)
+            if self._is_tracing_enabled:
+                my_ret = self._sys_tracer(frame, evt, arg, **kwargs)
+            else:
+                my_ret = None
             if my_ret is None and evt == 'call':
                 return existing_ret
             else:
@@ -214,7 +226,7 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
     def _settrace_patch(self, trace_func):  # pragma: no cover
         # called by third-party tracers
         self.existing_tracer = trace_func
-        if self.tracing_enabled:
+        if self._is_tracing_enabled:
             if trace_func is None:
                 self._disable_tracing()
             self._enable_tracing(check_disabled=False, existing_tracer=trace_func)
@@ -223,8 +235,8 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
 
     def _enable_tracing(self, check_disabled=True, existing_tracer=None):
         if check_disabled:
-            assert not self.tracing_enabled
-        self.tracing_enabled = True
+            assert not self._is_tracing_enabled
+        self._is_tracing_enabled = True
         if self.has_sys_trace_events:
             self.existing_tracer = existing_tracer or sys.gettrace()
             if self.existing_tracer is None:
@@ -237,9 +249,9 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
     def _disable_tracing(self, check_enabled=True):
         has_sys_trace_events = self.has_sys_trace_events
         if check_enabled:
-            assert self.tracing_enabled
+            assert self._is_tracing_enabled
             assert not has_sys_trace_events or sys.gettrace() is self.sys_tracer
-        self.tracing_enabled = False
+        self._is_tracing_enabled = False
         if has_sys_trace_events:
             sys_settrace(self.existing_tracer)
         if len(_TRACER_STACK) == 0:
@@ -262,8 +274,8 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
 
     def _file_passes_filter_impl(self, evt: str, filename: str) -> bool:
         if filename == SANDBOX_FNAME and self.has_sys_trace_events:
-            ret = self._num_sandbox_call_seens >= 2
-            self._num_sandbox_call_seens += evt == "call"
+            ret = self._num_sandbox_calls_seen >= 2
+            self._num_sandbox_calls_seen += evt == "call"
             return ret
         return (
             filename == SANDBOX_FNAME or
@@ -278,15 +290,35 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
         return [make_syntax_augmenter(ast_rewriter, spec) for spec in self.syntax_augmentation_specs]
 
     @contextmanager
-    def tracing_context(self) -> Generator[None, None, None]:
+    def tracing_enabled(self) -> Generator[None, None, None]:
+        with self.tracing_context(disabled=False):
+            yield
+
+    @contextmanager
+    def tracing_disabled(self) -> Generator[None, None, None]:
+        orig_num_sandbox_calls_seen = self._num_sandbox_calls_seen
+        self._num_sandbox_calls_seen = 2
+        try:
+            with self.tracing_context(disabled=True):
+                yield
+        finally:
+            self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
+
+    @contextmanager
+    def tracing_context(self, disabled: bool = False) -> Generator[None, None, None]:
         should_push = True
         activate_ctx_managers = False
-        orig_num_sandbox_calls_seen = self._num_sandbox_call_seens
+        orig_num_sandbox_calls_seen = self._num_sandbox_calls_seen
+        orig_hard_disabled = self._is_tracing_hard_disabled
+        self._is_tracing_hard_disabled = disabled
+        was_tracing_enabled = False
         try:
             if getattr(builtins, EMIT_EVENT, None) is not _emit_event:
                 setattr(builtins, EMIT_EVENT, _emit_event)
                 for guard in self.guards:
                     self.deactivate_guard(guard)
+            if not hasattr(builtins, TRACING_ENABLED):
+                setattr(builtins, TRACING_ENABLED, False)
             if len(_TRACER_STACK) == 0:
                 activate_ctx_managers = True
             elif _TRACER_STACK[-1] is self:
@@ -294,18 +326,28 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
             if should_push:
                 _TRACER_STACK.append(self)  # type: ignore
             with patch_meta_path(_TRACER_STACK) if activate_ctx_managers else suppress():
-                with self._patch_sys_settrace() if activate_ctx_managers else suppress():
-                    if should_push:
-                        self._enable_tracing(check_disabled=activate_ctx_managers)
+                with self._patch_sys_settrace() if activate_ctx_managers and self.has_sys_trace_events else suppress():
+                    if (
+                        len(_TRACER_STACK) > 0
+                        and _TRACER_STACK[-1] is self
+                        and not self._is_tracing_hard_disabled
+                        and not self._is_tracing_enabled
+                    ):
+                        was_tracing_enabled = True
+                        self._enable_tracing()
                     yield
         finally:
+            self._is_tracing_hard_disabled = orig_hard_disabled
             if should_push:
                 del _TRACER_STACK[-1]
+            if was_tracing_enabled:
                 self._disable_tracing(check_enabled=False)
-            self._num_sandbox_call_seens = orig_num_sandbox_calls_seen
+            self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
             if len(_TRACER_STACK) == 0:
-                delattr(builtins, EMIT_EVENT)
-                delattr(builtins, TRACING_ENABLED)
+                if hasattr(builtins, EMIT_EVENT):
+                    delattr(builtins, EMIT_EVENT)
+                if hasattr(builtins, TRACING_ENABLED):
+                    delattr(builtins, TRACING_ENABLED)
                 for guard in self.guards:
                     if hasattr(builtins, guard):
                         delattr(builtins, guard)
@@ -330,7 +372,7 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
         filename: Optional[str] = "<file>",
         instrument: bool = True,
     ) -> None:
-        with self.tracing_context() if instrument else suppress():
+        with self.tracing_context(disabled=self._is_tracing_hard_disabled) if instrument else suppress():
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
                 code = self.parse(code)
@@ -341,16 +383,23 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
     def exec(
         self,
         code: Union[ast.Module, str],
-        global_env: Optional[dict] = None,
         local_env: Optional[dict] = None,
+        global_env: Optional[dict] = None,
         instrument: bool = True,
     ) -> Dict[str, Any]:
-        if global_env is None:
-            global_env = globals()
+        frame = None
+        if global_env is None or local_env is None:
+            frame = sys._getframe().f_back
+            if frame.f_code.co_filename.endswith(os.path.join("pyccolo", "__init__.py")):
+                # in case we were called from `pyc.exec(...)`
+                frame = frame.f_back
         if local_env is None:
-            local_env = {}
-        if len(local_env) > 0:
-            sandbox_args = ", ".join(["*"] + list(local_env.keys()) + ["**__"])
+            local_env = frame.f_locals
+        if global_env is None:
+            global_env = frame.f_globals
+        args_to_use = [k for k in local_env.keys() if not k.startswith("@") and k != "__"]
+        if len(args_to_use) > 0:
+            sandbox_args = ", ".join(["*"] + args_to_use + ["**__"])
         else:
             sandbox_args = "**__"
         sandboxed_code = ast.parse(
@@ -367,7 +416,7 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
             SANDBOX_FNAME,
             "exec"
         )
-        with self.tracing_context() if instrument else suppress():
+        with self.tracing_context(disabled=self._is_tracing_hard_disabled) if instrument else suppress():
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
                 if instrument:
@@ -436,7 +485,7 @@ def register_raw_handler(event: Union[Union[TraceEvent, Type[ast.AST]], Tuple[Un
 def skip_when_tracing_disabled(handler):
     @functools.wraps(handler)
     def skipping_handler(self, *args, **kwargs):
-        if not self.tracing_enabled:
+        if not self._is_tracing_enabled:
             return
         return handler(self, *args, **kwargs)
     return skipping_handler
