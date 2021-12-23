@@ -111,7 +111,7 @@ class TraceFinder(MetaPathFinder):
         source_path = spec.loader.get_filename(fullname)
         tracers_to_use = []
         for tracer in self.tracers:
-            if tracer.should_trace_source_path(source_path):
+            if tracer._file_passes_filter_impl("import", source_path):
                 tracers_to_use.append(tracer)
 
         if len(tracers_to_use) == 0:

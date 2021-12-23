@@ -35,6 +35,7 @@ logger.setLevel(logging.ERROR)
 sys_settrace = sys.settrace
 internal_directories = (os.path.dirname(os.path.dirname((lambda: 0).__code__.co_filename)),)
 Null = object()
+SANDBOX_FNAME = "<sandbox>"
 
 
 def register_tracer_state_machine(tracer_cls: Type[BaseTracerStateMachine]) -> None:
@@ -105,6 +106,7 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
         self.sys_tracer = self._sys_tracer
         self.existing_tracer = None
         self.augmented_node_ids_by_spec: Dict[AugmentationSpec, Set[int]] = defaultdict(set)
+        self._num_sandbox_call_seens: int = 0
 
         self._transient_fields: Set[str] = set()
         self._persistent_fields: Set[str] = set()
@@ -168,13 +170,13 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
     def should_propagate_handler_exception(self, evt: TraceEvent, exc: Exception) -> bool:
         return False
 
-    def _emit_event(self, evt: Union[str, TraceEvent], node_id: int, frame: FrameType, **kwargs: Any):
+    def _emit_event(self, evt: Union[str, TraceEvent], node_id: Optional[int], frame: FrameType, **kwargs: Any):
         try:
             event = evt if isinstance(evt, TraceEvent) else TraceEvent(evt)
             for handler, use_raw_node_id in self._event_handlers[event]:
                 old_ret = kwargs.pop('ret', None)
                 try:
-                    node_id_or_node = node_id if use_raw_node_id else self.ast_node_by_id[node_id]
+                    node_id_or_node = node_id if use_raw_node_id else self.ast_node_by_id.get(node_id, None)
                     new_ret = handler(self, old_ret, node_id_or_node, frame, event, **kwargs)
                 except Exception as exc:
                     if self.should_propagate_handler_exception(event, exc):
@@ -255,6 +257,20 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
     def should_trace_source_path(self, path) -> bool:
         return False
 
+    def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
+        return False
+
+    def _file_passes_filter_impl(self, evt: str, filename: str) -> bool:
+        if filename == SANDBOX_FNAME and self.has_sys_trace_events:
+            ret = self._num_sandbox_call_seens >= 2
+            self._num_sandbox_call_seens += evt == "call"
+            return ret
+        return (
+            filename == SANDBOX_FNAME or
+            self.file_passes_filter_for_event(evt, filename) or
+            self.should_trace_source_path(filename)
+        )
+
     def make_ast_rewriter(self, module_id: Optional[int] = None) -> AstRewriter:
         return self.ast_rewriter_cls(_TRACER_STACK, module_id=module_id)
 
@@ -265,6 +281,7 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
     def tracing_context(self) -> Generator[None, None, None]:
         should_push = True
         activate_ctx_managers = False
+        orig_num_sandbox_calls_seen = self._num_sandbox_call_seens
         try:
             if getattr(builtins, EMIT_EVENT, None) is not _emit_event:
                 setattr(builtins, EMIT_EVENT, _emit_event)
@@ -278,12 +295,14 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
                 _TRACER_STACK.append(self)  # type: ignore
             with patch_meta_path(_TRACER_STACK) if activate_ctx_managers else suppress():
                 with self._patch_sys_settrace() if activate_ctx_managers else suppress():
-                    self._enable_tracing(check_disabled=activate_ctx_managers)
+                    if should_push:
+                        self._enable_tracing(check_disabled=activate_ctx_managers)
                     yield
         finally:
             if should_push:
                 del _TRACER_STACK[-1]
-            self._disable_tracing(check_enabled=False)
+                self._disable_tracing(check_enabled=False)
+            self._num_sandbox_call_seens = orig_num_sandbox_calls_seen
             if len(_TRACER_STACK) == 0:
                 delattr(builtins, EMIT_EVENT)
                 delattr(builtins, TRACING_ENABLED)
@@ -330,7 +349,6 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
             global_env = globals()
         if local_env is None:
             local_env = {}
-        filename = "<sandbox>"
         if len(local_env) > 0:
             sandbox_args = ", ".join(["*"] + list(local_env.keys()) + ["**__"])
         else:
@@ -338,15 +356,15 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
         sandboxed_code = ast.parse(
             textwrap.dedent(
                 f"""
-                    local_env = dict(locals())
-                    def _sandbox({sandbox_args}):
-                        return locals()
-                    local_env = _sandbox(**local_env)
-                    local_env.pop("__", None)
-                    local_env.pop("builtins", None)
-                    """
+                local_env = dict(locals())
+                def _sandbox({sandbox_args}):
+                    return locals()
+                local_env = _sandbox(**local_env)
+                local_env.pop("__", None)
+                local_env.pop("builtins", None)
+                """
             ).strip(),
-            filename,
+            SANDBOX_FNAME,
             "exec"
         )
         with self.tracing_context() if instrument else suppress():
@@ -361,7 +379,7 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
             fundef.body = cast(ast.Module, code).body + fundef.body
             self.exec_raw(
                 sandboxed_code,
-                filename=filename,
+                filename=SANDBOX_FNAME,
                 global_env=global_env,
                 local_env=local_env,
                 instrument=False,
@@ -371,11 +389,8 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
     def _should_attempt_to_reenable_tracing(self, frame: FrameType) -> bool:
         return NotImplemented
 
-    def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
-        return self.should_trace_source_path(filename)
-
     def _sys_tracer(self, frame: FrameType, evt: str, arg: Any, **__):
-        if not self.file_passes_filter_for_event(evt, frame.f_code.co_filename):
+        if not self._file_passes_filter_impl(evt, frame.f_code.co_filename):
             return None
 
         if self._has_fancy_sys_tracing and evt == "call":
@@ -384,7 +399,7 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
             if TraceEvent.opcode in self.events_with_registered_handlers:
                 frame.f_trace_opcodes = True  # type: ignore
 
-        return self._emit_event(evt, 0, frame, ret=arg)
+        return self._emit_event(evt, None, frame, ret=arg)
 
     if TYPE_CHECKING:
         TracerT = TypeVar('TracerT', bound=SingletonTracerStateMachine)

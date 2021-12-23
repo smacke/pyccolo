@@ -1,3 +1,4 @@
+import sys
 import pyccolo as pyc
 
 
@@ -77,3 +78,85 @@ def test_pass_sandboxed_environ():
     assert len(env) == 2
     assert env["x"] == 42
     assert env["y"] == 43
+
+
+def test_sys_tracing_call():
+    num_calls_seen = 0
+
+    class TracesCalls(pyc.BaseTracerStateMachine):
+        @pyc.register_handler(pyc.call)
+        def handle_call(self, *_, **__):
+            nonlocal num_calls_seen
+            num_calls_seen += 1
+
+        @pyc.register_handler(pyc.return_)
+        def handle_return(self, *_, **__):
+            assert num_calls_seen >= 1
+
+    assert TracesCalls.instance().has_sys_trace_events
+    env = TracesCalls.instance().exec(
+        """
+        def foo():
+            pass
+        foo(); foo()
+        """
+    )
+    assert len(env) == 1
+    assert "foo" in env
+    assert num_calls_seen == 2
+
+
+def test_composed_sys_tracing_calls():
+    num_calls_seen_1 = 0
+    num_calls_seen_2 = 0
+    num_calls_seen_3 = 0
+
+    class TracesCalls1(pyc.BaseTracerStateMachine):
+        @pyc.register_handler(pyc.call)
+        def handle_call(self, *_, **__):
+            nonlocal num_calls_seen_1
+            num_calls_seen_1 += 1
+            assert num_calls_seen_1 > num_calls_seen_2
+            assert num_calls_seen_1 > num_calls_seen_3
+
+        @pyc.register_handler(pyc.return_)
+        def handle_return(self, *_, **__):
+            assert num_calls_seen_1 >= 1
+
+    class TracesCalls2(pyc.BaseTracerStateMachine):
+        @pyc.register_handler(pyc.call)
+        def handle_call(self, *_, **__):
+            nonlocal num_calls_seen_2
+            num_calls_seen_2 += 1
+            assert num_calls_seen_2 > num_calls_seen_3
+
+        @pyc.register_handler(pyc.return_)
+        def handle_return(self, *_, **__):
+            assert num_calls_seen_2 >= 1
+
+    class TracesCalls3(pyc.BaseTracerStateMachine):
+        @pyc.register_handler(pyc.call)
+        def handle_call(self, *_, **__):
+            nonlocal num_calls_seen_3
+            num_calls_seen_3 += 1
+
+        @pyc.register_handler(pyc.return_)
+        def handle_return(self, *_, **__):
+            assert num_calls_seen_3 >= 1
+
+    with TracesCalls1.instance().tracing_context():
+        with TracesCalls2.instance().tracing_context():
+            with TracesCalls3.instance().tracing_context():
+                env = pyc.exec(
+                    """
+                    def foo():
+                        pass
+                    foo(); foo()
+                    """
+                )
+    assert sys.gettrace() is None
+    assert len(env) == 1
+    assert "foo" in env
+    assert num_calls_seen_1 == 2
+    assert num_calls_seen_2 == 2
+    assert num_calls_seen_3 == 2

@@ -99,7 +99,7 @@ class TraceEvent(Enum):
         return '<' + str(self) + '>'
 
     def to_ast(self):
-        return fast.Constant(self.value)
+        return fast.Constant(self.name)
 
 
 # redundant; these just help with intellisense

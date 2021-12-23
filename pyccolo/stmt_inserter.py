@@ -151,7 +151,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                                 new_field.extend(fast.parse('import builtins').body)
                                 if TraceEvent.init_module in self.events_with_handlers:
                                     new_field.extend(fast.parse(
-                                        f'{EMIT_EVENT}("{TraceEvent.init_module.value}", None)'
+                                        f'{EMIT_EVENT}("{TraceEvent.init_module.name}", {id(node)})'
                                     ).body)
                         if TraceEvent.before_stmt in self.events_with_handlers:
                             new_field.append(_get_parsed_insert_stmt(stmt_copy, TraceEvent.before_stmt))
