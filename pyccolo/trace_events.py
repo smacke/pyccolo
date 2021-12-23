@@ -174,5 +174,25 @@ c_exception = TraceEvent.c_exception
 
 AST_TO_EVENT_MAPPING = {
     ast.stmt: after_stmt,
+    ast.Module: init_module,
+    ast.Name: load_name,
     ast.Attribute: before_attribute_load,
+    ast.Subscript: before_subscript_load,
+    ast.Call: before_call,
+    ast.Dict: after_dict_literal,
+    ast.List: after_list_literal,
+    ast.Tuple: after_tuple_literal,
+    ast.Set: after_set_literal,
+    ast.Return: after_return,
+
+    ast.Add: add,
+    ast.Sub: sub,
+    ast.Mult: mult,
+    ast.Div: div,
+    ast.FloorDiv: floor_div,
+    ast.MatMult: mat_mult,
+    ast.Pow: power,
+    ast.BitAnd: bit_and,
+    ast.BitOr: bit_or,
+    ast.BitXor: bit_xor,
 }
