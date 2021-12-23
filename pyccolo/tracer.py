@@ -22,7 +22,9 @@ from pyccolo.trace_events import TraceEvent, AST_TO_EVENT_MAPPING
 from pyccolo.trace_stack import TraceStack
 
 if TYPE_CHECKING:
-    from typing import Any, Callable, DefaultDict, Dict, FrozenSet, Generator, List, Optional, Set, Tuple, Type, Union
+    from typing import (
+        Any, Callable, DefaultDict, Dict, FrozenSet, Generator, List, Optional, Set, Tuple, Type, Union, TypeVar
+    )
     from types import FrameType
 
 
@@ -385,8 +387,10 @@ class SingletonTracerStateMachine(metaclass=MetaTracerStateMachine):
         return self._emit_event(evt, 0, frame, ret=arg)
 
     if TYPE_CHECKING:
+        TracerT = TypeVar('TracerT', bound=SingletonTracerStateMachine)
+
         @classmethod
-        def instance(cls, *args, **kwargs) -> BaseTracerStateMachine: ...
+        def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT: ...
 
         @classmethod
         def clear_instance(cls) -> None: ...

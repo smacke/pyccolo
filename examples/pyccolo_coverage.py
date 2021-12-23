@@ -57,31 +57,12 @@ def count_statements():
     return total, total_by_fname
 
 
-def run_tests():
-    exit_code = 0
-    try:
-        import importlib
-        root = join(os.curdir, 'test')
-        for path, _, files in os.walk(root):
-            for filename in files:
-                if not filename.startswith('test') or not filename.endswith('.py'):
-                    continue
-                mod_name = os.path.splitext(filename)[0]
-                module = importlib.import_module(f'test.{mod_name}')
-                for attr in dir(module):
-                    if attr.startswith('test_'):
-                        getattr(module, attr)()
-    except Exception:
-        exit_code = 1
-        logger.exception("exception encountered during tests")
-    return exit_code
-
-
-seen_stmts = set()
-stmt_count_by_fname = Counter()
-
-
 class CoverageTracer(pyc.BaseTracerStateMachine):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.seen_stmts = set()
+        self.stmt_count_by_fname = Counter()
 
     def should_trace_source_path(self, path) -> bool:
         if 'test' in path or 'examples' in path:
@@ -98,9 +79,9 @@ class CoverageTracer(pyc.BaseTracerStateMachine):
         if fname == "<sandbox>":
             # filter these out. not necessary for non-pyccolo coverage
             return
-        if stmt_id not in seen_stmts:
-            stmt_count_by_fname[frame.f_code.co_filename] += 1
-            seen_stmts.add(stmt_id)
+        if stmt_id not in self.seen_stmts:
+            self.stmt_count_by_fname[frame.f_code.co_filename] += 1
+            self.seen_stmts.add(stmt_id)
 
 
 def remove_pyccolo_modules():
@@ -128,13 +109,12 @@ if __name__ == "__main__":
         pyc._TRACER_STACK.append(tracer)
 
         exit_code = pytest.console_main()
-        # exit_code = run_tests()
-    for fname in sorted(stmt_count_by_fname.keys()):
+    for fname in sorted(tracer.stmt_count_by_fname.keys()):
         shortened = "." + fname.split(".", 1)[-1]
-        seen = stmt_count_by_fname[fname]
+        seen = tracer.stmt_count_by_fname[fname]
         total = total_by_fname[shortened]
         logger.warning("[%-40s]: seen=%4d, total=%4d, ratio=%.3f", shortened, seen, total, float(seen) / total)
-    num_seen_stmts = len(seen_stmts)
+    num_seen_stmts = len(tracer.seen_stmts)
     logger.warning('num stmts seen: %s', num_seen_stmts)
     logger.warning('num stmts total: %s', total_stmts)
     logger.warning('ratio: %.3f', float(num_seen_stmts) / total_stmts)
