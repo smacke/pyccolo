@@ -306,12 +306,12 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
     @contextmanager
     def tracing_context(self, disabled: bool = False) -> Generator[None, None, None]:
-        should_push = True
-        activate_ctx_managers = False
+        do_patch_meta_path = False
         orig_num_sandbox_calls_seen = self._num_sandbox_calls_seen
         orig_hard_disabled = self._is_tracing_hard_disabled
         self._is_tracing_hard_disabled = disabled
         was_tracing_enabled = False
+        should_push = self not in _TRACER_STACK
         try:
             if getattr(builtins, EMIT_EVENT, None) is not _emit_event:
                 setattr(builtins, EMIT_EVENT, _emit_event)
@@ -320,19 +320,13 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             if not hasattr(builtins, TRACING_ENABLED):
                 setattr(builtins, TRACING_ENABLED, False)
             if len(_TRACER_STACK) == 0:
-                activate_ctx_managers = True
-            elif _TRACER_STACK[-1] is self:
-                should_push = False
+                do_patch_meta_path = True
             if should_push:
                 _TRACER_STACK.append(self)  # type: ignore
-            with patch_meta_path(_TRACER_STACK) if activate_ctx_managers else suppress():
-                with self._patch_sys_settrace() if activate_ctx_managers and self.has_sys_trace_events else suppress():
-                    if (
-                        len(_TRACER_STACK) > 0
-                        and _TRACER_STACK[-1] is self
-                        and not self._is_tracing_hard_disabled
-                        and not self._is_tracing_enabled
-                    ):
+            do_patch_sys_settrace = sys.settrace != self._settrace_patch and self.has_sys_trace_events
+            with patch_meta_path(_TRACER_STACK) if do_patch_meta_path else suppress():
+                with self._patch_sys_settrace() if do_patch_sys_settrace else suppress():
+                    if not self._is_tracing_hard_disabled and not self._is_tracing_enabled:
                         was_tracing_enabled = True
                         self._enable_tracing()
                     yield

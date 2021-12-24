@@ -1,3 +1,4 @@
+import ast
 import sys
 import pyccolo as pyc
 
@@ -17,6 +18,18 @@ def test_instrumented_sandbox():
     env = IncrementsAssignValue.instance().exec("x = 42", {})
     assert env["x"] == 43, 'got %s' % env["x"]
     assert len(env) == 1
+
+
+def test_nonlocal():
+    x = 5
+    try:
+        pyc.exec('nonlocal x; x = 42')
+    except SyntaxError:
+        # we impl this by executing in a sandboxed function;
+        # the 'nonlocal' keyword will conflict with function arg
+        pass
+    else:
+        assert False
 
 
 def test_two_handlers():
@@ -183,6 +196,36 @@ def test_composed_sys_tracing_calls():
     assert num_calls_seen_3 == 2
 
 
+def test_tracing_context_manager_toggling():
+    num_stmts_seen = 0
+    num_calls_seen = 0
+
+    class TracesStatements(pyc.BaseTracer):
+        @pyc.register_handler(ast.stmt)
+        def handle_stmt(self, _evt, _node, frame, *_, **__):
+            if frame.f_code.co_filename == "<sandbox>":
+                nonlocal num_stmts_seen
+                num_stmts_seen += 1
+
+    class TracesCalls(pyc.BaseTracer):
+        @pyc.register_handler(pyc.call)
+        def handle_call(self, *_, **__):
+            nonlocal num_calls_seen
+            num_calls_seen += 1
+
+    stmt_tracer = TracesStatements()
+    call_tracer = TracesCalls()
+
+    with stmt_tracer.tracing_enabled():
+        with stmt_tracer.tracing_disabled():
+            with call_tracer.tracing_enabled():
+                pyc.exec("(lambda: 5)()")
+        pyc.exec("x = 1")
+
+    assert num_stmts_seen == 1
+    assert num_calls_seen == 1
+
+
 if sys.gettrace() is None:
     def test_composes_with_existing_sys_tracer():
 
@@ -208,21 +251,26 @@ if sys.gettrace() is None:
 
         tracer = TracesCalls.instance()
         try:
-            with TracesCalls.instance().tracing_disabled():
-                pyc.exec(
-                    """
-                    sys.settrace(existing_tracer)
-                    sys_tracer = sys.gettrace()
-                    def foo():
-                        with TracesCalls.instance().tracing_enabled():
-                            def bar():
-                                pass
-                            bar()
-                    foo(); foo()
-                    assert sys.gettrace() is existing_tracer
-                    """
-                )
+            # the top one tests that sys.settrace gets patched properly
+            # even when the first enabled tracer doesn't do anything
+            # with sys events
+            with pyc.BaseTracer().tracing_enabled():
+                with TracesCalls.instance().tracing_disabled():
+                    pyc.exec(
+                        """
+                        def foo():
+                            with TracesCalls.instance().tracing_enabled():
+                                with TracesCalls.instance().tracing_disabled():
+                                    with TracesCalls.instance().tracing_enabled():
+                                        sys.settrace(existing_tracer)
+                                        def bar():
+                                            pass
+                                        bar()
+                        foo(); foo()
+                        """
+                    )
+            assert sys.gettrace() is existing_tracer
         finally:
             sys.settrace(None)
         assert tracer.num_calls_seen == 2
-        assert num_calls_seen_from_existing_tracer == 4
+        assert num_calls_seen_from_existing_tracer == 3
