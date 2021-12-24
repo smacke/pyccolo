@@ -397,7 +397,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             sandbox_args = ", ".join(["*"] + args_to_use + ["**__"])
         else:
             sandbox_args = "**__"
-        sandboxed_code = textwrap.dedent(
+        sandboxed_code: Union[ast.Module, str] = textwrap.dedent(
             f"""
             local_env = dict(locals())
             def _sandbox({sandbox_args}):
@@ -407,11 +407,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             local_env.pop("builtins", None)
             """
         ).strip()
-        sandboxed_code = ast.parse(
-            sandboxed_code,
-            SANDBOX_FNAME,
-            "exec"
-        )
+        sandboxed_code = ast.parse(cast(str, sandboxed_code), SANDBOX_FNAME, "exec")
         with self.tracing_context(disabled=self._is_tracing_hard_disabled) if instrument else suppress():
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
