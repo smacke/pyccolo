@@ -391,22 +391,24 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             local_env = frame.f_locals
         if global_env is None:
             global_env = frame.f_globals
+        # pytest inserts variables prepended with "@"; we don't want these
         args_to_use = [k for k in local_env.keys() if not k.startswith("@") and k != "__"]
         if len(args_to_use) > 0:
             sandbox_args = ", ".join(["*"] + args_to_use + ["**__"])
         else:
             sandbox_args = "**__"
+        sandboxed_code = textwrap.dedent(
+            f"""
+            local_env = dict(locals())
+            def _sandbox({sandbox_args}):
+                return locals()
+            local_env = _sandbox(**local_env)
+            local_env.pop("__", None)
+            local_env.pop("builtins", None)
+            """
+        ).strip()
         sandboxed_code = ast.parse(
-            textwrap.dedent(
-                f"""
-                local_env = dict(locals())
-                def _sandbox({sandbox_args}):
-                    return locals()
-                local_env = _sandbox(**local_env)
-                local_env.pop("__", None)
-                local_env.pop("builtins", None)
-                """
-            ).strip(),
+            sandboxed_code,
             SANDBOX_FNAME,
             "exec"
         )

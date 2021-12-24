@@ -20,7 +20,7 @@ def test_instrumented_sandbox():
     assert len(env) == 1
 
 
-def test_nonlocal():
+def test_nonlocal_1():
     x = 5
     try:
         pyc.exec('nonlocal x; x = 42')
@@ -30,6 +30,17 @@ def test_nonlocal():
         pass
     else:
         assert False
+
+
+def test_nonlocal_2():
+    x = 5
+
+    def inner():
+        nonlocal x
+        x = pyc.exec('x = 42')['x']
+    inner()
+
+    assert x == 42
 
 
 def test_two_handlers():
