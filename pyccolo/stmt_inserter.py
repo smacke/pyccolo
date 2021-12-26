@@ -144,11 +144,9 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                 for inner_node in field:
                     if isinstance(inner_node, ast.stmt):
                         stmt_copy = cast(ast.stmt, self.orig_to_copy_mapping[id(inner_node)])
-                        if not self._init_stmt_inserted:
-                            assert isinstance(node, ast.Module)
+                        if not self._init_stmt_inserted and isinstance(node, ast.Module):
                             self._init_stmt_inserted = True
                             with fast.location_of(stmt_copy):
-                                new_field.extend(fast.parse('import builtins').body)
                                 if TraceEvent.init_module in self.events_with_handlers:
                                     new_field.extend(fast.parse(
                                         f'{EMIT_EVENT}("{TraceEvent.init_module.name}", {id(node)})'

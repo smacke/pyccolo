@@ -174,6 +174,7 @@ c_exception = TraceEvent.c_exception
 
 AST_TO_EVENT_MAPPING = {
     ast.stmt: after_stmt,
+    ast.Assign: after_assign_rhs,
     ast.Module: init_module,
     ast.Name: load_name,
     ast.Attribute: before_attribute_load,

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
 
 if TYPE_CHECKING:
-    from typing import Dict, List, Optional, Set, Tuple
+    from typing import Dict, List, Optional, Set, Tuple, Union
     from pyccolo.tracer import BaseTracer
 
 
@@ -99,7 +99,7 @@ class StatementMapper(ast.NodeVisitor):
         else:
             raise NotImplementedError()
 
-    def __call__(self, node: ast.Module) -> Dict[int, ast.AST]:
+    def __call__(self, node: Union[ast.Module, ast.FunctionDef, ast.AsyncFunctionDef]) -> Dict[int, ast.AST]:
         # for some bizarre reason we need to visit once to clear empty nodes apparently
         self.visit(node)
         self.traversal.clear()

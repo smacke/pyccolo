@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 def make_test(var_name: str, negate: bool = False) -> ast.expr:
-    ret = fast.parse(f'getattr(builtins, "{var_name}")').body[0].value  # type: ignore
+    ret: ast.expr = fast.Name(var_name, ast.Load())
     if negate:
         ret = fast.UnaryOp(operand=ret, op=fast.Not())
     return ret

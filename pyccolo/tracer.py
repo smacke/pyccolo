@@ -2,10 +2,12 @@
 import ast
 import builtins
 import functools
+import inspect
 import logging
 import os
 import sys
 import textwrap
+import types
 from collections import defaultdict
 from contextlib import contextmanager, suppress
 from typing import TYPE_CHECKING, cast
@@ -303,6 +305,22 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 yield
         finally:
             self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
+
+    def instrumented(self, f):
+        with self.tracing_disabled():
+            code = ast.parse(textwrap.dedent(inspect.getsource(f)))
+            code.body[0] = self.make_ast_rewriter().visit(code.body[0])
+            compiled: types.CodeType = compile(code, f.__code__.co_filename, "exec")
+            for const in compiled.co_consts:
+                if isinstance(const, types.CodeType) and const.co_name == f.__code__.co_name:
+                    f.__code__ = const
+
+        @functools.wraps(f)
+        def instrumented_f(*args, **kwargs):
+            with self.tracing_enabled():
+                return f(*args, **kwargs)
+
+        return instrumented_f
 
     @contextmanager
     def tracing_context(self, disabled: bool = False) -> Generator[None, None, None]:

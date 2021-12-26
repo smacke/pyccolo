@@ -30,7 +30,7 @@ class AstRewriter(ast.NodeTransformer):
         self._augmented_positions_by_spec[aug_spec].add((lineno, col_offset))
 
     def visit(self, node: ast.AST):
-        assert isinstance(node, ast.Module)
+        assert isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef))
         mapper = StatementMapper(
             self._tracers[-1].line_to_stmt_by_module_id[id(node) if self._module_id is None else self._module_id],
             self._tracers,
@@ -44,7 +44,9 @@ class AstRewriter(ast.NodeTransformer):
         for tracer in self._tracers:
             events_with_handlers |= tracer.events_with_registered_handlers
         frozen_events_with_handlers = frozenset(events_with_handlers)
-        node = ExprRewriter(orig_to_copy_mapping, frozen_events_with_handlers, self._tracers[-1].guards).visit(node)
+        expr_rewriter = ExprRewriter(orig_to_copy_mapping, frozen_events_with_handlers, self._tracers[-1].guards)
+        for i in range(len(node.body)):
+            node.body[i] = expr_rewriter.visit(node.body[i])
         node = StatementInserter(
             orig_to_copy_mapping, frozen_events_with_handlers, self._tracers[-1].guards
         ).visit(node)

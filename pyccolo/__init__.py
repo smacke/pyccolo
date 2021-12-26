@@ -6,6 +6,10 @@ Pyccolo brings metaprogramming to everybody via general
 event-emitting AST transformations.
 """
 import ast
+import functools
+import inspect
+import textwrap
+import types
 from typing import Any, Dict
 from .ast_rewriter import AstRewriter
 from .emit_event import _TRACER_STACK, allow_reentrant_event_handling
@@ -29,6 +33,7 @@ from .tracer import (
 	register_raw_handler,
 	skip_when_tracing_disabled,
 )
+from .utils import multi_context
 
 
 # convenience functions for managing tracer singleton
@@ -49,6 +54,28 @@ def parse(code: str) -> ast.Module:
 
 def exec(code: str, *args, **kwargs) -> Dict[str, Any]:
 	return tracer().exec(code, *args, **kwargs)
+
+
+def instrumented(tracers):
+	def decorator(f):
+		with multi_context([tracer.tracing_disabled() for tracer in tracers]):
+			code = ast.parse(textwrap.dedent(inspect.getsource(f)))
+			code.body[0] = tracers[-1].make_ast_rewriter().visit(code.body[0])
+			compiled: types.CodeType = compile(code, f.__code__.co_filename, "exec")
+			for const in compiled.co_consts:
+				if isinstance(const, types.CodeType) and const.co_name == f.__code__.co_name:
+					f.__code__ = const
+
+		@functools.wraps(f)
+		def instrumented_f(*args, **kwargs):
+			with multi_context([tracer.tracing_enabled() for tracer in tracers]):
+				for tracer in tracers:
+					tracer.tracing_enabled().__enter__()
+				return f(*args, **kwargs)
+
+		return instrumented_f
+
+	return decorator
 
 
 # redundant; do this just in case we forgot to add stubs in trace_events.py
