@@ -58,11 +58,25 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def _inside_attrsub_load_chain(self):
         return self._top_level_node_for_symbol is not None
 
+    @staticmethod
+    def _get_attrsub_event(node: Union[ast.Attribute, ast.Subscript]) -> TraceEvent:
+        is_subscript = isinstance(node, ast.Subscript)
+        if isinstance(node.ctx, ast.Load):
+            return TraceEvent.before_subscript_load if is_subscript else TraceEvent.before_attribute_load
+        elif isinstance(node.ctx, ast.Store):
+            return TraceEvent.before_subscript_store if is_subscript else TraceEvent.before_attribute_store
+        elif isinstance(node.ctx, ast.Del):
+            return TraceEvent.before_subscript_del if is_subscript else TraceEvent.before_attribute_del
+        else:
+            raise ValueError("unknown context: %s", node.ctx)
+
     def visit_Attribute(self, node: ast.Attribute, call_context=False):
         with fast.location_of(node.value):
             attr_node = cast(ast.Attribute, node)
             attr_or_sub = fast.Str(attr_node.attr)
-        return self.visit_Attribute_or_Subscript(node, attr_or_sub, call_context=call_context)
+        return self.visit_Attribute_or_Subscript(
+            node, attr_or_sub, self._get_attrsub_event(node), call_context=call_context
+        )
 
     def _maybe_convert_ast_subscript(self, subscript: ast.AST) -> ast.expr:
         if isinstance(subscript, ast.Index):
@@ -81,6 +95,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             return self.visit(subscript)
 
     def visit_Subscript(self, node: ast.Subscript, call_context=False):
+        evt_to_use = self._get_attrsub_event(node)
         with self.attrsub_context(None):
             with fast.location_of(node.slice if hasattr(node.slice, 'lineno') else node.value):
                 slc = self._maybe_convert_ast_subscript(node.slice)
@@ -90,7 +105,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     slc = fast.Tuple(elts, ast.Load())
                 if TraceEvent.subscript_slice in self.events_with_handlers:
                     slc = self.emit(TraceEvent.subscript_slice, node, ret=slc)
-                if TraceEvent.before_subscript_load in self.events_with_handlers:
+                if evt_to_use in self.events_with_handlers:
                     replacement_slice: ast.expr = self.emit(TraceEvent._load_saved_slice, node.slice)
                 else:
                     replacement_slice = slc
@@ -98,7 +113,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     node.slice = replacement_slice
                 else:
                     node.slice = fast.Index(replacement_slice)
-        return self.visit_Attribute_or_Subscript(node, slc, call_context=call_context)
+        return self.visit_Attribute_or_Subscript(node, slc, evt_to_use, call_context=call_context)
 
     def _maybe_wrap_symbol_in_before_after_tracing(
         self, node, call_context=False, orig_node_id=None, begin_kwargs=None, end_kwargs=None
@@ -130,6 +145,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         self,
         node: Union[ast.Attribute, ast.Subscript],
         attr_or_sub: ast.expr,
+        evt_to_use: TraceEvent,
         call_context: bool = False
     ):
         orig_node_id = id(node)
@@ -146,24 +162,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     subscript_name = slice_val.id
 
             is_subscript = isinstance(node, ast.Subscript)
-            if isinstance(node.ctx, ast.Load):
-                evt_to_use = (
-                    TraceEvent.before_subscript_load if is_subscript else TraceEvent.before_attribute_load
-                )
-            elif isinstance(node.ctx, ast.Store):
-                evt_to_use = (
-                    TraceEvent.before_subscript_store if is_subscript else TraceEvent.before_attribute_store
-                )
-            elif isinstance(node.ctx, ast.Del):
-                evt_to_use = (
-                    TraceEvent.before_subscript_del if is_subscript else TraceEvent.before_attribute_del
-                )
-            else:
-                raise ValueError("unknown context: %s", node.ctx)
             should_emit_evt = evt_to_use in self.events_with_handlers
-            should_emit_evt = should_emit_evt or (
-                    evt_to_use == TraceEvent.before_subscript_load and TraceEvent._load_saved_slice in self.events_with_handlers
-            )
             with self.attrsub_context(node):
                 node.value = self.visit(node.value)
                 if should_emit_evt:
