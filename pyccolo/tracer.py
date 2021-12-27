@@ -360,6 +360,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     and const.co_name == f.__code__.co_name
                 ):
                     f.__code__ = const
+                    break
 
         @functools.wraps(f)
         def instrumented_f(*args, **kwargs):
