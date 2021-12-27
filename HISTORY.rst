@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.4 (2021-12-26)
+------------------
+* Misc composability improvements and fixes;
+* Improve file filter handling;
+
 0.0.3 (2021-12-23)
 ------------------
 * Misc ergonomics improvements;
