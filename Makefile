@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-.PHONY: clean build bump deploy black typecheck check_no_typing check test tests coverage xmlcov check_ci deps devdeps
+.PHONY: clean build bump deploy blackcheck typecheck check_no_typing check test tests coverage xmlcov check_ci deps devdeps
 
 clean:
 	rm -rf build/ dist/ *.egg-info/ .coverage htmlcov
@@ -16,6 +16,9 @@ deploy: build
 black:
 	./scripts/blacken.sh
 
+blackcheck:
+	./scripts/blacken.sh --check
+
 typecheck:
 	mypy pyccolo
 
@@ -24,7 +27,7 @@ check_no_typing:
 	rm -rf htmlcov
 	pytest --cov-config=.coveragerc --cov=pyccolo
 
-check: black typecheck check_no_typing
+check: blackcheck typecheck check_no_typing
 
 test: check
 tests: check

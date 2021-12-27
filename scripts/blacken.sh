@@ -5,6 +5,6 @@ set -euxo pipefail
 
 find . -name '*.py' -print0 | xargs -0 sed -i.sedbak 's/coding: future_annotations/coding: utf-8/'
 find . -type f -name '*.sedbak' -print0 | xargs -0 rm
-black .
+black . $@
 find . -name '*.py' -print0 | xargs -0 sed -i.sedbak 's/coding: utf-8/coding: future_annotations/'
 find . -type f -name '*.sedbak' -print0 | xargs -0 rm
