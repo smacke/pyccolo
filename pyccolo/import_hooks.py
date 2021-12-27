@@ -7,6 +7,8 @@ from importlib.abc import MetaPathFinder
 from importlib.machinery import SourceFileLoader
 from importlib.util import spec_from_loader, decode_source
 
+from pyccolo.trace_events import TraceEvent
+
 
 logger = logging.getLogger(__name__)
 
@@ -110,9 +112,12 @@ class TraceFinder(MetaPathFinder):
             return None
         source_path = spec.loader.get_filename(fullname)
         tracers_to_use = []
+        import_ = TraceEvent.import_.value
         for tracer in self.tracers:
-            if tracer._file_passes_filter_impl("import", source_path):
+            if tracer._file_passes_filter_impl(import_, source_path):
                 tracers_to_use.append(tracer)
+        for tracer in tracers_to_use:
+            tracer._emit_event(import_, None, None)
 
         if len(tracers_to_use) == 0:
             return None

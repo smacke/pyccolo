@@ -32,7 +32,8 @@ def _emit_event(event, node_id, **kwargs):
         frame = sys._getframe().f_back
         try:
             for tracer in _TRACER_STACK:
-                kwargs['ret'] = tracer._emit_event(event, node_id, frame, **kwargs)
+                if tracer._file_passes_filter_impl(event, frame.f_code.co_filename):
+                    kwargs['ret'] = tracer._emit_event(event, node_id, frame, **kwargs)
         finally:
             _allow_event_handling = orig_allow_event_handling
     return kwargs.get('ret', None)

@@ -20,9 +20,10 @@ logger.setLevel(logging.WARNING)
 
 
 class AstRewriter(ast.NodeTransformer):
-    def __init__(self, tracers: List[BaseTracer], module_id: Optional[int] = None):
+    def __init__(self, tracers: List[BaseTracer], module_id: Optional[int] = None, path: Optional[str] = None):
         self._tracers = tracers
         self._module_id: Optional[int] = module_id
+        self._path: Optional[str] = path
         self._augmented_positions_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]] = defaultdict(set)
         self.orig_to_copy_mapping: Optional[Dict[int, ast.AST]] = None
 
@@ -42,7 +43,9 @@ class AstRewriter(ast.NodeTransformer):
         # modifies existing ones), since StatementInserter relies on being able to map these
         events_with_handlers: Set[TraceEvent] = set()
         for tracer in self._tracers:
-            events_with_handlers |= tracer.events_with_registered_handlers
+            for evt in tracer.events_with_registered_handlers:
+                if self._path is None or tracer._file_passes_filter_impl(evt.value, self._path):
+                    events_with_handlers.add(evt)
         frozen_events_with_handlers = frozenset(events_with_handlers)
         expr_rewriter = ExprRewriter(orig_to_copy_mapping, frozen_events_with_handlers, self._tracers[-1].guards)
         for i in range(len(node.body)):

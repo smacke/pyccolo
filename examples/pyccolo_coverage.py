@@ -64,7 +64,7 @@ class CoverageTracer(pyc.BaseTracer):
         self.seen_stmts = set()
         self.stmt_count_by_fname = Counter()
 
-    def should_trace_source_path(self, path) -> bool:
+    def file_passes_filter_for_event(self, evt: str, path: str) -> bool:
         if 'test' in path or 'examples' in path:
             # filter out tests and self
             return False

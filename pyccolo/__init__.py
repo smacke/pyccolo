@@ -58,6 +58,7 @@ def exec(code: str, *args, **kwargs) -> Dict[str, Any]:
 
 def instrumented(tracers):
 	def decorator(f):
+		f_defined_file = f.__code__.co_filename
 		with multi_context([tracer.tracing_disabled() for tracer in tracers]):
 			code = ast.parse(textwrap.dedent(inspect.getsource(f)))
 			code.body[0] = tracers[-1].make_ast_rewriter().visit(code.body[0])
@@ -68,9 +69,7 @@ def instrumented(tracers):
 
 		@functools.wraps(f)
 		def instrumented_f(*args, **kwargs):
-			with multi_context([tracer.tracing_enabled() for tracer in tracers]):
-				for tracer in tracers:
-					tracer.tracing_enabled().__enter__()
+			with multi_context([tracer.tracing_enabled(tracing_enabled_file=f_defined_file) for tracer in tracers]):
 				return f(*args, **kwargs)
 
 		return instrumented_f

@@ -55,6 +55,7 @@ class MetaTracerStateMachine(MetaHasTraits):
     def __init__(cls, *args, **kwargs):
         super().__init__(*args, **kwargs)
         register_tracer_state_machine(cls)
+        cls.defined_file = sys._getframe().f_back.f_code.co_filename
 
     def __call__(cls, *args, **kwargs):
         obj = MetaHasTraits.__call__(cls, *args, **kwargs)
@@ -64,17 +65,13 @@ class MetaTracerStateMachine(MetaHasTraits):
 
 class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     ast_rewriter_cls = AstRewriter
+    defined_file = ""
 
     _MANAGER_CLASS_REGISTERED = False
     EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[
         TraceEvent, List[Tuple[Callable[..., Any], bool]]
     ] = defaultdict(list)
-    EVENT_HANDLERS_BY_CLASS: Dict[
-        Type[BaseTracer],
-        DefaultDict[
-            TraceEvent, List[Tuple[Callable[..., Any], bool]]
-        ],
-    ] = {}
+    EVENT_HANDLERS_BY_CLASS: Dict[Type[BaseTracer], DefaultDict[TraceEvent, List[Tuple[Callable[..., Any], bool]]]] = {}
 
     EVENT_LOGGER = logging.getLogger('events')
     EVENT_LOGGER.setLevel(logging.WARNING)
@@ -104,6 +101,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 if not issubclass(BaseTracer, clazz) and len(handlers) > 0:
                     events_with_registered_handlers.add(evt)
         self.events_with_registered_handlers: FrozenSet[TraceEvent] = frozenset(events_with_registered_handlers)
+        self._tracing_enabled_files: FrozenSet[str] = frozenset({SANDBOX_FNAME})
         self._is_tracing_enabled = False
         self._is_tracing_hard_disabled = False
         self.sys_tracer = self._sys_tracer
@@ -268,9 +266,6 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         finally:
             sys.settrace = original_settrace
 
-    def should_trace_source_path(self, path) -> bool:
-        return False
-
     def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
         return False
 
@@ -279,34 +274,31 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             ret = self._num_sandbox_calls_seen >= 2
             self._num_sandbox_calls_seen += evt == "call"
             return ret
-        return (
-            filename == SANDBOX_FNAME or
-            self.file_passes_filter_for_event(evt, filename) or
-            self.should_trace_source_path(filename)
-        )
+        return filename in self._tracing_enabled_files or self.file_passes_filter_for_event(evt, filename)
 
-    def make_ast_rewriter(self, module_id: Optional[int] = None) -> AstRewriter:
-        return self.ast_rewriter_cls(_TRACER_STACK, module_id=module_id)
+    def make_ast_rewriter(self, **kwargs) -> AstRewriter:
+        return self.ast_rewriter_cls(_TRACER_STACK, **kwargs)
 
     def make_syntax_augmenters(self, ast_rewriter: AstRewriter) -> List[Callable]:
         return [make_syntax_augmenter(ast_rewriter, spec) for spec in self.syntax_augmentation_specs]
 
     @contextmanager
-    def tracing_enabled(self) -> Generator[None, None, None]:
-        with self.tracing_context(disabled=False):
+    def tracing_enabled(self, **kwargs) -> Generator[None, None, None]:
+        with self.tracing_context(disabled=False, **kwargs):
             yield
 
     @contextmanager
-    def tracing_disabled(self) -> Generator[None, None, None]:
+    def tracing_disabled(self, **kwargs) -> Generator[None, None, None]:
         orig_num_sandbox_calls_seen = self._num_sandbox_calls_seen
         self._num_sandbox_calls_seen = 2
         try:
-            with self.tracing_context(disabled=True):
+            with self.tracing_context(disabled=True, **kwargs):
                 yield
         finally:
             self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
 
     def instrumented(self, f):
+        f_defined_file = f.__code__.co_filename
         with self.tracing_disabled():
             code = ast.parse(textwrap.dedent(inspect.getsource(f)))
             code.body[0] = self.make_ast_rewriter().visit(code.body[0])
@@ -317,19 +309,24 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
         @functools.wraps(f)
         def instrumented_f(*args, **kwargs):
-            with self.tracing_enabled():
+            with self.tracing_enabled(tracing_enabled_file=f_defined_file):
                 return f(*args, **kwargs)
 
         return instrumented_f
 
     @contextmanager
-    def tracing_context(self, disabled: bool = False) -> Generator[None, None, None]:
+    def tracing_context(
+        self, disabled: bool = False, tracing_enabled_file: Optional[str] = None
+    ) -> Generator[None, None, None]:
         do_patch_meta_path = False
         orig_num_sandbox_calls_seen = self._num_sandbox_calls_seen
         orig_hard_disabled = self._is_tracing_hard_disabled
+        orig_tracing_enabled_files = self._tracing_enabled_files
         self._is_tracing_hard_disabled = disabled
         was_tracing_enabled = False
         should_push = self not in _TRACER_STACK
+        if tracing_enabled_file is not None:
+            self._tracing_enabled_files = self._tracing_enabled_files | {tracing_enabled_file}
         try:
             if getattr(builtins, EMIT_EVENT, None) is not _emit_event:
                 setattr(builtins, EMIT_EVENT, _emit_event)
@@ -349,6 +346,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                         self._enable_tracing()
                     yield
         finally:
+            self._tracing_enabled_files = orig_tracing_enabled_files
             self._is_tracing_hard_disabled = orig_hard_disabled
             if should_push:
                 del _TRACER_STACK[-1]
