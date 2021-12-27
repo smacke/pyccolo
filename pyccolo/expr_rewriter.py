@@ -150,22 +150,24 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     ):
         orig_node_id = id(node)
         with fast.location_of(node.value):
-            extra_keywords: Dict[str, ast.AST] = {}
-            if isinstance(node.value, ast.Name):
-                extra_keywords['obj_name'] = fast.Str(node.value.id)
-
-            subscript_name = None
-            if isinstance(node, ast.Subscript):
-                slice_val = subscript_to_slice(node)
-                if isinstance(slice_val, ast.Name):
-                    # TODO: this should be more general than just simple ast.Name subscripts
-                    subscript_name = slice_val.id
-
             is_subscript = isinstance(node, ast.Subscript)
             should_emit_evt = evt_to_use in self.events_with_handlers
             with self.attrsub_context(node):
+                extra_keywords: Dict[str, ast.AST] = {}
+                if isinstance(node.value, ast.Name):
+                    extra_keywords['obj_name'] = fast.Str(node.value.id)
                 node.value = self.visit(node.value)
                 if should_emit_evt:
+                    if is_subscript:
+                        subscript_name = None
+                        if isinstance(node, ast.Subscript):
+                            slice_val = subscript_to_slice(node)
+                            if isinstance(slice_val, ast.Name):
+                                # TODO: this should be more general than just simple ast.Name subscripts
+                                subscript_name = slice_val.id
+                        extra_keywords[
+                            'subscript_name'
+                        ] = fast.NameConstant(None) if subscript_name is None else fast.Str(subscript_name)
                     node.value = self.emit(
                         evt_to_use,
                         orig_node_id,
@@ -173,9 +175,6 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                         attr_or_subscript=attr_or_sub,
                         call_context=fast.NameConstant(call_context),
                         top_level_node_id=self.get_copy_id_ast(self._top_level_node_for_symbol),
-                        subscript_name=(
-                            fast.NameConstant(None) if subscript_name is None else fast.Str(subscript_name)
-                        ),
                         **extra_keywords,
                     )
         # end fast.location_of(node.value)
