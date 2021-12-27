@@ -14,7 +14,7 @@ root = join(os.curdir, pyccolo.__name__)
 
 
 _EXCEPTED_FILES = {
-    join(root, '_version.py'),
+    join(root, "_version.py"),
 }
 
 
@@ -23,7 +23,7 @@ class ContainsPrintVisitor(ast.NodeVisitor):
         self._found_print_call = False
 
     def __call__(self, filename: str) -> bool:
-        with open(filename, 'r') as f:
+        with open(filename, "r") as f:
             self.visit(ast.parse(f.read()))
         ret = self._found_print_call
         self._found_print_call = False
@@ -31,7 +31,7 @@ class ContainsPrintVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call):
         self.generic_visit(node)
-        if isinstance(node.func, ast.Name) and node.func.id == 'print':
+        if isinstance(node.func, ast.Name) and node.func.id == "print":
             self._found_print_call = True
 
 
@@ -39,9 +39,11 @@ def test_no_prints():
     contains_print = ContainsPrintVisitor()
     for path, _, files in os.walk(root):
         for filename in files:
-            if not filename.endswith('.py') or filename in _EXCEPTED_FILES:
+            if not filename.endswith(".py") or filename in _EXCEPTED_FILES:
                 continue
             filename = os.path.join(path, filename)
             if filename in _EXCEPTED_FILES:
                 continue
-            assert not contains_print(filename), f'file {filename} had a print statement!'
+            assert not contains_print(
+                filename
+            ), f"file {filename} had a print statement!"

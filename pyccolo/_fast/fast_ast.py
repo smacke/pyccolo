@@ -34,14 +34,15 @@ def _make_func(func_name):
         if FastAst._LOCATION_OF_NODE is not None:
             ast.copy_location(ret, FastAst._LOCATION_OF_NODE)
         return ret
+
     return ctor
 
 
 for ctor_name in ast.__dict__:
-    if ctor_name.startswith('_'):
+    if ctor_name.startswith("_"):
         continue
     setattr(FastAst, ctor_name, staticmethod(_make_func(ctor_name)))
 
 if sys.version_info >= (3, 8):
-    FastAst.Str = staticmethod(_make_func('Constant'))  # type: ignore
-    FastAst.Num = staticmethod(_make_func('Constant'))  # type: ignore
+    FastAst.Str = staticmethod(_make_func("Constant"))  # type: ignore
+    FastAst.Num = staticmethod(_make_func("Constant"))  # type: ignore

@@ -20,20 +20,31 @@ logger.setLevel(logging.WARNING)
 
 
 class AstRewriter(ast.NodeTransformer):
-    def __init__(self, tracers: List[BaseTracer], module_id: Optional[int] = None, path: Optional[str] = None):
+    def __init__(
+        self,
+        tracers: List[BaseTracer],
+        module_id: Optional[int] = None,
+        path: Optional[str] = None,
+    ):
         self._tracers = tracers
         self._module_id: Optional[int] = module_id
         self._path: Optional[str] = path
-        self._augmented_positions_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]] = defaultdict(set)
+        self._augmented_positions_by_spec: Dict[
+            AugmentationSpec, Set[Tuple[int, int]]
+        ] = defaultdict(set)
         self.orig_to_copy_mapping: Optional[Dict[int, ast.AST]] = None
 
-    def register_augmented_position(self, aug_spec: AugmentationSpec, lineno: int, col_offset: int) -> None:
+    def register_augmented_position(
+        self, aug_spec: AugmentationSpec, lineno: int, col_offset: int
+    ) -> None:
         self._augmented_positions_by_spec[aug_spec].add((lineno, col_offset))
 
     def visit(self, node: ast.AST):
         assert isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef))
         mapper = StatementMapper(
-            self._tracers[-1].line_to_stmt_by_module_id[id(node) if self._module_id is None else self._module_id],
+            self._tracers[-1].line_to_stmt_by_module_id[
+                id(node) if self._module_id is None else self._module_id
+            ],
             self._tracers,
             self._augmented_positions_by_spec,
         )
@@ -44,10 +55,14 @@ class AstRewriter(ast.NodeTransformer):
         events_with_handlers: Set[TraceEvent] = set()
         for tracer in self._tracers:
             for evt in tracer.events_with_registered_handlers:
-                if self._path is None or tracer._file_passes_filter_impl(evt.value, self._path):
+                if self._path is None or tracer._file_passes_filter_impl(
+                    evt.value, self._path
+                ):
                     events_with_handlers.add(evt)
         frozen_events_with_handlers = frozenset(events_with_handlers)
-        expr_rewriter = ExprRewriter(orig_to_copy_mapping, frozen_events_with_handlers, self._tracers[-1].guards)
+        expr_rewriter = ExprRewriter(
+            orig_to_copy_mapping, frozen_events_with_handlers, self._tracers[-1].guards
+        )
         for i in range(len(node.body)):
             node.body[i] = expr_rewriter.visit(node.body[i])
         node = StatementInserter(

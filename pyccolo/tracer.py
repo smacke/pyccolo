@@ -25,7 +25,19 @@ from pyccolo.trace_stack import TraceStack
 
 if TYPE_CHECKING:
     from typing import (
-        Any, Callable, DefaultDict, Dict, FrozenSet, Generator, List, Optional, Set, Tuple, Type, Union, TypeVar
+        Any,
+        Callable,
+        DefaultDict,
+        Dict,
+        FrozenSet,
+        Generator,
+        List,
+        Optional,
+        Set,
+        Tuple,
+        Type,
+        Union,
+        TypeVar,
     )
     from types import FrameType
 
@@ -35,20 +47,24 @@ logger.setLevel(logging.ERROR)
 
 
 sys_settrace = sys.settrace
-internal_directories = (os.path.dirname(os.path.dirname((lambda: 0).__code__.co_filename)),)
+internal_directories = (
+    os.path.dirname(os.path.dirname((lambda: 0).__code__.co_filename)),
+)
 Null = object()
 SANDBOX_FNAME = "<sandbox>"
 
 
 def register_tracer_state_machine(tracer_cls: Type[BaseTracer]) -> None:
-    tracer_cls.EVENT_HANDLERS_BY_CLASS[tracer_cls] = defaultdict(list, tracer_cls.EVENT_HANDLERS_PENDING_REGISTRATION)
+    tracer_cls.EVENT_HANDLERS_BY_CLASS[tracer_cls] = defaultdict(
+        list, tracer_cls.EVENT_HANDLERS_PENDING_REGISTRATION
+    )
     tracer_cls.EVENT_HANDLERS_PENDING_REGISTRATION.clear()
     tracer_cls._MANAGER_CLASS_REGISTERED = True
 
 
 class MetaTracerStateMachine(MetaHasTraits):
     def __new__(mcs, name, bases, *args, **kwargs):
-        if name not in ('_InternalBaseTracer', 'BaseTracer'):
+        if name not in ("_InternalBaseTracer", "BaseTracer"):
             bases += (SingletonConfigurable,)
         return MetaHasTraits.__new__(mcs, name, bases, *args, **kwargs)
 
@@ -71,9 +87,11 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[
         TraceEvent, List[Tuple[Callable[..., Any], bool]]
     ] = defaultdict(list)
-    EVENT_HANDLERS_BY_CLASS: Dict[Type[BaseTracer], DefaultDict[TraceEvent, List[Tuple[Callable[..., Any], bool]]]] = {}
+    EVENT_HANDLERS_BY_CLASS: Dict[
+        Type[BaseTracer], DefaultDict[TraceEvent, List[Tuple[Callable[..., Any], bool]]]
+    ] = {}
 
-    EVENT_LOGGER = logging.getLogger('events')
+    EVENT_LOGGER = logging.getLogger("events")
     EVENT_LOGGER.setLevel(logging.WARNING)
 
     guards: Set[str] = set()
@@ -89,10 +107,10 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             return
         if not self._MANAGER_CLASS_REGISTERED:
             raise ValueError(
-                f'class not registered; use the `{register_tracer_state_machine.__name__}` decorator on the subclass'
+                f"class not registered; use the `{register_tracer_state_machine.__name__}` decorator on the subclass"
             )
         super().__init__()
-        self._has_fancy_sys_tracing = (sys.version_info >= (3, 7))
+        self._has_fancy_sys_tracing = sys.version_info >= (3, 7)
         self._event_handlers = defaultdict(list)
         events_with_registered_handlers = set()
         for clazz in reversed(self.__class__.mro()):
@@ -100,13 +118,17 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 self._event_handlers[evt].extend(handlers)
                 if not issubclass(BaseTracer, clazz) and len(handlers) > 0:
                     events_with_registered_handlers.add(evt)
-        self.events_with_registered_handlers: FrozenSet[TraceEvent] = frozenset(events_with_registered_handlers)
+        self.events_with_registered_handlers: FrozenSet[TraceEvent] = frozenset(
+            events_with_registered_handlers
+        )
         self._tracing_enabled_files: FrozenSet[str] = frozenset({SANDBOX_FNAME})
         self._is_tracing_enabled = False
         self._is_tracing_hard_disabled = False
         self.sys_tracer = self._sys_tracer
         self.existing_tracer = None
-        self.augmented_node_ids_by_spec: Dict[AugmentationSpec, Set[int]] = defaultdict(set)
+        self.augmented_node_ids_by_spec: Dict[AugmentationSpec, Set[int]] = defaultdict(
+            set
+        )
         self._num_sandbox_calls_seen: int = 0
 
         self._transient_fields: Set[str] = set()
@@ -116,16 +138,19 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
     @property
     def has_sys_trace_events(self):
-        return any(evt in self.events_with_registered_handlers for evt in (
-            TraceEvent.line,
-            TraceEvent.call,
-            TraceEvent.return_,
-            TraceEvent.exception,
-            TraceEvent.opcode,
-            TraceEvent.c_call,
-            TraceEvent.c_return,
-            TraceEvent.c_exception,
-        ))
+        return any(
+            evt in self.events_with_registered_handlers
+            for evt in (
+                TraceEvent.line,
+                TraceEvent.call,
+                TraceEvent.return_,
+                TraceEvent.exception,
+                TraceEvent.opcode,
+                TraceEvent.c_call,
+                TraceEvent.c_return,
+                TraceEvent.c_exception,
+            )
+        )
 
     @property
     def syntax_augmentation_specs(self) -> List[AugmentationSpec]:
@@ -143,7 +168,11 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         self._persistent_fields = set(self.__dict__.keys())
 
     def _post_init_hook_end(self):
-        self._transient_fields = set(self.__dict__.keys()) - self._persistent_fields - self._manual_persistent_fields
+        self._transient_fields = (
+            set(self.__dict__.keys())
+            - self._persistent_fields
+            - self._manual_persistent_fields
+        )
 
     @contextmanager
     def persistent_fields(self) -> Generator[None, None, None]:
@@ -153,7 +182,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             if field in current_fields:
                 saved_fields[field] = self.__dict__[field]
         yield
-        self._manual_persistent_fields = (self.__dict__.keys() - current_fields) | saved_fields.keys()
+        self._manual_persistent_fields = (
+            self.__dict__.keys() - current_fields
+        ) | saved_fields.keys()
         for field, val in saved_fields.items():
             self.__dict__[field] = val
 
@@ -172,31 +203,45 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         assert guard in cls.guards
         setattr(builtins, guard, True)
 
-    def should_propagate_handler_exception(self, evt: TraceEvent, exc: Exception) -> bool:
+    def should_propagate_handler_exception(
+        self, evt: TraceEvent, exc: Exception
+    ) -> bool:
         return False
 
-    def _emit_event(self, evt: Union[str, TraceEvent], node_id: Optional[int], frame: FrameType, **kwargs: Any):
+    def _emit_event(
+        self,
+        evt: Union[str, TraceEvent],
+        node_id: Optional[int],
+        frame: FrameType,
+        **kwargs: Any,
+    ):
         try:
             if self._is_tracing_hard_disabled:
-                return kwargs.get('ret', None)
+                return kwargs.get("ret", None)
             event = evt if isinstance(evt, TraceEvent) else TraceEvent(evt)
             for handler, use_raw_node_id in self._event_handlers[event]:
-                old_ret = kwargs.pop('ret', None)
+                old_ret = kwargs.pop("ret", None)
                 try:
-                    node_id_or_node = node_id if use_raw_node_id else self.ast_node_by_id.get(node_id, None)
-                    new_ret = handler(self, old_ret, node_id_or_node, frame, event, **kwargs)
+                    node_id_or_node = (
+                        node_id
+                        if use_raw_node_id
+                        else self.ast_node_by_id.get(node_id, None)
+                    )
+                    new_ret = handler(
+                        self, old_ret, node_id_or_node, frame, event, **kwargs
+                    )
                 except Exception as exc:
                     if self.should_propagate_handler_exception(event, exc):
                         raise exc
                     else:
-                        logger.exception('An exception while handling evt %s', event)
+                        logger.exception("An exception while handling evt %s", event)
                     new_ret = None
                 if new_ret is None:
                     new_ret = old_ret
                 elif new_ret is Null:
                     new_ret = None
-                kwargs['ret'] = new_ret
-            return kwargs.get('ret', None)
+                kwargs["ret"] = new_ret
+            return kwargs.get("ret", None)
         except KeyboardInterrupt as ki:
             self._disable_tracing(check_enabled=False)
             raise ki.with_traceback(None)
@@ -205,7 +250,6 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         return TraceStack(self)
 
     def _make_composed_tracer(self, existing_tracer):  # pragma: no cover
-
         @functools.wraps(self._sys_tracer)
         def _composed_tracer(frame: FrameType, evt: str, arg: Any, **kwargs):
             orig_sys_tracer = sys.gettrace()
@@ -217,10 +261,11 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 my_ret = self._sys_tracer(frame, evt, arg, **kwargs)
             else:
                 my_ret = None
-            if my_ret is None and evt == 'call':
+            if my_ret is None and evt == "call":
                 return existing_ret
             else:
                 return my_ret
+
         return _composed_tracer
 
     def _settrace_patch(self, trace_func):  # pragma: no cover
@@ -274,13 +319,19 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             ret = self._num_sandbox_calls_seen >= 2
             self._num_sandbox_calls_seen += evt == "call"
             return ret
-        return filename in self._tracing_enabled_files or self.file_passes_filter_for_event(evt, filename)
+        return (
+            filename in self._tracing_enabled_files
+            or self.file_passes_filter_for_event(evt, filename)
+        )
 
     def make_ast_rewriter(self, **kwargs) -> AstRewriter:
         return self.ast_rewriter_cls(_TRACER_STACK, **kwargs)
 
     def make_syntax_augmenters(self, ast_rewriter: AstRewriter) -> List[Callable]:
-        return [make_syntax_augmenter(ast_rewriter, spec) for spec in self.syntax_augmentation_specs]
+        return [
+            make_syntax_augmenter(ast_rewriter, spec)
+            for spec in self.syntax_augmentation_specs
+        ]
 
     @contextmanager
     def tracing_enabled(self, **kwargs) -> Generator[None, None, None]:
@@ -304,7 +355,10 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             code.body[0] = self.make_ast_rewriter().visit(code.body[0])
             compiled: types.CodeType = compile(code, f.__code__.co_filename, "exec")
             for const in compiled.co_consts:
-                if isinstance(const, types.CodeType) and const.co_name == f.__code__.co_name:
+                if (
+                    isinstance(const, types.CodeType)
+                    and const.co_name == f.__code__.co_name
+                ):
                     f.__code__ = const
 
         @functools.wraps(f)
@@ -326,7 +380,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         was_tracing_enabled = False
         should_push = self not in _TRACER_STACK
         if tracing_enabled_file is not None:
-            self._tracing_enabled_files = self._tracing_enabled_files | {tracing_enabled_file}
+            self._tracing_enabled_files = self._tracing_enabled_files | {
+                tracing_enabled_file
+            }
         try:
             if getattr(builtins, EMIT_EVENT, None) is not _emit_event:
                 setattr(builtins, EMIT_EVENT, _emit_event)
@@ -338,10 +394,15 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 do_patch_meta_path = True
             if should_push:
                 _TRACER_STACK.append(self)  # type: ignore
-            do_patch_sys_settrace = sys.settrace != self._settrace_patch and self.has_sys_trace_events
+            do_patch_sys_settrace = (
+                sys.settrace != self._settrace_patch and self.has_sys_trace_events
+            )
             with patch_meta_path(_TRACER_STACK) if do_patch_meta_path else suppress():
                 with self._patch_sys_settrace() if do_patch_sys_settrace else suppress():
-                    if not self._is_tracing_hard_disabled and not self._is_tracing_enabled:
+                    if (
+                        not self._is_tracing_hard_disabled
+                        and not self._is_tracing_enabled
+                    ):
                         was_tracing_enabled = True
                         self._enable_tracing()
                     yield
@@ -382,7 +443,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         filename: Optional[str] = "<file>",
         instrument: bool = True,
     ) -> None:
-        with self.tracing_context(disabled=self._is_tracing_hard_disabled) if instrument else suppress():
+        with self.tracing_context(
+            disabled=self._is_tracing_hard_disabled
+        ) if instrument else suppress():
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
                 code = self.parse(code)
@@ -400,7 +463,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         frame = None
         if global_env is None or local_env is None:
             frame = sys._getframe().f_back
-            if frame.f_code.co_filename.endswith(os.path.join("pyccolo", "__init__.py")):
+            if frame.f_code.co_filename.endswith(
+                os.path.join("pyccolo", "__init__.py")
+            ):
                 # in case we were called from `pyc.exec(...)`
                 frame = frame.f_back
         if local_env is None:
@@ -408,7 +473,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         if global_env is None:
             global_env = frame.f_globals
         # pytest inserts variables prepended with "@"; we don't want these
-        args_to_use = [k for k in local_env.keys() if not k.startswith("@") and k != "__"]
+        args_to_use = [
+            k for k in local_env.keys() if not k.startswith("@") and k != "__"
+        ]
         if len(args_to_use) > 0:
             sandbox_args = ", ".join(["*"] + args_to_use + ["**__"])
         else:
@@ -425,7 +492,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             """
         ).strip()
         sandboxed_code = ast.parse(cast(str, sandboxed_code), SANDBOX_FNAME, "exec")
-        with self.tracing_context(disabled=self._is_tracing_hard_disabled) if instrument else suppress():
+        with self.tracing_context(
+            disabled=self._is_tracing_hard_disabled
+        ) if instrument else suppress():
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
                 if instrument:
@@ -460,17 +529,21 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         return self._emit_event(evt, None, frame, ret=arg)
 
     if TYPE_CHECKING:
-        TracerT = TypeVar('TracerT', bound=_InternalBaseTracer)
+        TracerT = TypeVar("TracerT", bound=_InternalBaseTracer)
 
         @classmethod
-        def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT: ...
+        def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT:
+            ...
 
         @classmethod
-        def clear_instance(cls) -> None: ...
+        def clear_instance(cls) -> None:
+            ...
 
 
 def register_handler(
-    event: Union[Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]],
+    event: Union[
+        Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]
+    ],
     use_raw_node_id: bool = False,
 ):
     events = event if isinstance(event, tuple) else (event,)
@@ -481,13 +554,20 @@ def register_handler(
     def _inner_registrar(handler):
         for evt in events:
             _InternalBaseTracer.EVENT_HANDLERS_PENDING_REGISTRATION[
-                AST_TO_EVENT_MAPPING[evt] if type(evt) is type and issubclass(evt, ast.AST) else evt
+                AST_TO_EVENT_MAPPING[evt]
+                if type(evt) is type and issubclass(evt, ast.AST)
+                else evt
             ].append((handler, use_raw_node_id))
         return handler
+
     return _inner_registrar
 
 
-def register_raw_handler(event: Union[Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]]):
+def register_raw_handler(
+    event: Union[
+        Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]
+    ]
+):
     return register_handler(event, use_raw_node_id=True)
 
 
@@ -497,6 +577,7 @@ def skip_when_tracing_disabled(handler):
         if not self._is_tracing_enabled:
             return
         return handler(self, *args, **kwargs)
+
     return skipping_handler
 
 
@@ -505,16 +586,17 @@ def register_universal_handler(handler):
 
 
 class BaseTracer(_InternalBaseTracer):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_slice: Optional[Any] = None
 
-    @register_raw_handler((
-        TraceEvent.before_subscript_load,
-        TraceEvent.before_subscript_store,
-        TraceEvent.before_subscript_del,
-    ))
+    @register_raw_handler(
+        (
+            TraceEvent.before_subscript_load,
+            TraceEvent.before_subscript_store,
+            TraceEvent.before_subscript_del,
+        )
+    )
     def _save_slice_for_later(self, *_, attr_or_subscript: Any, **__):
         self._saved_slice = attr_or_subscript
 

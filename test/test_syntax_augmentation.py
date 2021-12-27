@@ -2,10 +2,13 @@ import sys
 import pyccolo as pyc
 
 
-add_42_spec = pyc.AugmentationSpec(aug_type=pyc.AugmentationType.binop, token='++', replacement='+')
+add_42_spec = pyc.AugmentationSpec(
+    aug_type=pyc.AugmentationType.binop, token="++", replacement="+"
+)
 
 
 if sys.version_info >= (3, 8):
+
     def test_augmented_plus():
         class Add42(pyc.BaseTracer):
             def __init__(self, *args, **kwargs):

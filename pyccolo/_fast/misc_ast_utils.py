@@ -20,7 +20,9 @@ def make_test(var_name: str, negate: bool = False) -> ast.expr:
     return ret
 
 
-def make_composite_condition(nullable_conditions: typing.List[Optional[ast.expr]], op: Optional[ast.AST] = None):
+def make_composite_condition(
+    nullable_conditions: typing.List[Optional[ast.expr]], op: Optional[ast.AST] = None
+):
     conditions = [cond for cond in nullable_conditions if cond is not None]
     if len(conditions) == 1:
         return conditions[0]
@@ -37,7 +39,10 @@ def subscript_to_slice(node: ast.Subscript) -> ast.expr:
 
 class EmitterMixin:
     def __init__(
-        self, orig_to_copy_mapping: Dict[int, ast.AST], events_with_handlers: FrozenSet[TraceEvent], guards: Set[str]
+        self,
+        orig_to_copy_mapping: Dict[int, ast.AST],
+        events_with_handlers: FrozenSet[TraceEvent],
+        guards: Set[str],
     ):
         self.orig_to_copy_mapping = orig_to_copy_mapping
         self.events_with_handlers = events_with_handlers
@@ -55,7 +60,9 @@ class EmitterMixin:
             orig_node_id = id(orig_node_id)
         return fast.Num(id(self.orig_to_copy_mapping[orig_node_id]))
 
-    def emit(self, evt: TraceEvent, node_or_id: Union[int, ast.AST], args=None, **kwargs):
+    def emit(
+        self, evt: TraceEvent, node_or_id: Union[int, ast.AST], args=None, **kwargs
+    ):
         args = args or []
         return fast.Call(
             func=self.emitter_ast(),
@@ -63,13 +70,14 @@ class EmitterMixin:
             keywords=fast.kwargs(**kwargs),
         )
 
-    def make_tuple_event_for(self, node: ast.AST, event: TraceEvent, orig_node_id=None, **kwargs):
+    def make_tuple_event_for(
+        self, node: ast.AST, event: TraceEvent, orig_node_id=None, **kwargs
+    ):
         if event not in self.events_with_handlers:
             return node
         with fast.location_of(node):
             tuple_node = fast.Tuple(
-                [self.emit(event, orig_node_id or node, **kwargs), node],
-                ast.Load()
+                [self.emit(event, orig_node_id or node, **kwargs), node], ast.Load()
             )
             slc: Union[ast.Constant, ast.Num, ast.Index] = fast.Num(1)
             if sys.version_info < (3, 9):
@@ -83,13 +91,13 @@ class PositionAdjuster(ast.NodeVisitor):
         self.col_offset = col_offset
 
     def generic_visit(self, node):
-        if hasattr(node, 'lineno'):
+        if hasattr(node, "lineno"):
             node.lineno += self.line_offset
-        if hasattr(node, 'end_lineno'):
+        if hasattr(node, "end_lineno"):
             node.end_lineno += self.line_offset
-        if hasattr(node, 'col_offset'):
+        if hasattr(node, "col_offset"):
             node.col_offset += self.col_offset
-        if hasattr(node, 'end_col_offset'):
+        if hasattr(node, "end_col_offset"):
             node.end_col_offset += self.col_offset
 
         for name, field in ast.iter_fields(node):

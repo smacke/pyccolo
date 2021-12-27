@@ -6,7 +6,7 @@ import pyccolo as pyc
 def test_sandbox():
     env = pyc.exec("x = 42")
     assert env["x"] == 42
-    assert len(env) == 1, 'got %s' % env
+    assert len(env) == 1, "got %s" % env
 
 
 def test_instrumented_sandbox():
@@ -16,14 +16,14 @@ def test_instrumented_sandbox():
             return ret + 1
 
     env = IncrementsAssignValue.instance().exec("x = 42", {})
-    assert env["x"] == 43, 'got %s' % env["x"]
+    assert env["x"] == 43, "got %s" % env["x"]
     assert len(env) == 1
 
 
 def test_nonlocal_1():
     x = 5
     try:
-        pyc.exec('nonlocal x; x = 42')
+        pyc.exec("nonlocal x; x = 42")
     except SyntaxError:
         # we impl this by executing in a sandboxed function;
         # the 'nonlocal' keyword will conflict with function arg
@@ -37,7 +37,8 @@ def test_nonlocal_2():
 
     def inner():
         nonlocal x
-        x = pyc.exec('x = 42')['x']
+        x = pyc.exec("x = 42")["x"]
+
     inner()
 
     assert x == 42
@@ -56,7 +57,9 @@ def test_two_handlers():
     with TwoAssignMutations.instance().tracing_context():
         env = pyc.exec("x = 42", {})
     # env = TwoAssignMutations.instance().exec("x = 42")
-    assert env["x"] == 86, 'got %s' % env["x"]  # tests that handlers are applied in order of defn
+    assert env["x"] == 86, (
+        "got %s" % env["x"]
+    )  # tests that handlers are applied in order of defn
     assert len(env) == 1
 
 
@@ -75,7 +78,9 @@ def test_two_handlers_from_separate_classes():
         with AssignMutation2.instance().tracing_context():
             env = pyc.exec("x = 42", {})
 
-    assert env["x"] == 86, 'got %s' % env["x"]  # tests that handlers are applied in order of defn
+    assert env["x"] == 86, (
+        "got %s" % env["x"]
+    )  # tests that handlers are applied in order of defn
     assert len(env) == 1
 
 
@@ -97,7 +102,7 @@ def test_null():
 def test_pass_sandboxed_environ():
     env = pyc.exec("x = 42", {})
     assert env["x"] == 42
-    assert len(env) == 1, 'got %s' % env
+    assert len(env) == 1, "got %s" % env
     env = pyc.exec("y = x + 1", env)
     assert len(env) == 2
     assert env["x"] == 42
@@ -105,7 +110,6 @@ def test_pass_sandboxed_environ():
 
 
 def test_sys_tracing_call():
-
     class TracesCalls(pyc.BaseTracer):
         def __init__(self):
             super().__init__()
@@ -127,7 +131,8 @@ def test_sys_tracing_call():
         def foo():
             pass
         foo(); foo()
-        """, {}
+        """,
+        {},
     )
     assert sys.gettrace() is sys_tracer
     assert len(env) == 1
@@ -197,7 +202,8 @@ def test_composed_sys_tracing_calls():
                     def foo():
                         pass
                     foo(); foo()
-                    """, {}
+                    """,
+                    {},
                 )
     assert sys.gettrace() is original_tracer
     assert len(env) == 1
@@ -238,6 +244,7 @@ def test_tracing_context_manager_toggling():
 
 
 if sys.gettrace() is None:
+
     def test_composes_with_existing_sys_tracer():
 
         num_calls_seen_from_existing_tracer = 0

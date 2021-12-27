@@ -20,7 +20,10 @@ class TraceStack:
         self._field_mapping: Dict[str, int] = {}
 
     def _stack_item_names(self):
-        return itertools.chain(self._stack_item_initializers.keys(), self._stack_items_with_manual_initialization)
+        return itertools.chain(
+            self._stack_item_initializers.keys(),
+            self._stack_items_with_manual_initialization,
+        )
 
     def get_field(self, field: str, depth: int = 1) -> Any:
         return self._stack[-depth][self._field_mapping[field]]
@@ -32,7 +35,9 @@ class TraceStack:
         yield
         self._registering_stack_state_context = False
         stack_item_names = set(self._manager.__dict__.keys() - original_state)
-        for stack_item_name in stack_item_names - self._stack_items_with_manual_initialization:
+        for stack_item_name in (
+            stack_item_names - self._stack_items_with_manual_initialization
+        ):
             stack_item = self._manager.__dict__[stack_item_name]
             if isinstance(stack_item, TraceStack):
                 self._stack_item_initializers[stack_item_name] = stack_item._clone
@@ -51,14 +56,21 @@ class TraceStack:
         assert self._registering_stack_state_context
         original_state = set(self._manager.__dict__.keys())
         yield
-        self._stack_items_with_manual_initialization = set(self._manager.__dict__.keys() - original_state)
+        self._stack_items_with_manual_initialization = set(
+            self._manager.__dict__.keys() - original_state
+        )
 
     @contextmanager
     def push(self):
         """
         Checks at the end of the context that everything requiring manual init was manually inited.
         """
-        self._stack.append(tuple(self._manager.__dict__[stack_item] for stack_item in self._stack_item_names()))
+        self._stack.append(
+            tuple(
+                self._manager.__dict__[stack_item]
+                for stack_item in self._stack_item_names()
+            )
+        )
         for stack_item, initializer in self._stack_item_initializers.items():
             self._manager.__dict__[stack_item] = initializer()
         for stack_item in self._stack_items_with_manual_initialization:
@@ -70,7 +82,8 @@ class TraceStack:
                 uninitialized_items.append(stack_item)
         if len(uninitialized_items) > 0:
             raise ValueError(
-                "Stack item(s) %s requiring manual initialization were not initialized" % uninitialized_items
+                "Stack item(s) %s requiring manual initialization were not initialized"
+                % uninitialized_items
             )
 
     def _clone(self):
@@ -80,7 +93,9 @@ class TraceStack:
         return new_tracing_stack
 
     def pop(self):
-        for stack_item_name, stack_item in zip(self._stack_item_names(), self._stack.pop()):
+        for stack_item_name, stack_item in zip(
+            self._stack_item_names(), self._stack.pop()
+        ):
             self._manager.__dict__[stack_item_name] = stack_item
 
     def clear(self):
@@ -90,5 +105,3 @@ class TraceStack:
 
     def __len__(self):
         return len(self._stack)
-
-

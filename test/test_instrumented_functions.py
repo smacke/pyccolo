@@ -29,6 +29,7 @@ def test_decorated_tracing_decorator():
     def twice(f):
         def new_f():
             return f() * 2
+
         return new_f
 
     @twice

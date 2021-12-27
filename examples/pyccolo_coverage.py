@@ -21,11 +21,11 @@ join = os.path.join
 
 
 EXCEPTED_FILES = {
-    'version.py',
-    '_version.py',
+    "version.py",
+    "_version.py",
     # weird shit happens if we instrument _emit_event, so exclude it.
     # can be removed for coverage of non-pyccolo projects.
-    'emit_event.py',
+    "emit_event.py",
 }
 
 
@@ -46,10 +46,10 @@ def count_statements():
     visitor = CountStatementsVisitor()
     for path, _, files in os.walk(root):
         for filename in files:
-            if not filename.endswith('.py') or filename in EXCEPTED_FILES:
+            if not filename.endswith(".py") or filename in EXCEPTED_FILES:
                 continue
             filename = join(path, filename)
-            with open(filename, 'r') as f:
+            with open(filename, "r") as f:
                 visitor.visit(ast.parse(f.read()))
             total_by_fname[filename] = visitor.num_stmts
             total += visitor.num_stmts
@@ -58,18 +58,17 @@ def count_statements():
 
 
 class CoverageTracer(pyc.BaseTracer):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.seen_stmts = set()
         self.stmt_count_by_fname = Counter()
 
     def file_passes_filter_for_event(self, evt: str, path: str) -> bool:
-        if 'test' in path or 'examples' in path:
+        if "test" in path or "examples" in path:
             # filter out tests and self
             return False
 
-        return 'pyccolo' in path and not any(
+        return "pyccolo" in path and not any(
             path.endswith(excepted) for excepted in EXCEPTED_FILES
         )
 
@@ -87,7 +86,7 @@ class CoverageTracer(pyc.BaseTracer):
 def remove_pyccolo_modules():
     to_delete = []
     for mod in sys.modules:
-        if mod.startswith('pyccolo'):
+        if mod.startswith("pyccolo"):
             to_delete.append(mod)
     for mod in to_delete:
         del sys.modules[mod]
@@ -103,6 +102,7 @@ if __name__ == "__main__":
     tracer = CoverageTracer.instance()
     with tracer.tracing_context():
         import pyccolo as pyc
+
         # we just cleared the original tracer stack when we deleted all the imports, so
         # we need to put it back
         # (can be omitted for non-pyccolo projects)
@@ -113,9 +113,15 @@ if __name__ == "__main__":
         shortened = "." + fname.split(".", 1)[-1]
         seen = tracer.stmt_count_by_fname[fname]
         total = total_by_fname[shortened]
-        logger.warning("[%-40s]: seen=%4d, total=%4d, ratio=%.3f", shortened, seen, total, float(seen) / total)
+        logger.warning(
+            "[%-40s]: seen=%4d, total=%4d, ratio=%.3f",
+            shortened,
+            seen,
+            total,
+            float(seen) / total,
+        )
     num_seen_stmts = len(tracer.seen_stmts)
-    logger.warning('num stmts seen: %s', num_seen_stmts)
-    logger.warning('num stmts total: %s', total_stmts)
-    logger.warning('ratio: %.3f', float(num_seen_stmts) / total_stmts)
+    logger.warning("num stmts seen: %s", num_seen_stmts)
+    logger.warning("num stmts total: %s", total_stmts)
+    logger.warning("ratio: %.3f", float(num_seen_stmts) / total_stmts)
     sys.exit(exit_code)
