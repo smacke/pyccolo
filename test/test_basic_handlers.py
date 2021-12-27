@@ -212,6 +212,27 @@ def test_composed_sys_tracing_calls():
     assert num_calls_seen_2 == 2
     assert num_calls_seen_3 == 2
 
+    num_calls_seen_1 = num_calls_seen_2 = num_calls_seen_3 = 0
+    # now make sure it works with the package-level one
+
+    with pyc.tracing_context(
+        (TracesCalls1.instance(), TracesCalls2.instance(), TracesCalls3.instance())
+    ):
+        env = pyc.exec(
+            """
+            def foo():
+                pass
+            foo(); foo()
+            """,
+            {},
+        )
+    assert sys.gettrace() is original_tracer
+    assert len(env) == 1
+    assert "foo" in env
+    assert num_calls_seen_1 == 2
+    assert num_calls_seen_2 == 2
+    assert num_calls_seen_3 == 2
+
 
 def test_tracing_context_manager_toggling():
     num_stmts_seen = 0
@@ -240,6 +261,28 @@ def test_tracing_context_manager_toggling():
         pyc.exec("x = 1")
 
     assert num_stmts_seen == 1
+    assert num_calls_seen == 1
+
+    num_stmts_seen = num_calls_seen = 0
+    with pyc.tracing_disabled((stmt_tracer, call_tracer)):
+        pyc.exec(
+            """
+            (lambda: 5)()
+            x = 1
+            """
+        )
+    assert num_stmts_seen == 0
+    assert num_calls_seen == 0
+
+    with pyc.tracing_enabled((stmt_tracer, call_tracer)):
+        pyc.exec(
+            """
+            (lambda: 5)()
+            x = 1
+            """
+        )
+
+    assert num_stmts_seen == 2
     assert num_calls_seen == 1
 
 

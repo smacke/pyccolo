@@ -10,6 +10,7 @@ import functools
 import inspect
 import textwrap
 import types
+from contextlib import contextmanager
 from typing import Any, Dict
 from .ast_rewriter import AstRewriter
 from .emit_event import _TRACER_STACK, allow_reentrant_event_handling
@@ -83,6 +84,26 @@ def instrumented(tracers):
         return instrumented_f
 
     return decorator
+
+
+@contextmanager
+def tracing_context(tracers, *args, **kwargs):
+    with multi_context([tracer.tracing_context(*args, **kwargs) for tracer in tracers]):
+        yield
+
+
+@contextmanager
+def tracing_enabled(tracers, *args, **kwargs):
+    with multi_context([tracer.tracing_enabled(*args, **kwargs) for tracer in tracers]):
+        yield
+
+
+@contextmanager
+def tracing_disabled(tracers, *args, **kwargs):
+    with multi_context(
+        [tracer.tracing_disabled(*args, **kwargs) for tracer in tracers]
+    ):
+        yield
 
 
 # redundant; do this just in case we forgot to add stubs in trace_events.py
