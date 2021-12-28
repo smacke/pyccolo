@@ -64,3 +64,84 @@ def test_basic_stack():
             assert tracer.stack.get_field("name") == ""
             """
         )
+
+
+def test_nested_stack():
+    class NestedTracer(pyc.BaseTracer):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.stack = self.make_stack()
+            with self.stack.register_stack_state():
+                self.list_stack = self.make_stack()
+                with self.list_stack.register_stack_state():
+                    self.running_length = 0
+
+        @pyc.register_handler(pyc.before_call)
+        def before_call(self, *_, **__):
+            with self.stack.push():
+                pass
+
+        @pyc.register_handler(pyc.after_call)
+        def after_call(self, *_, **__):
+            self.stack.pop()
+
+        @pyc.register_handler(pyc.before_list_literal)
+        def before_list_literal(self, *_, **__):
+            with self.list_stack.push():
+                pass
+
+        @pyc.register_handler(pyc.after_list_literal)
+        def after_list_literal(self, *_, **__):
+            self.list_stack.pop()
+
+        @pyc.register_handler(pyc.list_elt)
+        def list_elt(self, *_, **__):
+            self.running_length += 1
+            if self.running_length == 5:
+                self.list_stack.clear()
+
+    tracer = NestedTracer.instance()
+    with tracer.tracing_enabled():
+        assert (
+            pyc.exec(
+                """
+            lst = [
+                tracer.running_length, 
+                tracer.running_length, 
+                [
+                    tracer.running_length, 
+                    tracer.running_length, 
+                    tracer.running_length, 
+                ],
+                tracer.running_length, 
+                tracer.running_length, 
+            ]
+            """
+            )["lst"]
+            == [0, 1, [0, 1, 2], 3, 4]
+        )
+
+        assert (
+            pyc.exec(
+                """
+            assert len(tracer.stack) == 1
+            def f():
+                assert len(tracer.stack) == 2
+                return [
+                    tracer.running_length, 
+                    tracer.running_length, 
+                    [
+                        tracer.running_length, 
+                        tracer.running_length, 
+                        tracer.running_length, 
+                    ],
+                    tracer.running_length, 
+                    tracer.running_length, 
+                    tracer.running_length, 
+                    tracer.running_length, 
+                ]
+            lst = [tracer.running_length, f(), tracer.running_length]
+            """
+            )["lst"]
+            == [0, [0, 1, [0, 1, 2], 3, 4, 0, 1], 2]
+        )
