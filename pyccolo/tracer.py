@@ -246,7 +246,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             self._disable_tracing(check_enabled=False)
             raise ki.with_traceback(None)
 
-    def _make_stack(self):
+    def make_stack(self):
         return TraceStack(self)
 
     def _make_composed_tracer(self, existing_tracer):  # pragma: no cover

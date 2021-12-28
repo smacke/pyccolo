@@ -89,14 +89,14 @@ class TraceStack:
     def _clone(self):
         new_tracing_stack = TraceStack(self._manager)
         new_tracing_stack.__dict__ = dict(self.__dict__)
-        new_tracing_stack._stack = []
         return new_tracing_stack
 
-    def pop(self):
+    def pop(self) -> TraceStack:
         for stack_item_name, stack_item in zip(
             self._stack_item_names(), self._stack.pop()
         ):
             self._manager.__dict__[stack_item_name] = stack_item
+        return self
 
     def clear(self):
         self._stack = self._stack[:1]
