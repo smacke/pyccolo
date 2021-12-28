@@ -242,27 +242,27 @@ def test_reentrant_handling():
                 return
             return ret + 2
 
-    code = (
-        """
+    code = """
         class AssignMutationInner(pyc.BaseTracer):
             @pyc.register_handler(ast.Assign)
             def handle_inner_assign(self, ret, *_, **__):
                 if not isinstance(ret, int):
                     return
                 with inner_tracer.tracing_disabled():
-                    new_ret = ret + 1
+                    new_ret = ret + 1  # + 2 if reentrant else + 0
                 return new_ret
                 
         inner_tracer = AssignMutationInner.instance()
-        with inner_tracer.tracing_disabled():
-            x = pyc.exec(  # + 2
-                '''
-                with inner_tracer.tracing_enabled():
-                    x = 35  # + 5 if reentrant else + 3
-                '''
-            )["x"]
+        with outer_tracer.tracing_disabled():
+            with inner_tracer.tracing_disabled():
+                x = pyc.exec(
+                    '''
+                    with outer_tracer.tracing_enabled():
+                        with inner_tracer.tracing_enabled():
+                            x = 37  # + 5 if reentrant else + 3
+                    '''
+                )["x"]
         """
-    )
 
     outer_tracer = AssignMutationOuter.instance()
 
