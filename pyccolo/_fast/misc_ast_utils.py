@@ -83,29 +83,3 @@ class EmitterMixin:
             if sys.version_info < (3, 9):
                 slc = fast.Index(slc)
             return fast.Subscript(tuple_node, slc, ast.Load())
-
-
-class PositionAdjuster(ast.NodeVisitor):
-    def __init__(self, line_offset: int = 0, col_offset: int = 0):
-        self.line_offset = line_offset
-        self.col_offset = col_offset
-
-    def generic_visit(self, node):
-        if hasattr(node, "lineno"):
-            node.lineno += self.line_offset
-        if hasattr(node, "end_lineno"):
-            node.end_lineno += self.line_offset
-        if hasattr(node, "col_offset"):
-            node.col_offset += self.col_offset
-        if hasattr(node, "end_col_offset"):
-            node.end_col_offset += self.col_offset
-
-        for name, field in ast.iter_fields(node):
-            if isinstance(field, ast.AST):
-                self.visit(field)
-            elif isinstance(field, list):
-                for inner_node in field:
-                    if isinstance(inner_node, ast.AST):
-                        self.visit(inner_node)
-            else:
-                continue

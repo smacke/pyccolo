@@ -234,6 +234,46 @@ def test_composed_sys_tracing_calls():
     assert num_calls_seen_3 == 2
 
 
+def test_reentrant_handling():
+    class AssignMutationOuter(pyc.BaseTracer):
+        @pyc.register_handler(ast.Assign)
+        def handle_outer_assign(self, ret, *_, **__):
+            if not isinstance(ret, int):
+                return
+            return ret + 2
+
+    code = (
+        """
+        class AssignMutationInner(pyc.BaseTracer):
+            @pyc.register_handler(ast.Assign)
+            def handle_inner_assign(self, ret, *_, **__):
+                if not isinstance(ret, int):
+                    return
+                with inner_tracer.tracing_disabled():
+                    new_ret = ret + 1
+                return new_ret
+                
+        inner_tracer = AssignMutationInner.instance()
+        with inner_tracer.tracing_disabled():
+            x = pyc.exec(  # + 2
+                '''
+                with inner_tracer.tracing_enabled():
+                    x = 35  # + 5 if reentrant else + 3
+                '''
+            )["x"]
+        """
+    )
+
+    outer_tracer = AssignMutationOuter.instance()
+
+    with outer_tracer.tracing_enabled():
+        assert pyc.exec(code)["x"] == 40
+
+    with pyc.allow_reentrant_event_handling():
+        with outer_tracer.tracing_enabled():
+            assert pyc.exec(code)["x"] == 42
+
+
 def test_tracing_context_manager_toggling():
     num_stmts_seen = 0
     num_calls_seen = 0

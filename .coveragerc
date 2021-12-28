@@ -1,2 +1,9 @@
 [run]
+source = pyccolo
 omit = pyccolo/_version.py, pyccolo/version.py
+
+[report]
+exclude_lines =
+    pragma: no cover *$
+    ^ *if TYPE_CHECKING:
+    ^ *raise
