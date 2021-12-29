@@ -493,12 +493,13 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         else:
             sandbox_args = "**__"
         env_name = "__Xix_pyccolo_local_env"
+        fun_name = "__Xix_pyccolo_sandbox"
         sandboxed_code: Union[ast.Module, str] = textwrap.dedent(
             f"""
             {env_name} = dict(locals())
-            def _sandbox({sandbox_args}):
+            def {fun_name}({sandbox_args}):
                 return locals()
-            {env_name} = _sandbox(**{env_name})
+            {env_name} = {fun_name}(**{env_name})
             {env_name}.pop("__", None)
             {env_name}.pop("builtins", None)
             """
@@ -523,7 +524,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 local_env=local_env,
                 instrument=False,
             )
-        return local_env[env_name]
+        return local_env.pop(env_name)
 
     def _should_attempt_to_reenable_tracing(self, frame: FrameType) -> bool:
         return NotImplemented
