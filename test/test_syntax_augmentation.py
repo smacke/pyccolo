@@ -42,13 +42,20 @@ if sys.version_info >= (3, 8):
 
             dot_is_always_none = DotIsAlwaysNone()
 
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                with self.persistent_fields():
+                    self.coalesce_dot_ids = self.augmented_node_ids_by_spec[
+                        coalesce_dot_spec
+                    ]
+
             @property
             def syntax_augmentation_specs(self):
                 return [coalesce_dot_spec]
 
             @pyc.register_raw_handler(ast.Attribute)
             def handle_attr_dot(self, ret, node_id, *_, **__):
-                if ret is None and coalesce_dot_spec in self.get_augmentations(node_id):
+                if ret is None and node_id in self.coalesce_dot_ids:
                     return self.dot_is_always_none
                 else:
                     return ret
