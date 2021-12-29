@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 import sys
 import typing
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 if TYPE_CHECKING:
-    from typing import Any, Dict
     import ast
 
 from .._fast import *

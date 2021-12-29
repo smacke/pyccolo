@@ -1,3 +1,2 @@
-future-annotations
 mypy
 traitlets

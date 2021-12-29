@@ -1,9 +1,9 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 import ast
 import logging
 import sys
 from contextlib import contextmanager
-from typing import cast, TYPE_CHECKING
+from typing import cast, Dict, FrozenSet, List, Optional, Set, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import TRACING_ENABLED, make_guard_name
@@ -14,9 +14,6 @@ from pyccolo.fast import (
     subscript_to_slice,
 )
 from pyccolo.trace_events import TraceEvent
-
-if TYPE_CHECKING:
-    from typing import Dict, FrozenSet, List, Optional, Set, Union
 
 
 logger = logging.getLogger(__name__)

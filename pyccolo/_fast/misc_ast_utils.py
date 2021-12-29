@@ -1,16 +1,13 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 import ast
 import builtins
 import sys
 import typing
-from typing import TYPE_CHECKING
+from typing import Dict, FrozenSet, Optional, Set, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT
 from pyccolo.trace_events import TraceEvent
-
-if TYPE_CHECKING:
-    from typing import Dict, FrozenSet, Optional, Set, Union
 
 
 def make_test(var_name: str, negate: bool = False) -> ast.expr:

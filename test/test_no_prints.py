@@ -1,4 +1,4 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 """
 The idea of this file is to make sure that no debugging "print" statements
 make it into production.

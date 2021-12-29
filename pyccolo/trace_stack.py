@@ -1,17 +1,14 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 import itertools
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Set, Tuple
 
 if TYPE_CHECKING:
-    from typing import Any, Callable, Dict, List, Set, Tuple
-
-    # avoid circular imports
     from pyccolo.tracer import _InternalBaseTracer
 
 
 class TraceStack:
-    def __init__(self, manager: _InternalBaseTracer):
+    def __init__(self, manager: "_InternalBaseTracer"):
         self._manager = manager
         self._stack: List[Tuple[Any, ...]] = []
         self._stack_item_initializers: Dict[str, Callable[[], Any]] = {}
@@ -91,7 +88,7 @@ class TraceStack:
         new_tracing_stack.__dict__ = dict(self.__dict__)
         return new_tracing_stack
 
-    def pop(self) -> TraceStack:
+    def pop(self) -> "TraceStack":
         for stack_item_name, stack_item in zip(
             self._stack_item_names(), self._stack.pop()
         ):

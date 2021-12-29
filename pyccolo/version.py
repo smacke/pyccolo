@@ -1,4 +1,4 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 from pyccolo._version import get_versions
 
 __version__ = get_versions()["version"]

@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.5 (2021-12-29)
+------------------
+* Get rid of future-annotations dependency;
+* Fix memory leak in sandbox exec;
+
 0.0.4 (2021-12-26)
 ------------------
 * Misc composability improvements and fixes;

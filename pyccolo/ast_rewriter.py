@@ -1,8 +1,8 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 import ast
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from pyccolo.expr_rewriter import ExprRewriter
 from pyccolo.stmt_inserter import StatementInserter
@@ -11,7 +11,6 @@ from pyccolo.trace_events import TraceEvent
 from pyccolo.syntax_augmentation import AugmentationSpec
 
 if TYPE_CHECKING:
-    from typing import Dict, List, Optional, Set, Tuple
     from pyccolo.tracer import BaseTracer
 
 
@@ -22,7 +21,7 @@ logger.setLevel(logging.WARNING)
 class AstRewriter(ast.NodeTransformer):
     def __init__(
         self,
-        tracers: List[BaseTracer],
+        tracers: "List[BaseTracer]",
         module_id: Optional[int] = None,
         path: Optional[str] = None,
     ):

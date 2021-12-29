@@ -1,11 +1,10 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 import re
 import sys
 from enum import Enum
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, Callable, List, NamedTuple, Tuple, Union
 
 if TYPE_CHECKING:
-    from typing import Any, Callable, List, Tuple, Union
     from pyccolo.ast_rewriter import AstRewriter
 
     CodeType = Union[str, List[str]]
@@ -55,7 +54,7 @@ AUGMENTED_SYNTAX_REGEX_TEMPLATE = "".join(
 
 
 def replace_tokens_and_get_augmented_positions(
-    s: str, spec: AugmentationSpec, regex: Pattern
+    s: str, spec: AugmentationSpec, regex: "Pattern"
 ) -> Tuple[str, List[int]]:
     portions = []
     positions = []
@@ -75,13 +74,13 @@ def replace_tokens_and_get_augmented_positions(
 
 
 def make_syntax_augmenter(
-    rewriter: AstRewriter, aug_spec: AugmentationSpec
-) -> Callable[[CodeType], CodeType]:
+    rewriter: "AstRewriter", aug_spec: AugmentationSpec
+) -> "Callable[[CodeType], CodeType]":
     regex = re.compile(
         AUGMENTED_SYNTAX_REGEX_TEMPLATE.format(token=aug_spec.escaped_token)
     )
 
-    def _input_transformer(lines: CodeType) -> CodeType:
+    def _input_transformer(lines: "CodeType") -> "CodeType":
         if isinstance(lines, list):
             code_lines: List[str] = lines
         else:

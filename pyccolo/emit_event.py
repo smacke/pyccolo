@@ -1,14 +1,13 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
-    from typing import List
     from pyccolo.tracer import BaseTracer
 
 
-_TRACER_STACK: List[BaseTracer] = []
+_TRACER_STACK: "List[BaseTracer]" = []
 _allow_event_handling = True
 _allow_reentrant_event_handling = False
 

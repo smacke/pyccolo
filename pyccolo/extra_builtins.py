@@ -1,9 +1,6 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 import ast
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from typing import Union
+from typing import Union
 
 
 EMIT_EVENT = "_X5ix_PYCCOLO_EVT_EMIT"

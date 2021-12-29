@@ -1,17 +1,14 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 import difflib
 import functools
 import logging
-from typing import TYPE_CHECKING
+from types import FrameType
+from typing import List, Set, Union
 
 import hypothesis.strategies as st
 from hypothesis import example, given, settings
 
 import pyccolo as pyc
-
-if TYPE_CHECKING:
-    from typing import List, Set, Union
-    from types import FrameType
 
 logging.basicConfig(level=logging.INFO)
 

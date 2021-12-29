@@ -1,4 +1,4 @@
-# -*- coding: future_annotations -*-
+# -*- coding: utf-8 -*-
 import ast
 import builtins
 import functools
@@ -10,7 +10,24 @@ import textwrap
 import types
 from collections import defaultdict
 from contextlib import contextmanager, suppress
-from typing import TYPE_CHECKING, cast
+from types import FrameType
+from typing import (
+    cast,
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    DefaultDict,
+    Dict,
+    FrozenSet,
+    Generator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    Union,
+    TypeVar,
+)
 
 from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
@@ -22,24 +39,6 @@ from pyccolo.import_hooks import patch_meta_path
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
 from pyccolo.trace_events import TraceEvent, AST_TO_EVENT_MAPPING
 from pyccolo.trace_stack import TraceStack
-
-if TYPE_CHECKING:
-    from typing import (
-        Any,
-        Callable,
-        DefaultDict,
-        Dict,
-        FrozenSet,
-        Generator,
-        List,
-        Optional,
-        Set,
-        Tuple,
-        Type,
-        Union,
-        TypeVar,
-    )
-    from types import FrameType
 
 
 logger = logging.getLogger(__name__)
@@ -54,7 +53,7 @@ Null = object()
 SANDBOX_FNAME = "<sandbox>"
 
 
-def register_tracer_state_machine(tracer_cls: Type[BaseTracer]) -> None:
+def register_tracer_state_machine(tracer_cls: "Type[BaseTracer]") -> None:
     tracer_cls.EVENT_HANDLERS_BY_CLASS[tracer_cls] = defaultdict(
         list, tracer_cls.EVENT_HANDLERS_PENDING_REGISTRATION
     )
@@ -88,7 +87,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         TraceEvent, List[Tuple[Callable[..., Any], bool]]
     ] = defaultdict(list)
     EVENT_HANDLERS_BY_CLASS: Dict[
-        Type[BaseTracer], DefaultDict[TraceEvent, List[Tuple[Callable[..., Any], bool]]]
+        "Type[BaseTracer]",
+        DefaultDict[TraceEvent, List[Tuple[Callable[..., Any], bool]]],
     ] = {}
 
     EVENT_LOGGER = logging.getLogger("events")
@@ -542,7 +542,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         return self._emit_event(evt, None, frame, ret=arg)
 
     if TYPE_CHECKING:
-        TracerT = TypeVar("TracerT", bound=_InternalBaseTracer)
+        TracerT = TypeVar("TracerT", bound="_InternalBaseTracer")
 
         @classmethod
         def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT:
