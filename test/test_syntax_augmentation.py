@@ -11,11 +11,6 @@ if sys.version_info >= (3, 8):
 
     def test_augmented_plus():
         class Add42(pyc.BaseTracer):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-                with self.persistent_fields():
-                    self.add_42_node_ids = self.augmented_node_ids_by_spec[add_42_spec]
-
             @property
             def syntax_augmentation_specs(self):
                 return [add_42_spec]
@@ -23,7 +18,7 @@ if sys.version_info >= (3, 8):
             @pyc.register_raw_handler(pyc.add)
             def handle_add(self, _ret, node_id, *_, left, right, **__):
                 ret = left + right
-                if node_id in self.add_42_node_ids:
+                if add_42_spec in self.get_augmentations(node_id):
                     return ret + 42
                 else:
                     return ret
@@ -47,20 +42,13 @@ if sys.version_info >= (3, 8):
 
             dot_is_always_none = DotIsAlwaysNone()
 
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-                with self.persistent_fields():
-                    self.coalesce_dot_ids = self.augmented_node_ids_by_spec[
-                        coalesce_dot_spec
-                    ]
-
             @property
             def syntax_augmentation_specs(self):
                 return [coalesce_dot_spec]
 
             @pyc.register_raw_handler(ast.Attribute)
             def handle_attr_dot(self, ret, node_id, *_, **__):
-                if ret is None and node_id in self.coalesce_dot_ids:
+                if ret is None and coalesce_dot_spec in self.get_augmentations(node_id):
                     return self.dot_is_always_none
                 else:
                     return ret

@@ -156,6 +156,17 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def syntax_augmentation_specs(self) -> List[AugmentationSpec]:
         return []
 
+    def get_augmentations(
+        self, node_id: Union[ast.AST, int]
+    ) -> FrozenSet[AugmentationSpec]:
+        if isinstance(node_id, ast.AST):
+            node_id = id(node_id)
+        augs = []
+        for aug, node_ids in self.augmented_node_ids_by_spec.items():
+            if node_id in node_ids:
+                augs.append(aug)
+        return frozenset(augs)
+
     @property
     def should_patch_meta_path(self) -> bool:
         return True
