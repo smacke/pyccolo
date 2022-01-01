@@ -67,13 +67,13 @@ class CoverageTracer(pyc.BaseTracer):
     def allow_reentrant_events(self) -> bool:
         return False
 
-    def file_passes_filter_for_event(self, evt: str, path: str) -> bool:
-        if "test" in path or "examples" in path:
+    def should_instrument_file(self, filename: str) -> bool:
+        if "test" in filename or "examples" in filename:
             # filter out tests and self
             return False
 
-        return "pyccolo" in path and not any(
-            path.endswith(excepted) for excepted in EXCEPTED_FILES
+        return "pyccolo" in filename and not any(
+            filename.endswith(excepted) for excepted in EXCEPTED_FILES
         )
 
     @pyc.register_raw_handler(ast.stmt)

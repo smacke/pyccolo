@@ -236,7 +236,7 @@ def test_composed_sys_tracing_calls():
 
 def test_reentrant_handling():
     class AssignMutationOuter(pyc.BaseTracer):
-        def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
+        def should_instrument_file(self, filename: str) -> bool:
             return "test" in filename
 
         @pyc.register_handler(ast.Assign)

@@ -325,8 +325,16 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
         return False
 
+    def should_instrument_file(self, filename: str) -> bool:
+        return False
+
     def allow_reentrant_events(self) -> bool:
         return True
+
+    def _should_instrument_file_impl(self, filename: str) -> bool:
+        return filename in self._tracing_enabled_files or self.should_instrument_file(
+            filename
+        )
 
     def _file_passes_filter_impl(
         self, evt: str, filename: str, is_reentrant: bool = False
@@ -337,10 +345,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             ret = self._num_sandbox_calls_seen >= 2
             self._num_sandbox_calls_seen += evt == "call"
             return ret
-        return (
-            filename in self._tracing_enabled_files
-            or self.file_passes_filter_for_event(evt, filename)
-        )
+        return self._should_instrument_file_impl(
+            filename
+        ) or self.file_passes_filter_for_event(evt, filename)
 
     def make_ast_rewriter(self, **kwargs) -> AstRewriter:
         return self.ast_rewriter_cls(_TRACER_STACK, **kwargs)

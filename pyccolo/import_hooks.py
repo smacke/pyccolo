@@ -121,7 +121,9 @@ class TraceFinder(MetaPathFinder):
         tracers_to_use = []
         import_ = TraceEvent.import_.value
         for tracer in self.tracers:
-            if tracer._file_passes_filter_impl(import_, source_path):
+            if tracer._should_instrument_file_impl(
+                source_path
+            ) or tracer._file_passes_filter_impl(import_, source_path):
                 tracers_to_use.append(tracer)
         for tracer in tracers_to_use:
             tracer._emit_event(import_, None, None)
