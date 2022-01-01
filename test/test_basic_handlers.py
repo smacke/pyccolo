@@ -236,9 +236,12 @@ def test_composed_sys_tracing_calls():
 
 def test_reentrant_handling():
     class AssignMutationOuter(pyc.BaseTracer):
+        def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
+            return "test" in filename
+
         @pyc.register_handler(ast.Assign)
-        def handle_outer_assign(self, ret, *_, **__):
-            if not isinstance(ret, int):
+        def handle_outer_assign(self, ret, _node, frame, *_, **__):
+            if type(ret) != int or frame.f_code.co_filename != "<sandbox>":
                 return
             return ret + 2
 
@@ -251,7 +254,7 @@ def test_reentrant_handling():
                 with inner_tracer.tracing_disabled():
                     new_ret = ret + 1  # + 2 if reentrant else + 0
                 return new_ret
-                
+        
         inner_tracer = AssignMutationInner.instance()
         with outer_tracer.tracing_disabled():
             with inner_tracer.tracing_disabled():

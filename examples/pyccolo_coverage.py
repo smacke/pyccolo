@@ -12,6 +12,7 @@ from collections import Counter
 import pytest
 
 import pyccolo as pyc
+from pyccolo.import_hooks import patch_meta_path
 
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,9 @@ class CoverageTracer(pyc.BaseTracer):
         self.seen_stmts = set()
         self.stmt_count_by_fname = Counter()
 
+    def allow_reentrant_events(self) -> bool:
+        return False
+
     def file_passes_filter_for_event(self, evt: str, path: str) -> bool:
         if "test" in path or "examples" in path:
             # filter out tests and self
@@ -79,7 +83,7 @@ class CoverageTracer(pyc.BaseTracer):
             # filter these out. not necessary for non-pyccolo coverage
             return
         if stmt_id not in self.seen_stmts:
-            self.stmt_count_by_fname[frame.f_code.co_filename] += 1
+            self.stmt_count_by_fname[fname] += 1
             self.seen_stmts.add(stmt_id)
 
 
@@ -108,7 +112,8 @@ if __name__ == "__main__":
         # (can be omitted for non-pyccolo projects)
         pyc._TRACER_STACK.append(tracer)
 
-        exit_code = pytest.console_main()
+        with patch_meta_path(pyc._TRACER_STACK):
+            exit_code = pytest.console_main()
     for fname in sorted(tracer.stmt_count_by_fname.keys()):
         shortened = "." + fname.split(".", 1)[-1]
         seen = tracer.stmt_count_by_fname[fname]

@@ -134,8 +134,16 @@ class TraceFinder(MetaPathFinder):
 
 @contextmanager
 def patch_meta_path(tracers):
+    orig_meta_path_entry = None
     try:
-        sys.meta_path.insert(0, TraceFinder(tracers))
+        if len(sys.meta_path) > 0 and isinstance(sys.meta_path[0], TraceFinder):
+            orig_meta_path_entry = sys.meta_path[0]
+            sys.meta_path[0] = TraceFinder(tracers)
+        else:
+            sys.meta_path.insert(0, TraceFinder(tracers))
         yield
     finally:
-        del sys.meta_path[0]
+        if orig_meta_path_entry is None:
+            del sys.meta_path[0]
+        else:
+            sys.meta_path[0] = orig_meta_path_entry

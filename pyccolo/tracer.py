@@ -325,7 +325,14 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
         return False
 
-    def _file_passes_filter_impl(self, evt: str, filename: str) -> bool:
+    def allow_reentrant_events(self) -> bool:
+        return True
+
+    def _file_passes_filter_impl(
+        self, evt: str, filename: str, is_reentrant: bool = False
+    ) -> bool:
+        if is_reentrant and not self.allow_reentrant_events():
+            return False
         if filename == SANDBOX_FNAME and self.has_sys_trace_events:
             ret = self._num_sandbox_calls_seen >= 2
             self._num_sandbox_calls_seen += evt == "call"
