@@ -12,29 +12,32 @@ import textwrap
 import types
 from contextlib import contextmanager
 from typing import Any, Dict
-from .ast_rewriter import AstRewriter
-from .emit_event import _TRACER_STACK, allow_reentrant_event_handling
-from .extra_builtins import EMIT_EVENT, TRACING_ENABLED, make_guard_name
-from .expr_rewriter import ExprRewriter
-from .stmt_inserter import StatementInserter
-from .stmt_mapper import StatementMapper
-from .syntax_augmentation import (
+from pyccolo.ast_rewriter import AstRewriter
+from pyccolo.emit_event import _TRACER_STACK, allow_reentrant_event_handling
+from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED, make_guard_name
+from pyccolo.expr_rewriter import ExprRewriter
+from pyccolo.stmt_inserter import StatementInserter
+from pyccolo.stmt_mapper import StatementMapper
+from pyccolo.syntax_augmentation import (
     AUGMENTED_SYNTAX_REGEX_TEMPLATE,
     AugmentationSpec,
     AugmentationType,
     replace_tokens_and_get_augmented_positions,
 )
-from .trace_events import TraceEvent
-from .trace_events import *
-from .trace_stack import TraceStack
-from .tracer import (
+from pyccolo.trace_events import TraceEvent
+from pyccolo.trace_events import *
+from pyccolo.trace_stack import TraceStack
+from pyccolo.tracer import (
     BaseTracer,
     Null,
     register_handler,
     register_raw_handler,
     skip_when_tracing_disabled,
 )
-from .utils import multi_context
+from pyccolo.utils import multi_context
+
+
+event = TraceEvent
 
 
 # convenience functions for managing tracer singleton
