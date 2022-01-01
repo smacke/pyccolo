@@ -4,8 +4,6 @@ import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, List
 
-from pyccolo.trace_events import TraceEvent
-
 if TYPE_CHECKING:
     from pyccolo.tracer import BaseTracer
 
