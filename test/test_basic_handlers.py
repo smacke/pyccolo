@@ -74,8 +74,8 @@ def test_two_handlers_from_separate_classes():
         def handle_assign_2(self, ret, *_, **__):
             return ret * 2
 
-    with AssignMutation1.instance().tracing_context():
-        with AssignMutation2.instance().tracing_context():
+    with AssignMutation1.instance():
+        with AssignMutation2.instance():
             env = pyc.exec("x = 42", {})
 
     assert env["x"] == 86, (

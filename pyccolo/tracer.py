@@ -16,6 +16,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    ContextManager,
     DefaultDict,
     Dict,
     FrozenSet,
@@ -121,6 +122,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         self.events_with_registered_handlers: FrozenSet[TraceEvent] = frozenset(
             events_with_registered_handlers
         )
+        self._ctx: Optional[ContextManager] = None
         self._tracing_enabled_files: FrozenSet[str] = frozenset({SANDBOX_FNAME})
         self._is_tracing_enabled = False
         self._is_tracing_hard_disabled = False
@@ -363,6 +365,17 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         with self.tracing_context(disabled=False, **kwargs):
             yield
 
+    def __enter__(self) -> ContextManager:
+        assert self._ctx is None
+        self._ctx = self.tracing_enabled()
+        return self._ctx.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        assert self._ctx is not None
+        ctx = self._ctx
+        self._ctx = None
+        return ctx.__exit__(exc_type, exc_val, exc_tb)
+
     @contextmanager
     def tracing_disabled(self, **kwargs) -> Generator[None, None, None]:
         orig_num_sandbox_calls_seen = self._num_sandbox_calls_seen
@@ -539,6 +552,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 instrument=False,
             )
         return local_env.pop(env_name)
+
+    def execute(self, *args, **kwargs):
+        return self.exec(*args, **kwargs)
 
     def _should_attempt_to_reenable_tracing(self, frame: FrameType) -> bool:
         return NotImplemented
