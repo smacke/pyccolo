@@ -60,6 +60,10 @@ def exec(code: str, *args, **kwargs) -> Dict[str, Any]:
     return tracer().exec(code, *args, **kwargs)
 
 
+def execute(*args, **kwargs) -> Dict[str, Any]:
+    return exec(*args, **kwargs)
+
+
 def instrumented(tracers):
     def decorator(f):
         f_defined_file = f.__code__.co_filename
