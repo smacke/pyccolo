@@ -9,6 +9,11 @@ from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT
 from pyccolo.trace_events import TraceEvent
 
+if sys.version_info < (3, 8):
+    NumConst = ast.Num
+else:
+    NumConst = ast.Constant
+
 
 def make_test(var_name: str, negate: bool = False) -> ast.expr:
     ret: ast.expr = fast.Name(var_name, ast.Load())
@@ -49,10 +54,10 @@ class EmitterMixin:
         self.guards.add(guard)
         setattr(builtins, guard, True)
 
-    def emitter_ast(self):
+    def emitter_ast(self) -> ast.Name:
         return fast.Name(EMIT_EVENT, ast.Load())
 
-    def get_copy_id_ast(self, orig_node_id: Union[int, ast.AST]):
+    def get_copy_id_ast(self, orig_node_id: Union[int, ast.AST]) -> NumConst:
         if not isinstance(orig_node_id, int):
             orig_node_id = id(orig_node_id)
         return fast.Num(id(self.orig_to_copy_mapping[orig_node_id]))

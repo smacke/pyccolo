@@ -515,7 +515,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     traced_keys.append(traced_key)
             with fast.location_of(v):
                 if is_dict_unpack:
-                    key_node_id_ast = fast.NameConstant(None)
+                    key_node_id_ast: ast.AST = fast.NameConstant(None)
                 else:
                     key_node_id_ast = self.get_copy_id_ast(k)
                 traced_value = self.visit(v)
