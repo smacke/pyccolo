@@ -99,6 +99,10 @@ class TraceEvent(Enum):
     def __repr__(self):
         return "<" + str(self) + ">"
 
+    def __call__(self, handler):
+        # this will be filled by tracer.py
+        ...
+
     def to_ast(self):
         return fast.Constant(self.name)
 

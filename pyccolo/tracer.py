@@ -606,6 +606,13 @@ def register_handler(
     return _inner_registrar
 
 
+def __event_call__(self, handler):
+    return register_handler(self)(handler)
+
+
+TraceEvent.__call__ = __event_call__  # type: ignore
+
+
 def register_raw_handler(
     event: Union[
         Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]

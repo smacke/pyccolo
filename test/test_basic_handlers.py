@@ -11,7 +11,7 @@ def test_sandbox():
 
 def test_instrumented_sandbox():
     class IncrementsAssignValue(pyc.BaseTracer):
-        @pyc.register_handler(pyc.after_assign_rhs)
+        @pyc.after_assign_rhs
         def handle_assign(self, ret, *_, **__):
             return ret + 1
 
