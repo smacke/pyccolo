@@ -329,52 +329,63 @@ def test_tracing_context_manager_toggling():
     assert num_calls_seen == 1
 
 
-if sys.gettrace() is None:
+def test_composes_with_existing_sys_tracer():
 
-    def test_composes_with_existing_sys_tracer():
+    num_calls_seen_from_existing_tracer = 0
 
-        num_calls_seen_from_existing_tracer = 0
+    sys_settrace = sys.settrace
+    # in case we are using codecov
+    prev_sys_tracer = sys.gettrace()
 
-        def existing_tracer(_frame, evt, *_, **__):
-            if evt == "call" and _frame.f_code.co_filename == "<sandbox>":
-                nonlocal num_calls_seen_from_existing_tracer
-                num_calls_seen_from_existing_tracer += 1
+    def existing_tracer(_frame, evt, *args, **kwargs):
+        if evt == "call" and _frame.f_code.co_filename == "<sandbox>":
+            nonlocal num_calls_seen_from_existing_tracer
+            num_calls_seen_from_existing_tracer += 1
+        if prev_sys_tracer is not None:
+            cur_sys_tracer = sys.gettrace()
+            ret = prev_sys_tracer(_frame, evt, *args, **kwargs)
+            if sys.gettrace() != cur_sys_tracer:
+                sys_settrace(cur_sys_tracer)
+            if ret == prev_sys_tracer:
+                return existing_tracer
+            else:
+                return ret
 
-        class TracesCalls(pyc.BaseTracer):
-            def __init__(self):
-                super().__init__()
-                self.num_calls_seen = 0
+    class TracesCalls(pyc.BaseTracer):
+        def __init__(self):
+            super().__init__()
+            self.num_calls_seen = 0
 
-            @pyc.register_handler(pyc.call)
-            def handle_call(self, *_, **__):
-                self.num_calls_seen += 1
+        @pyc.register_handler(pyc.call)
+        def handle_call(self, *_, **__):
+            self.num_calls_seen += 1
 
-            @pyc.register_handler(pyc.return_)
-            def handle_return(self, *_, **__):
-                assert self.num_calls_seen >= 1
+        @pyc.register_handler(pyc.return_)
+        def handle_return(self, *_, **__):
+            assert self.num_calls_seen >= 1
 
-        tracer = TracesCalls.instance()
-        try:
-            # the top one tests that sys.settrace gets patched properly
-            # even when the first enabled tracer doesn't do anything
-            # with sys events
-            with pyc.BaseTracer().tracing_enabled():
-                with TracesCalls.instance().tracing_disabled():
-                    pyc.exec(
-                        """
-                        def foo():
-                            with TracesCalls.instance().tracing_enabled():
-                                with TracesCalls.instance().tracing_disabled():
-                                    with TracesCalls.instance().tracing_enabled():
-                                        sys.settrace(existing_tracer)
-                                        def bar():
-                                            pass
-                                        bar()
-                        foo(); foo()
-                        """
-                    )
-            assert sys.gettrace() is existing_tracer
-        finally:
-            sys.settrace(None)
-        assert tracer.num_calls_seen == 2
-        assert num_calls_seen_from_existing_tracer == 3
+    tracer = TracesCalls.instance()
+    try:
+        # the top one tests that sys.settrace gets patched properly
+        # even when the first enabled tracer doesn't do anything
+        # with sys events
+        with pyc.BaseTracer():
+            with tracer.tracing_disabled():
+                pyc.exec(
+                    """
+                    def foo():
+                        with TracesCalls.instance().tracing_enabled():
+                            with TracesCalls.instance().tracing_disabled():
+                                with TracesCalls.instance().tracing_enabled():
+                                    sys.settrace(existing_tracer)
+                                    def bar():
+                                        pass
+                                    bar()
+                    foo(); foo()
+                    """
+                )
+        assert sys.gettrace() is existing_tracer
+    finally:
+        sys.settrace(prev_sys_tracer)
+    assert tracer.num_calls_seen == 2
+    assert num_calls_seen_from_existing_tracer == 3

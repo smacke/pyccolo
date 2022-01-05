@@ -281,15 +281,18 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
         return _composed_tracer
 
-    def _settrace_patch(self, trace_func):  # pragma: no cover
-        # called by third-party tracers
-        self.existing_tracer = trace_func
-        if self._is_tracing_enabled:
-            if trace_func is None:
-                self._disable_tracing()
-            self._enable_tracing(check_disabled=False, existing_tracer=trace_func)
-        else:
-            sys_settrace(trace_func)
+    def _make_settrace_patch(self, orig_sys_settrace):
+        def _settrace_patch(trace_func):  # pragma: no cover
+            # called by third-party tracers
+            self.existing_tracer = trace_func
+            if self._is_tracing_enabled:
+                if trace_func is None:
+                    self._disable_tracing()
+                self._enable_tracing(check_disabled=False, existing_tracer=trace_func)
+            else:
+                orig_sys_settrace(trace_func)
+
+        return _settrace_patch
 
     def _enable_tracing(self, check_disabled=True, existing_tracer=None):
         if check_disabled:
@@ -319,7 +322,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def _patch_sys_settrace(self) -> Generator[None, None, None]:
         original_settrace = sys.settrace
         try:
-            sys.settrace = self._settrace_patch
+            sys.settrace = self._make_settrace_patch(original_settrace)
             yield
         finally:
             sys.settrace = original_settrace
@@ -416,7 +419,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         orig_hard_disabled = self._is_tracing_hard_disabled
         orig_tracing_enabled_files = self._tracing_enabled_files
         self._is_tracing_hard_disabled = disabled
-        was_tracing_enabled = False
+        will_enable_tracing = (
+            not self._is_tracing_hard_disabled and not self._is_tracing_enabled
+        )
         should_push = self not in _TRACER_STACK
         if tracing_enabled_file is not None:
             self._tracing_enabled_files = self._tracing_enabled_files | {
@@ -433,16 +438,10 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 do_patch_meta_path = True
             if should_push:
                 _TRACER_STACK.append(self)  # type: ignore
-            do_patch_sys_settrace = (
-                sys.settrace != self._settrace_patch and self.has_sys_trace_events
-            )
+            do_patch_sys_settrace = self.has_sys_trace_events and will_enable_tracing
             with patch_meta_path(_TRACER_STACK) if do_patch_meta_path else suppress():
                 with self._patch_sys_settrace() if do_patch_sys_settrace else suppress():
-                    if (
-                        not self._is_tracing_hard_disabled
-                        and not self._is_tracing_enabled
-                    ):
-                        was_tracing_enabled = True
+                    if will_enable_tracing:
                         self._enable_tracing()
                     yield
         finally:
@@ -450,7 +449,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             self._is_tracing_hard_disabled = orig_hard_disabled
             if should_push:
                 del _TRACER_STACK[-1]
-            if was_tracing_enabled:
+            if will_enable_tracing:
                 self._disable_tracing(check_enabled=False)
             self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
             if len(_TRACER_STACK) == 0:
