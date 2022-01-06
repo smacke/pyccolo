@@ -1,6 +1,12 @@
 History
 =======
 
+0.0.6 (2022-01-06)
+------------------
+* Misc ergonomics improvements;
+* Enable for Python 3.10;
+* Enable linting and fix package-level imports;
+
 0.0.5 (2021-12-29)
 ------------------
 * Get rid of future-annotations dependency;
