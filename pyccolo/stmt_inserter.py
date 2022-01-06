@@ -159,6 +159,49 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                 ),
             ]
 
+    def _handle_stmt(
+        self, node: ast.AST, field_name: str, inner_node: ast.stmt
+    ) -> List[ast.stmt]:
+        stmts_to_extend: List[ast.stmt] = []
+        stmt_copy = cast(ast.stmt, self.orig_to_copy_mapping[id(inner_node)])
+        if not self._init_stmt_inserted and isinstance(node, ast.Module):
+            self._init_stmt_inserted = True
+            with fast.location_of(stmt_copy):
+                if TraceEvent.init_module in self.events_with_handlers:
+                    stmts_to_extend.extend(
+                        fast.parse(
+                            f'{EMIT_EVENT}("{TraceEvent.init_module.name}", '
+                            f"{id(node)})"
+                        ).body
+                    )
+        if TraceEvent.before_stmt in self.events_with_handlers:
+            stmts_to_extend.append(
+                _get_parsed_insert_stmt(stmt_copy, TraceEvent.before_stmt)
+            )
+        if TraceEvent.after_stmt in self.events_with_handlers:
+            if (
+                isinstance(inner_node, ast.Expr)
+                and isinstance(node, ast.Module)
+                and field_name == "body"
+            ):
+                val = inner_node.value
+                while isinstance(val, ast.Expr):
+                    val = val.value
+                stmts_to_extend.append(_get_parsed_append_stmt(stmt_copy, ret_expr=val))
+            else:
+                stmts_to_extend.append(self.visit(inner_node))
+                if not isinstance(inner_node, ast.Return):
+                    stmts_to_extend.append(_get_parsed_append_stmt(stmt_copy))
+        else:
+            stmts_to_extend.append(self.visit(inner_node))
+        if TraceEvent.after_module_stmt in self.events_with_handlers:
+            if isinstance(node, ast.Module) and field_name == "body":
+                assert not isinstance(inner_node, ast.Return)
+                stmts_to_extend.append(
+                    _get_parsed_append_stmt(stmt_copy, evt=TraceEvent.after_module_stmt)
+                )
+        return stmts_to_extend
+
     def generic_visit(self, node):
         for name, field in ast.iter_fields(node):
             if isinstance(field, ast.AST):
@@ -167,53 +210,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                 new_field = []
                 for inner_node in field:
                     if isinstance(inner_node, ast.stmt):
-                        stmt_copy = cast(
-                            ast.stmt, self.orig_to_copy_mapping[id(inner_node)]
-                        )
-                        if not self._init_stmt_inserted and isinstance(
-                            node, ast.Module
-                        ):
-                            self._init_stmt_inserted = True
-                            with fast.location_of(stmt_copy):
-                                if TraceEvent.init_module in self.events_with_handlers:
-                                    new_field.extend(
-                                        fast.parse(
-                                            f'{EMIT_EVENT}("{TraceEvent.init_module.name}", '
-                                            f"{id(node)})"
-                                        ).body
-                                    )
-                        if TraceEvent.before_stmt in self.events_with_handlers:
-                            new_field.append(
-                                _get_parsed_insert_stmt(
-                                    stmt_copy, TraceEvent.before_stmt
-                                )
-                            )
-                        if TraceEvent.after_stmt in self.events_with_handlers:
-                            if (
-                                isinstance(inner_node, ast.Expr)
-                                and isinstance(node, ast.Module)
-                                and name == "body"
-                            ):
-                                val = inner_node.value
-                                while isinstance(val, ast.Expr):
-                                    val = val.value
-                                new_field.append(
-                                    _get_parsed_append_stmt(stmt_copy, ret_expr=val)
-                                )
-                            else:
-                                new_field.append(self.visit(inner_node))
-                                if not isinstance(inner_node, ast.Return):
-                                    new_field.append(_get_parsed_append_stmt(stmt_copy))
-                        else:
-                            new_field.append(self.visit(inner_node))
-                        if TraceEvent.after_module_stmt in self.events_with_handlers:
-                            if isinstance(node, ast.Module) and name == "body":
-                                assert not isinstance(inner_node, ast.Return)
-                                new_field.append(
-                                    _get_parsed_append_stmt(
-                                        stmt_copy, evt=TraceEvent.after_module_stmt
-                                    )
-                                )
+                        new_field.extend(self._handle_stmt(node, name, inner_node))
                     elif isinstance(inner_node, ast.AST):
                         new_field.append(self.visit(inner_node))
                     else:

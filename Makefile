@@ -20,7 +20,7 @@ blackcheck:
 	./scripts/blacken.sh --check
 
 lint:
-	flake8 . --max-complexity=25 --max-line-length=100
+	flake8
 
 typecheck:
 	mypy pyccolo

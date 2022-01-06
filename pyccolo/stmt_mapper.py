@@ -102,6 +102,40 @@ class StatementMapper(ast.NodeVisitor):
         else:
             raise NotImplementedError()
 
+    def _handle_augmentations(self, nc: ast.AST) -> None:
+        for spec, mod_positions in self.augmented_positions_by_spec.items():
+            col_offset = self._get_col_offset_for(spec.aug_type, nc)
+            if col_offset is None:
+                continue
+            if (nc.lineno, col_offset) in mod_positions:
+                for tracer in self._tracers:
+                    if spec in tracer.syntax_augmentation_specs:
+                        tracer.augmented_node_ids_by_spec[spec].add(id(nc))
+
+    def _handle_stmt(self, nc: ast.stmt) -> None:
+        self.line_to_stmt_map[nc.lineno] = nc
+        ContainingStatementMapper(
+            self._tracers[-1].node_id_to_containing_stmt, nc
+        ).visit(nc)
+        # workaround for python >= 3.8 wherein function calls seem
+        # to yield trace frames that use the lineno of the first decorator
+        for decorator in getattr(nc, "decorator_list", []):
+            self.line_to_stmt_map[decorator.lineno] = nc
+        nc_body = getattr(nc, "body", [])
+        try:
+            for child in nc_body:
+                if isinstance(child, ast.AST):
+                    self._tracers[-1].parent_node_by_id[id(child)] = nc
+        except TypeError:
+            self._tracers[-1].parent_node_by_id[id(nc_body)] = nc
+        for name, field in ast.iter_fields(nc):
+            if name == "body":
+                continue
+            if isinstance(field, list):
+                for child in field:
+                    if isinstance(child, ast.AST):
+                        self._tracers[-1].parent_node_by_id[id(child)] = nc
+
     def __call__(
         self, node: Union[ast.Module, ast.FunctionDef, ast.AsyncFunctionDef]
     ) -> Dict[int, ast.AST]:
@@ -119,37 +153,9 @@ class StatementMapper(ast.NodeVisitor):
             orig_to_copy_mapping[id(no)] = nc
             self._tracers[-1].ast_node_by_id[id(nc)] = nc
             if hasattr(nc, "lineno"):
-                for spec, mod_positions in self.augmented_positions_by_spec.items():
-                    col_offset = self._get_col_offset_for(spec.aug_type, nc)
-                    if col_offset is None:
-                        continue
-                    if (nc.lineno, col_offset) in mod_positions:
-                        for tracer in self._tracers:
-                            if spec in tracer.syntax_augmentation_specs:
-                                tracer.augmented_node_ids_by_spec[spec].add(id(nc))
+                self._handle_augmentations(nc)
             if isinstance(nc, ast.stmt):
-                self.line_to_stmt_map[nc.lineno] = nc
-                ContainingStatementMapper(
-                    self._tracers[-1].node_id_to_containing_stmt, nc
-                ).visit(nc)
-                # workaround for python >= 3.8 wherein function calls seem
-                # to yield trace frames that use the lineno of the first decorator
-                for decorator in getattr(nc, "decorator_list", []):
-                    self.line_to_stmt_map[decorator.lineno] = nc
-                nc_body = getattr(nc, "body", [])
-                try:
-                    for child in nc_body:
-                        if isinstance(child, ast.AST):
-                            self._tracers[-1].parent_node_by_id[id(child)] = nc
-                except TypeError:
-                    self._tracers[-1].parent_node_by_id[id(nc_body)] = nc
-                for name, field in ast.iter_fields(nc):
-                    if name == "body":
-                        continue
-                    if isinstance(field, list):
-                        for child in field:
-                            if isinstance(child, ast.AST):
-                                self._tracers[-1].parent_node_by_id[id(child)] = nc
+                self._handle_stmt(nc)
         return orig_to_copy_mapping
 
     def visit(self, node):
