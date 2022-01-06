@@ -34,7 +34,7 @@ from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
 
 from pyccolo.emit_event import _emit_event, _TRACER_STACK
-from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED
+from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED, make_guard_name
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.import_hooks import patch_meta_path
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
@@ -210,14 +210,21 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         self.__init__(is_reset=True)
 
     @classmethod
-    def activate_guard(cls, guard: str) -> None:
-        assert guard in cls.guards
-        setattr(builtins, guard, False)
+    def _make_guard_name(cls, guard: Union[str, int, ast.AST]) -> str:
+        if isinstance(guard, str):
+            guard_name = guard
+        else:
+            guard_name = make_guard_name(guard)
+        assert guard_name in cls.guards
+        return guard_name
 
     @classmethod
-    def deactivate_guard(cls, guard: str) -> None:
-        assert guard in cls.guards
-        setattr(builtins, guard, True)
+    def activate_guard(cls, guard: Union[str, int, ast.AST]) -> None:
+        setattr(builtins, cls._make_guard_name(guard), False)
+
+    @classmethod
+    def deactivate_guard(cls, guard: Union[str, int, ast.AST]) -> None:
+        setattr(builtins, cls._make_guard_name(guard), True)
 
     def should_propagate_handler_exception(
         self, evt: TraceEvent, exc: Exception
