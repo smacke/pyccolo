@@ -52,12 +52,14 @@ class TraceLoader(SourceFileLoader):
             source = decode_source(source_bytes)
             still_needs_decode = False
         except SyntaxError:
-            # this allows us to handle esoteric encodings that require parsing, such as future_annotations
-            # in this case, just guess that it's utf-8 encoded
+            # This allows us to handle esoteric encodings that
+            # require parsing, such as future_annotations.
+            # In this case, just guess that it's utf-8 encoded.
 
-            # this is a bit unfortunate in that it involves multiple round-trips of decoding / encoding,
-            # but it's the only way I can think of to ensure that source transformations happen in the
-            # correct order
+            # This is a bit unfortunate in that it involves multiple
+            # round-trips of decoding / encoding, but it's the only
+            # way I can think of to ensure that source transformations
+            # happen in the correct order.
             source = str(source_bytes, encoding="utf-8")
         for augmenter in self._syntax_augmenters:
             source = augmenter(source)

@@ -14,18 +14,12 @@ from contextlib import contextmanager
 from typing import Any, Dict
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.emit_event import _TRACER_STACK, allow_reentrant_event_handling
-from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED, make_guard_name
-from pyccolo.expr_rewriter import ExprRewriter
-from pyccolo.stmt_inserter import StatementInserter
-from pyccolo.stmt_mapper import StatementMapper
+from pyccolo.extra_builtins import make_guard_name
 from pyccolo.syntax_augmentation import (
-    AUGMENTED_SYNTAX_REGEX_TEMPLATE,
     AugmentationSpec,
     AugmentationType,
-    replace_tokens_and_get_augmented_positions,
 )
 from pyccolo.trace_events import TraceEvent
-from pyccolo.trace_events import *
 from pyccolo.trace_stack import TraceStack
 from pyccolo.tracer import (
     BaseTracer,
@@ -38,6 +32,80 @@ from pyccolo.utils import multi_context
 
 
 event = TraceEvent
+
+
+init_module = TraceEvent.init_module
+before_stmt = TraceEvent.before_stmt
+after_stmt = TraceEvent.after_stmt
+after_module_stmt = TraceEvent.after_module_stmt
+load_name = TraceEvent.load_name
+before_for_loop_body = TraceEvent.before_for_loop_body
+after_for_loop_iter = TraceEvent.after_for_loop_iter
+before_while_loop_body = TraceEvent.before_while_loop_body
+after_while_loop_iter = TraceEvent.after_while_loop_iter
+before_attribute_load = TraceEvent.before_attribute_load
+before_attribute_store = TraceEvent.before_attribute_store
+before_attribute_del = TraceEvent.before_attribute_del
+after_attribute_load = TraceEvent.after_attribute_load
+before_subscript_load = TraceEvent.before_subscript_load
+before_subscript_store = TraceEvent.before_subscript_store
+before_subscript_del = TraceEvent.before_subscript_del
+after_subscript_load = TraceEvent.after_subscript_load
+subscript_slice = TraceEvent.subscript_slice
+_load_saved_slice = TraceEvent._load_saved_slice
+before_load_complex_symbol = TraceEvent.before_load_complex_symbol
+after_load_complex_symbol = TraceEvent.after_load_complex_symbol
+before_lambda = TraceEvent.before_lambda
+after_lambda = TraceEvent.after_lambda
+before_call = TraceEvent.before_call
+after_call = TraceEvent.after_call
+argument = TraceEvent.argument
+before_return = TraceEvent.before_return
+after_return = TraceEvent.after_return
+before_dict_literal = TraceEvent.before_dict_literal
+after_dict_literal = TraceEvent.after_dict_literal
+before_list_literal = TraceEvent.before_list_literal
+after_list_literal = TraceEvent.after_list_literal
+before_set_literal = TraceEvent.before_set_literal
+after_set_literal = TraceEvent.after_set_literal
+before_tuple_literal = TraceEvent.before_tuple_literal
+after_tuple_literal = TraceEvent.after_tuple_literal
+dict_key = TraceEvent.dict_key
+dict_value = TraceEvent.dict_value
+list_elt = TraceEvent.list_elt
+set_elt = TraceEvent.set_elt
+tuple_elt = TraceEvent.tuple_elt
+before_assign_rhs = TraceEvent.before_assign_rhs
+after_assign_rhs = TraceEvent.after_assign_rhs
+before_function_body = TraceEvent.before_function_body
+after_function_execution = TraceEvent.after_function_execution
+before_lambda_body = TraceEvent.before_lambda_body
+left_binop_arg = TraceEvent.left_binop_arg
+right_binop_arg = TraceEvent.right_binop_arg
+add = TraceEvent.add
+sub = TraceEvent.sub
+mult = TraceEvent.mult
+mat_mult = TraceEvent.mat_mult
+div = TraceEvent.div
+floor_div = TraceEvent.floor_div
+power = TraceEvent.power
+bit_and = TraceEvent.bit_and
+bit_or = TraceEvent.bit_or
+bit_xor = TraceEvent.bit_xor
+ellipses = TraceEvent.ellipses
+line = TraceEvent.line
+call = TraceEvent.call
+return_ = TraceEvent.return_
+exception = TraceEvent.exception
+opcode = TraceEvent.opcode
+c_call = TraceEvent.c_call
+c_return = TraceEvent.c_return
+c_exception = TraceEvent.c_exception
+
+
+# redundant; do this just in case we forgot to add stubs in trace_events.py
+for evt in TraceEvent:
+    globals()[evt.name] = evt
 
 
 # convenience functions for managing tracer singleton
@@ -114,11 +182,103 @@ def tracing_disabled(tracers, *args, **kwargs):
         yield
 
 
-# redundant; do this just in case we forgot to add stubs in trace_events.py
-for evt in TraceEvent:
-    globals()[evt.name] = evt
-
-from ._version import get_versions
+from pyccolo._version import get_versions  # noqa
 
 __version__ = get_versions()["version"]
 del get_versions
+
+
+__all__ = [
+    "__version__",
+    "AstRewriter",
+    "AugmentationSpec",
+    "AugmentationType",
+    "BaseTracer",
+    "Null",
+    "TraceStack",
+    "allow_reentrant_event_handling",
+    "event",
+    "exec",
+    "execute",
+    "instance",
+    "instrumented",
+    "make_guard_name",
+    "multi_context",
+    "parse",
+    "register_handler",
+    "register_raw_handler",
+    "skip_when_tracing_disabled",
+    "tracer",
+    "tracing_context",
+    "tracing_disabled",
+    "tracing_enabled",
+    # all the events now
+    "after_stmt",
+    "init_module",
+    "before_stmt",
+    "after_stmt",
+    "after_module_stmt",
+    "load_name",
+    "before_for_loop_body",
+    "after_for_loop_iter",
+    "before_while_loop_body",
+    "after_while_loop_iter",
+    "before_attribute_load",
+    "before_attribute_store",
+    "before_attribute_del",
+    "after_attribute_load",
+    "before_subscript_load",
+    "before_subscript_store",
+    "before_subscript_del",
+    "after_subscript_load",
+    "subscript_slice",
+    "_load_saved_slice",
+    "before_load_complex_symbol",
+    "after_load_complex_symbol",
+    "before_lambda",
+    "after_lambda",
+    "before_call",
+    "after_call",
+    "argument",
+    "before_return",
+    "after_return",
+    "before_dict_literal",
+    "after_dict_literal",
+    "before_list_literal",
+    "after_list_literal",
+    "before_set_literal",
+    "after_set_literal",
+    "before_tuple_literal",
+    "after_tuple_literal",
+    "dict_key",
+    "dict_value",
+    "list_elt",
+    "set_elt",
+    "tuple_elt",
+    "before_assign_rhs",
+    "after_assign_rhs",
+    "before_function_body",
+    "after_function_execution",
+    "before_lambda_body",
+    "left_binop_arg",
+    "right_binop_arg",
+    "add",
+    "sub",
+    "mult",
+    "mat_mult",
+    "div",
+    "floor_div",
+    "power",
+    "bit_and",
+    "bit_or",
+    "bit_xor",
+    "ellipses",
+    "line",
+    "call",
+    "return_",
+    "exception",
+    "opcode",
+    "c_call",
+    "c_return",
+    "c_exception",
+]

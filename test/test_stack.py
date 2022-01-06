@@ -26,7 +26,8 @@ def test_basic_stack():
     tracer = FunctionTracer.instance()
 
     with tracer.tracing_enabled():
-        # note: everything below is off by 1 because the asserts themselves will call fns that push / pop
+        # note: everything below is off by 1 because the
+        # asserts themselves will call fns that push / pop
         pyc.exec(
             """
             assert tracer.name == ""
@@ -110,18 +111,18 @@ def test_nested_stack():
         assert (
             pyc.exec(
                 """
-            lst = [
-                tracer.running_length, 
-                tracer.running_length, 
-                [
-                    tracer.running_length, 
-                    tracer.running_length, 
-                    tracer.running_length, 
-                ],
-                tracer.running_length, 
-                tracer.running_length, 
-            ]
-            """
+                lst = [
+                    tracer.running_length,
+                    tracer.running_length,
+                    [
+                        tracer.running_length,
+                        tracer.running_length,
+                        tracer.running_length,
+                    ],
+                    tracer.running_length,
+                    tracer.running_length,
+                ]
+                """
             )["lst"]
             == [0, 1, [0, 1, 2], 3, 4]
         )
@@ -133,15 +134,15 @@ def test_nested_stack():
             def f():
                 assert len(tracer.stack) == 2
                 return [
-                    tracer.running_length, 
-                    tracer.running_length, 
+                    tracer.running_length,
+                    tracer.running_length,
                     [
-                        tracer.running_length, 
-                        tracer.running_length, 
-                        tracer.running_length, 
+                        tracer.running_length,
+                        tracer.running_length,
+                        tracer.running_length,
                     ],
-                    tracer.running_length, 
-                    tracer.running_length, 
+                    tracer.running_length,
+                    tracer.running_length,
                 ]
             lst = [tracer.running_length, f(), tracer.running_length]
             """

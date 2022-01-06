@@ -11,4 +11,4 @@ def test_basic_instrumented_import():
             return ret + 1
 
     with IncrementsAssignValue.instance().tracing_enabled():
-        import test.foo
+        import test.foo  # noqa

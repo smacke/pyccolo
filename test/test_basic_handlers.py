@@ -21,7 +21,7 @@ def test_instrumented_sandbox():
 
 
 def test_nonlocal_1():
-    x = 5
+    x = 5  # noqa
     try:
         pyc.exec("nonlocal x; x = 42")
     except SyntaxError:
@@ -254,7 +254,6 @@ def test_reentrant_handling():
                 with inner_tracer.tracing_disabled():
                     new_ret = ret + 1  # + 2 if reentrant else + 0
                 return new_ret
-        
         inner_tracer = AssignMutationInner.instance()
         with outer_tracer.tracing_disabled():
             with inner_tracer.tracing_disabled():

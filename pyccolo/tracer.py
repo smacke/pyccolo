@@ -69,6 +69,8 @@ class MetaTracerStateMachine(MetaHasTraits):
         return MetaHasTraits.__new__(mcs, name, bases, *args, **kwargs)
 
     def __init__(cls, *args, **kwargs):
+        # we could also use __init_subclass__, but since we need a metaclass
+        # anyway for other stuff, may as well keep all metaclass-y things consolidated
         super().__init__(*args, **kwargs)
         register_tracer_state_machine(cls)
         cls.defined_file = sys._getframe().f_back.f_code.co_filename
@@ -108,7 +110,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             return
         if not self._MANAGER_CLASS_REGISTERED:
             raise ValueError(
-                f"class not registered; use the `{register_tracer_state_machine.__name__}` decorator on the subclass"
+                f"class not registered; use the `{register_tracer_state_machine.__name__}` "
+                f"decorator on the subclass"
             )
         super().__init__()
         self._has_fancy_sys_tracing = sys.version_info >= (3, 7)

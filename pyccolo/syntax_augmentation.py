@@ -68,7 +68,7 @@ def replace_tokens_and_get_augmented_positions(
         positions.append(start + pos_offset)
         portions.append(s[:start])
         portions.append(spec.replacement)
-        s = s[start + len(spec.token) :]
+        s = s[start + len(spec.token) :]  # noqa
         pos_offset += start + len(spec.replacement)
     return "".join(portions), positions
 

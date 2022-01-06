@@ -33,7 +33,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def visit(self, node: ast.AST):
         ret = super().visit(node)
         if isinstance(node, ast.stmt):
-            # we haven't inserted statements yet, and StatementInserter needs the previous ids to be identical
+            # We haven't inserted statements yet, and StatementInserter
+            # needs the previous ids to be identical.
             assert ret is node
         return ret
 
@@ -204,7 +205,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                         if isinstance(node, ast.Subscript):
                             slice_val = subscript_to_slice(node)
                             if isinstance(slice_val, ast.Name):
-                                # TODO: this should be more general than just simple ast.Name subscripts
+                                # TODO: this should be more general than
+                                #  just simple ast.Name subscripts
                                 subscript_name = slice_val.id
                         extra_keywords["subscript_name"] = (
                             fast.NameConstant(None)

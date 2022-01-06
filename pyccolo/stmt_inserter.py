@@ -178,7 +178,8 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                                 if TraceEvent.init_module in self.events_with_handlers:
                                     new_field.extend(
                                         fast.parse(
-                                            f'{EMIT_EVENT}("{TraceEvent.init_module.name}", {id(node)})'
+                                            f'{EMIT_EVENT}("{TraceEvent.init_module.name}", '
+                                            f"{id(node)})"
                                         ).body
                                     )
                         if TraceEvent.before_stmt in self.events_with_handlers:

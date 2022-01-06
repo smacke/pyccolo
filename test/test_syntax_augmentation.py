@@ -65,7 +65,6 @@ if sys.version_info >= (3, 8):
             class Foo:
                 def __init__(self, x):
                     self.x = x
-            
             foo = Foo(Foo(Foo(None)))
             try:
                 bar = foo.x.x.x.x
@@ -73,7 +72,6 @@ if sys.version_info >= (3, 8):
                 pass
             else:
                 assert False
-                
             assert foo.x.x.x?.x is None
             assert foo.x.x.x?.x?.whatever is None
             assert isinstance(foo?.x?.x, Foo)

@@ -16,10 +16,6 @@ logging.basicConfig(level=logging.INFO)
 _RECORDED_EVENTS = []
 
 
-def subsets(draw, elements):
-    return {e for e in elements if draw(st.booleans())}
-
-
 _DIFFER = difflib.Differ()
 
 
