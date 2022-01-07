@@ -29,6 +29,11 @@ from pyccolo.tracer import (
     skip_when_tracing_disabled,
 )
 from pyccolo.utils import multi_context
+from pyccolo._version import get_versions
+
+
+__version__ = get_versions()["version"]
+del get_versions
 
 
 event = TraceEvent
@@ -180,12 +185,6 @@ def tracing_disabled(tracers, *args, **kwargs):
         [tracer.tracing_disabled(*args, **kwargs) for tracer in tracers]
     ):
         yield
-
-
-from pyccolo._version import get_versions  # noqa
-
-__version__ = get_versions()["version"]
-del get_versions
 
 
 __all__ = [

@@ -111,7 +111,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         if not self._MANAGER_CLASS_REGISTERED:
             raise ValueError(
                 f"class not registered; use the `{register_tracer_state_machine.__name__}` "
-                f"decorator on the subclass"
+                + "decorator on the subclass"
             )
         super().__init__()
         self._has_fancy_sys_tracing = sys.version_info >= (3, 7)
