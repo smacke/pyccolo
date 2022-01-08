@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Pyccolo: embedded instrumentation for Python.
+Pyccolo: ergonomic, composable, portable instrumentation embedded directly in Python source.
 
-Pyccolo brings metaprogramming to everybody via general
-event-emitting AST transformations.
+Pyccolo brings metaprogramming to everybody via general event-emitting AST transformations.
 """
 import ast
 import functools
