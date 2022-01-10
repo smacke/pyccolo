@@ -65,7 +65,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         self, node: Union[ast.For, ast.While], orig_body: List[ast.AST]
     ) -> List[ast.AST]:
         loop_node_copy = cast(
-            "Union[ast.For, ast.While]", self.orig_to_copy_mapping[id(node)]
+            Union[ast.For, ast.While], self.orig_to_copy_mapping[id(node)]
         )
         loop_node_copy = self._global_nonlocal_stripper.visit(loop_node_copy)
         loop_guard = make_guard_name(loop_node_copy)
@@ -116,7 +116,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         orig_body: List[ast.AST],
     ) -> List[ast.AST]:
         fundef_copy = cast(
-            "Union[ast.FunctionDef, ast.AsyncFunctionDef]",
+            Union[ast.FunctionDef, ast.AsyncFunctionDef],
             self.orig_to_copy_mapping[id(node)],
         )
         fundef_copy = self._global_nonlocal_stripper.visit(fundef_copy)
@@ -159,6 +159,31 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                 ),
             ]
 
+    def _make_main_and_after_stmt_stmts(
+        self,
+        outer_node: ast.AST,
+        field_name: str,
+        prev_stmt: ast.stmt,
+        prev_stmt_copy: ast.stmt,
+    ) -> List[ast.stmt]:
+        if TraceEvent.after_stmt not in self.events_with_handlers:
+            return [self.visit(prev_stmt)]
+        if (
+            isinstance(prev_stmt, ast.Expr)
+            and isinstance(outer_node, ast.Module)
+            and field_name == "body"
+        ):
+            val = prev_stmt.value
+            while isinstance(val, ast.Expr):
+                val = val.value
+            return [_get_parsed_append_stmt(prev_stmt_copy, ret_expr=val)]
+        else:
+            return [self.visit(prev_stmt)] + (
+                []
+                if isinstance(prev_stmt, ast.Return)
+                else [_get_parsed_append_stmt(prev_stmt_copy)]
+            )
+
     def _handle_stmt(
         self, node: ast.AST, field_name: str, inner_node: ast.stmt
     ) -> List[ast.stmt]:
@@ -178,22 +203,11 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             stmts_to_extend.append(
                 _get_parsed_insert_stmt(stmt_copy, TraceEvent.before_stmt)
             )
-        if TraceEvent.after_stmt in self.events_with_handlers:
-            if (
-                isinstance(inner_node, ast.Expr)
-                and isinstance(node, ast.Module)
-                and field_name == "body"
-            ):
-                val = inner_node.value
-                while isinstance(val, ast.Expr):
-                    val = val.value
-                stmts_to_extend.append(_get_parsed_append_stmt(stmt_copy, ret_expr=val))
-            else:
-                stmts_to_extend.append(self.visit(inner_node))
-                if not isinstance(inner_node, ast.Return):
-                    stmts_to_extend.append(_get_parsed_append_stmt(stmt_copy))
-        else:
-            stmts_to_extend.append(self.visit(inner_node))
+        stmts_to_extend.extend(
+            self._make_main_and_after_stmt_stmts(
+                node, field_name, inner_node, stmt_copy
+            )
+        )
         if TraceEvent.after_module_stmt in self.events_with_handlers:
             if isinstance(node, ast.Module) and field_name == "body":
                 assert not isinstance(inner_node, ast.Return)

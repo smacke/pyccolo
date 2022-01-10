@@ -508,6 +508,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         global_env: Optional[dict] = None,
         *,
         instrument: bool = True,
+        keep_side_effects: bool = True,
         num_extra_lookback_frames: int = 0,
     ) -> Dict[str, Any]:
         frame = None
@@ -559,7 +560,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 local_env=local_env,
                 instrument=False,
             )
-        return local_env.pop(env_name)
+        return local_env.pop(env_name) if keep_side_effects else {}
 
     def execute(self, *args, **kwargs):
         return self.exec(*args, **kwargs)
