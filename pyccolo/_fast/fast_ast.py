@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import ast
-from contextlib import contextmanager
 import sys
+import textwrap
+from contextlib import contextmanager
 
 
 class FastAst:
@@ -27,6 +28,13 @@ class FastAst:
     def kwargs(**kwargs):
         return [FastAst.keyword(arg=arg, value=value) for arg, value in kwargs.items()]
 
+    @staticmethod
+    def parse(code, *args, **kwargs):
+        ret = ast.parse(textwrap.dedent(code, *args, **kwargs))
+        if FastAst._LOCATION_OF_NODE is not None:
+            ast.copy_location(ret, FastAst._LOCATION_OF_NODE)
+        return ret
+
 
 def _make_func(func_name):
     def ctor(*args, **kwargs):
@@ -39,7 +47,7 @@ def _make_func(func_name):
 
 
 for ctor_name in ast.__dict__:
-    if ctor_name.startswith("_"):
+    if ctor_name.startswith("_") or hasattr(FastAst, ctor_name):
         continue
     setattr(FastAst, ctor_name, staticmethod(_make_func(ctor_name)))
 

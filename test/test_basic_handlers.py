@@ -4,8 +4,12 @@ import pyccolo as pyc
 
 
 def test_sandbox():
-    env = pyc.exec("x = 42")
+    env = pyc.exec("x = 42", {})
     assert env["x"] == 42
+    assert len(env) == 1, "got %s" % env
+
+    env = pyc.exec("locals()['x'] = 43", {})
+    assert env["x"] == 43
     assert len(env) == 1, "got %s" % env
 
 
@@ -388,3 +392,25 @@ def test_composes_with_existing_sys_tracer():
         sys.settrace(prev_sys_tracer)
     assert tracer.num_calls_seen == 2
     assert num_calls_seen_from_existing_tracer == 3
+
+
+def test_override_stmt():
+    for assertion_val in (True, False):
+
+        class OverridesStmt(pyc.BaseTracer):
+            @pyc.before_stmt
+            def handle_before_stmt(self, *_, **__):
+                return f"globals()['x'] = 43; assert {assertion_val}"
+
+            @pyc.after_stmt
+            def handle_after_stmt(self, *_, **__):
+                globals()["x"] = 44
+
+        with OverridesStmt.instance():
+            try:
+                pyc.exec("pass")
+            except AssertionError:
+                assert x == 43
+            else:
+                assert x == 44
+    del globals()["x"]

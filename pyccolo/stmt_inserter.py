@@ -4,7 +4,12 @@ import logging
 from typing import cast, Dict, FrozenSet, List, Set, Union
 
 from pyccolo import fast
-from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED, make_guard_name
+from pyccolo.extra_builtins import (
+    EMIT_EVENT,
+    EXEC_SAVED_THUNK,
+    TRACING_ENABLED,
+    make_guard_name,
+)
 from pyccolo.trace_events import TraceEvent
 from pyccolo.fast import EmitterMixin, make_test, make_composite_condition
 
@@ -15,11 +20,14 @@ logger = logging.getLogger(__name__)
 _INSERT_STMT_TEMPLATE = '{}("{{evt}}", {{stmt_id}})'.format(EMIT_EVENT)
 
 
-def _get_parsed_insert_stmt(stmt: ast.stmt, evt: TraceEvent) -> ast.stmt:
+def _get_parsed_insert_stmt(stmt: ast.stmt, evt: TraceEvent) -> ast.Expr:
     with fast.location_of(stmt):
-        return fast.parse(
-            _INSERT_STMT_TEMPLATE.format(evt=evt.value, stmt_id=id(stmt))
-        ).body[0]
+        return cast(
+            ast.Expr,
+            fast.parse(
+                _INSERT_STMT_TEMPLATE.format(evt=evt.value, stmt_id=id(stmt))
+            ).body[0],
+        )
 
 
 def _get_parsed_append_stmt(
@@ -27,9 +35,9 @@ def _get_parsed_append_stmt(
     ret_expr: ast.expr = None,
     evt: TraceEvent = TraceEvent.after_stmt,
     **kwargs,
-) -> ast.stmt:
+) -> ast.Expr:
     with fast.location_of(stmt):
-        ret = cast(ast.Expr, _get_parsed_insert_stmt(stmt, evt))
+        ret = _get_parsed_insert_stmt(stmt, evt)
         if ret_expr is not None:
             kwargs["ret"] = ret_expr
         ret_value = cast(ast.Call, ret.value)
@@ -199,15 +207,27 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                             + f"{id(node)})"
                         ).body
                     )
-        if TraceEvent.before_stmt in self.events_with_handlers:
-            stmts_to_extend.append(
-                _get_parsed_insert_stmt(stmt_copy, TraceEvent.before_stmt)
-            )
-        stmts_to_extend.extend(
-            self._make_main_and_after_stmt_stmts(
-                node, field_name, inner_node, stmt_copy
-            )
+        main_and_maybe_after = self._make_main_and_after_stmt_stmts(
+            node, field_name, inner_node, stmt_copy
         )
+        if TraceEvent.before_stmt in self.events_with_handlers:
+            with fast.location_of(stmt_copy):
+                stmts_to_extend.append(
+                    fast.If(
+                        test=_get_parsed_insert_stmt(
+                            stmt_copy, TraceEvent.before_stmt
+                        ).value,
+                        body=self._make_main_and_after_stmt_stmts(
+                            node,
+                            field_name,
+                            fast.parse(f"{EXEC_SAVED_THUNK}()").body[0],
+                            stmt_copy,
+                        ),
+                        orelse=main_and_maybe_after,
+                    )
+                )
+        else:
+            stmts_to_extend.extend(main_and_maybe_after)
         if TraceEvent.after_module_stmt in self.events_with_handlers:
             if isinstance(node, ast.Module) and field_name == "body":
                 assert not isinstance(inner_node, ast.Return)

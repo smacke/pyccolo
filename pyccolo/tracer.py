@@ -34,7 +34,12 @@ from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
 
 from pyccolo.emit_event import _emit_event, _TRACER_STACK
-from pyccolo.extra_builtins import EMIT_EVENT, TRACING_ENABLED, make_guard_name
+from pyccolo.extra_builtins import (
+    EMIT_EVENT,
+    EXEC_SAVED_THUNK,
+    TRACING_ENABLED,
+    make_guard_name,
+)
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.import_hooks import patch_meta_path
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
@@ -127,6 +132,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         )
         self._ctx: Optional[ContextManager] = None
         self._tracing_enabled_files: FrozenSet[str] = frozenset({SANDBOX_FNAME})
+        self._saved_thunk: Optional[Union[str, ast.AST]] = None
         self._is_tracing_enabled = False
         self._is_tracing_hard_disabled = False
         self.sys_tracer = self._sys_tracer
@@ -264,6 +270,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 elif new_ret is Null:
                     new_ret = None
                 kwargs["ret"] = new_ret
+                if event == TraceEvent.before_stmt:
+                    self._saved_thunk = new_ret
             return kwargs.get("ret", None)
         except KeyboardInterrupt as ki:
             self._disable_tracing(check_enabled=False)
@@ -444,6 +452,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     self.deactivate_guard(guard)
             if not hasattr(builtins, TRACING_ENABLED):
                 setattr(builtins, TRACING_ENABLED, False)
+            if not hasattr(builtins, EXEC_SAVED_THUNK):
+                setattr(builtins, EXEC_SAVED_THUNK, self.exec_saved_thunk)
             if len(_TRACER_STACK) == 0:
                 do_patch_meta_path = True
             if should_push:
@@ -463,13 +473,13 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 self._disable_tracing(check_enabled=False)
             self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
             if len(_TRACER_STACK) == 0:
-                if hasattr(builtins, EMIT_EVENT):
-                    delattr(builtins, EMIT_EVENT)
-                if hasattr(builtins, TRACING_ENABLED):
-                    delattr(builtins, TRACING_ENABLED)
-                for guard in self.guards:
-                    if hasattr(builtins, guard):
-                        delattr(builtins, guard)
+                for extra_builtin in {
+                    EMIT_EVENT,
+                    TRACING_ENABLED,
+                    EXEC_SAVED_THUNK,
+                } | self.guards:
+                    if hasattr(builtins, extra_builtin):
+                        delattr(builtins, extra_builtin)
 
     def preprocess(self, code: str, rewriter: AstRewriter) -> str:
         for augmenter in self.make_syntax_augmenters(rewriter):
@@ -503,12 +513,11 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
     def exec(
         self,
-        code: Union[ast.Module, str],
+        code: Union[ast.Module, ast.stmt, str],
         local_env: Optional[dict] = None,
         global_env: Optional[dict] = None,
         *,
         instrument: bool = True,
-        keep_side_effects: bool = True,
         num_extra_lookback_frames: int = 0,
     ) -> Dict[str, Any]:
         frame = None
@@ -552,7 +561,11 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     code = ast.parse(code)
             # prepend the stuff before "return locals()"
             fundef: ast.FunctionDef = cast(ast.FunctionDef, sandboxed_code.body[1])
-            fundef.body = cast(ast.Module, code).body + fundef.body
+            if isinstance(code, ast.Module):
+                code_body: List[ast.stmt] = code.body
+            elif not isinstance(code, list):
+                code_body = [code]
+            fundef.body = code_body + fundef.body
             self.exec_raw(
                 sandboxed_code,
                 filename=SANDBOX_FNAME,
@@ -560,7 +573,12 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 local_env=local_env,
                 instrument=False,
             )
-        return local_env.pop(env_name) if keep_side_effects else {}
+        return local_env.pop(env_name)
+
+    def exec_saved_thunk(self):
+        assert self._saved_thunk is not None
+        thunk, self._saved_thunk = self._saved_thunk, None
+        return self.exec(thunk, instrument=False, num_extra_lookback_frames=1)
 
     def execute(self, *args, **kwargs):
         return self.exec(*args, **kwargs)
