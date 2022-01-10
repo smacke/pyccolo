@@ -506,15 +506,14 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         code: Union[ast.Module, str],
         local_env: Optional[dict] = None,
         global_env: Optional[dict] = None,
+        *,
         instrument: bool = True,
+        num_extra_lookback_frames: int = 0,
     ) -> Dict[str, Any]:
         frame = None
         if global_env is None or local_env is None:
             frame = sys._getframe().f_back
-            if frame.f_code.co_filename.endswith(
-                os.path.join("pyccolo", "__init__.py")
-            ):
-                # in case we were called from `pyc.exec(...)`
+            for _ in range(num_extra_lookback_frames):
                 frame = frame.f_back
         if local_env is None:
             local_env = frame.f_locals

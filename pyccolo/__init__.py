@@ -129,7 +129,12 @@ def parse(code: str) -> ast.Module:
 
 
 def exec(code: str, *args, **kwargs) -> Dict[str, Any]:
-    return tracer().exec(code, *args, **kwargs)
+    return tracer().exec(
+        code,
+        *args,
+        num_extra_lookback_frames=kwargs.pop("num_extra_lookback_frames", 0) + 1,
+        **kwargs,
+    )
 
 
 def execute(*args, **kwargs) -> Dict[str, Any]:
