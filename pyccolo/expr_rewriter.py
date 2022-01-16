@@ -558,7 +558,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             target.ctx = ast.Del()  # type: ignore
         return ret
 
-    def visit_BinOp(self, node: ast.BinOp):
+    def visit_BinOp(self, node: ast.BinOp) -> Union[ast.BinOp, ast.Call]:
         op = node.op
         if isinstance(op, ast.Add):
             before_evt = TraceEvent.before_add
@@ -610,7 +610,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             else:
                 setattr(node, attr, self.visit(operand_node))
 
-        ret = node
+        ret: Union[ast.BinOp, ast.Call] = node
         if before_evt in self.events_with_handlers:
             with fast.location_of(node):
                 ret = self.emit(
