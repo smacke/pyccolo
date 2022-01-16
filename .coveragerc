@@ -1,6 +1,6 @@
 [run]
 source = pyccolo
-omit = pyccolo/_version.py, pyccolo/version.py
+omit = pyccolo/_version.py, pyccolo/version.py, pyccolo/examples/**
 
 [report]
 exclude_lines =

@@ -3,7 +3,7 @@ import ast
 import logging
 import sys
 from contextlib import contextmanager
-from typing import cast, Dict, FrozenSet, List, Optional, Set, Union
+from typing import cast, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import TRACING_ENABLED, make_guard_name
@@ -558,40 +558,38 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             target.ctx = ast.Del()  # type: ignore
         return ret
 
+    @staticmethod
+    def _get_events_for_binop(
+        op: ast.AST,
+    ) -> Tuple[Optional[TraceEvent], Optional[TraceEvent]]:
+        if isinstance(op, ast.Add):
+            return TraceEvent.before_add, TraceEvent.after_add
+        elif isinstance(op, ast.Sub):
+            return TraceEvent.before_sub, TraceEvent.after_sub
+        elif isinstance(op, ast.Mult):
+            return TraceEvent.before_mult, TraceEvent.after_mult
+        elif isinstance(op, ast.MatMult):
+            return TraceEvent.before_mat_mult, TraceEvent.after_mat_mult
+        elif isinstance(op, ast.Div):
+            return TraceEvent.before_div, TraceEvent.after_div
+        elif isinstance(op, ast.Mod):
+            return TraceEvent.before_mod, TraceEvent.after_mod
+        elif isinstance(op, ast.FloorDiv):
+            return TraceEvent.before_floor_div, TraceEvent.after_floor_div
+        elif isinstance(op, ast.Pow):
+            return TraceEvent.before_power, TraceEvent.after_power
+        elif isinstance(op, ast.BitAnd):
+            return TraceEvent.before_bit_and, TraceEvent.after_bit_and
+        elif isinstance(op, ast.BitOr):
+            return TraceEvent.before_bit_or, TraceEvent.after_bit_or
+        elif isinstance(op, ast.BitXor):
+            return TraceEvent.before_bit_xor, TraceEvent.after_bit_xor
+        else:
+            return None, None
+
     def visit_BinOp(self, node: ast.BinOp) -> Union[ast.BinOp, ast.Call]:
         op = node.op
-        if isinstance(op, ast.Add):
-            before_evt = TraceEvent.before_add
-            after_evt = TraceEvent.after_add
-        elif isinstance(op, ast.Sub):
-            before_evt = TraceEvent.before_sub
-            after_evt = TraceEvent.after_sub
-        elif isinstance(op, ast.Mult):
-            before_evt = TraceEvent.before_mult
-            after_evt = TraceEvent.after_mult
-        elif isinstance(op, ast.MatMult):
-            before_evt = TraceEvent.before_mat_mult
-            after_evt = TraceEvent.after_mat_mult
-        elif isinstance(op, ast.Div):
-            before_evt = TraceEvent.before_div
-            after_evt = TraceEvent.after_div
-        elif isinstance(op, ast.FloorDiv):
-            before_evt = TraceEvent.before_floor_div
-            after_evt = TraceEvent.after_floor_div
-        elif isinstance(op, ast.Pow):
-            before_evt = TraceEvent.before_power
-            after_evt = TraceEvent.after_power
-        elif isinstance(op, ast.BitAnd):
-            before_evt = TraceEvent.before_bit_and
-            after_evt = TraceEvent.after_bit_and
-        elif isinstance(op, ast.BitOr):
-            before_evt = TraceEvent.before_bit_or
-            after_evt = TraceEvent.after_bit_or
-        elif isinstance(op, ast.BitXor):
-            before_evt = TraceEvent.before_bit_xor
-            after_evt = TraceEvent.after_bit_xor
-        else:
-            after_evt = None
+        before_evt, after_evt = self._get_events_for_binop(op)
 
         for attr, operand_evt in [
             ("left", TraceEvent.left_binop_arg),

@@ -79,6 +79,8 @@ class TraceEvent(Enum):
     after_mat_mult = "after_mat_mult"
     before_div = "before_div"
     after_div = "after_div"
+    before_mod = "before_mod"
+    after_mod = "after_mod"
     before_floor_div = "before_floor_div"
     after_floor_div = "after_floor_div"
     before_power = "before_power"
@@ -123,6 +125,7 @@ BEFORE_EXPR_EVENTS = {
     TraceEvent.before_mult,
     TraceEvent.before_mat_mult,
     TraceEvent.before_div,
+    TraceEvent.before_mod,
     TraceEvent.before_floor_div,
     TraceEvent.before_power,
     TraceEvent.before_bit_and,
