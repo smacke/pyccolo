@@ -39,7 +39,7 @@ class FastAst:
     def Call(func, args=None, keywords=None, **kwargs):
         args = args or []
         keywords = keywords or []
-        ret = ast.Call(func, args=args, keywords=keywords, **kwargs)
+        ret = ast.Call(func, args, keywords, **kwargs)
         if FastAst._LOCATION_OF_NODE is not None:
             ast.copy_location(ret, FastAst._LOCATION_OF_NODE)
         return ret

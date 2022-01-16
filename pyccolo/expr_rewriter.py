@@ -623,7 +623,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                             right=fast.Name(id="y", ctx=ast.Load()),
                         ),
                         args=ast.arguments(
-                            args=[fast.arg("x"), fast.arg("y")],
+                            args=[fast.arg("x", None), fast.arg("y", None)],
                             defaults=[],
                             kwonlyargs=[],
                             kw_defaults=[],
