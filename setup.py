@@ -36,6 +36,12 @@ setup(
         'versioneer.py',
     ]),
     install_requires=requirements,
+    entry_points={
+        'console_scripts': [
+            'pyc = pyccolo.__main__:main',
+            'pyccolo = pyccolo.__main__:main',
+        ],
+    },
     license='BSD-3-Clause',
     zip_safe=False,
     classifiers=[

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Example of simple code coverage implemented using Pyccolo.
 
@@ -40,35 +41,31 @@ class CountStatementsVisitor(ast.NodeVisitor):
         super().generic_visit(node)
 
 
-def count_statements():
-    total_by_fname = Counter()
-    total = 0
-    root = join(os.curdir, pyc.__name__)
-    visitor = CountStatementsVisitor()
-    for path, _, files in os.walk(root):
-        for filename in files:
-            if not filename.endswith(".py") or filename in EXCEPTED_FILES:
-                continue
-            filename = join(path, filename)
-            with open(filename, "r") as f:
-                visitor.visit(ast.parse(f.read()))
-            total_by_fname[filename] = visitor.num_stmts
-            total += visitor.num_stmts
-            visitor.num_stmts = 0
-    return total, total_by_fname
-
-
 class CoverageTracer(pyc.BaseTracer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.seen_stmts = set()
         self.stmt_count_by_fname = Counter()
+        self.count_static_statements_visitor = CountStatementsVisitor()
+
+    def count_statements(self, path: str) -> int:
+        with open(path, "r") as f:
+            contents = f.read()
+            try:
+                self.count_static_statements_visitor.visit(ast.parse(contents))
+            except SyntaxError:
+                # this means that we must have some other tracer in there,
+                # that should be capable of parsing some augmented syntax
+                self.count_static_statements_visitor.visit(self.parse(contents))
+        ret = self.count_static_statements_visitor.num_stmts
+        self.count_static_statements_visitor.num_stmts = 0
+        return ret
 
     def allow_reentrant_events(self) -> bool:
         return False
 
     def should_instrument_file(self, filename: str) -> bool:
-        if "test" in filename or "examples" in filename:
+        if "test/" in filename or "examples" in filename:
             # filter out tests and self
             return False
 
@@ -86,6 +83,25 @@ class CoverageTracer(pyc.BaseTracer):
             self.stmt_count_by_fname[fname] += 1
             self.seen_stmts.add(stmt_id)
 
+    def exit_tracing_hook(self) -> None:
+        total_stmts = 0
+        for fname in sorted(self.stmt_count_by_fname.keys()):
+            shortened = "." + fname.split(".", 1)[-1]
+            seen = self.stmt_count_by_fname[fname]
+            total_in_file = self.count_statements(fname)
+            total_stmts += total_in_file
+            logger.warning(
+                "[%-40s]: seen=%4d, total=%4d, ratio=%.3f",
+                shortened,
+                seen,
+                total_in_file,
+                float(seen) / total_in_file,
+            )
+        num_seen_stmts = len(self.seen_stmts)
+        logger.warning("num stmts seen: %s", num_seen_stmts)
+        logger.warning("num stmts total: %s", total_stmts)
+        logger.warning("ratio: %.3f", float(num_seen_stmts) / total_stmts)
+
 
 def remove_pyccolo_modules():
     to_delete = []
@@ -98,13 +114,12 @@ def remove_pyccolo_modules():
 
 if __name__ == "__main__":
     sys.path.insert(0, ".")
-    total_stmts, total_by_fname = count_statements()
     # now clear pyccolo modules so that they get reimported, and instrumented
     # can be omitted for non-pyccolo projects
     orig_pyc = pyc
     remove_pyccolo_modules()
     tracer = CoverageTracer.instance()
-    with tracer.tracing_context():
+    with tracer:
         import pyccolo as pyc
 
         # we just cleared the original tracer stack when we deleted all the imports, so
@@ -114,19 +129,4 @@ if __name__ == "__main__":
 
         with patch_meta_path(pyc._TRACER_STACK):
             exit_code = pytest.console_main()
-    for fname in sorted(tracer.stmt_count_by_fname.keys()):
-        shortened = "." + fname.split(".", 1)[-1]
-        seen = tracer.stmt_count_by_fname[fname]
-        total = total_by_fname[shortened]
-        logger.warning(
-            "[%-40s]: seen=%4d, total=%4d, ratio=%.3f",
-            shortened,
-            seen,
-            total,
-            float(seen) / total,
-        )
-    num_seen_stmts = len(tracer.seen_stmts)
-    logger.warning("num stmts seen: %s", num_seen_stmts)
-    logger.warning("num stmts total: %s", total_stmts)
-    logger.warning("ratio: %.3f", float(num_seen_stmts) / total_stmts)
     sys.exit(exit_code)

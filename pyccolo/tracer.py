@@ -428,6 +428,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
         return instrumented_f
 
+    def exit_tracing_hook(self) -> None:
+        pass
+
     @contextmanager
     def tracing_context(
         self, disabled: bool = False, tracing_enabled_file: Optional[str] = None
@@ -436,6 +439,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         orig_num_sandbox_calls_seen = self._num_sandbox_calls_seen
         orig_hard_disabled = self._is_tracing_hard_disabled
         orig_tracing_enabled_files = self._tracing_enabled_files
+        orig_exec_saved_thunk = getattr(builtins, EXEC_SAVED_THUNK, None)
         self._is_tracing_hard_disabled = disabled
         will_enable_tracing = (
             not self._is_tracing_hard_disabled and not self._is_tracing_enabled
@@ -452,8 +456,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     self.deactivate_guard(guard)
             if not hasattr(builtins, TRACING_ENABLED):
                 setattr(builtins, TRACING_ENABLED, False)
-            if not hasattr(builtins, EXEC_SAVED_THUNK):
-                setattr(builtins, EXEC_SAVED_THUNK, self.exec_saved_thunk)
+            setattr(builtins, EXEC_SAVED_THUNK, self.exec_saved_thunk)
             if len(_TRACER_STACK) == 0:
                 do_patch_meta_path = True
             if should_push:
@@ -480,6 +483,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 } | self.guards:
                     if hasattr(builtins, extra_builtin):
                         delattr(builtins, extra_builtin)
+            elif orig_exec_saved_thunk is not None:
+                setattr(builtins, EXEC_SAVED_THUNK, orig_exec_saved_thunk)
+            self.exit_tracing_hook()
 
     def preprocess(self, code: str, rewriter: AstRewriter) -> str:
         for augmenter in self.make_syntax_augmenters(rewriter):
@@ -487,7 +493,6 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         return code
 
     def parse(self, code: str) -> ast.Module:
-        assert _TRACER_STACK[-1] is self
         rewriter = self.make_ast_rewriter()
         for tracer in _TRACER_STACK:
             code = tracer.preprocess(code, rewriter)
