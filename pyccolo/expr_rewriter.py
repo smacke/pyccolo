@@ -233,7 +233,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             )
             if after_evt in self.events_with_handlers:
                 with fast.location_of(node):
-                    node = self.emit(
+                    node = self.emit(  # type: ignore
                         after_evt,
                         orig_node_id,
                         ret=node,
@@ -369,7 +369,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     ret_node, TraceEvent.before_lambda, orig_node_id=id(node)
                 )
             if TraceEvent.after_lambda in self.events_with_handlers:
-                ret_node = self.emit(TraceEvent.after_lambda, node, ret=ret_node)
+                ret_node = self.emit(TraceEvent.after_lambda, node, ret=ret_node)  # type: ignore
         return ret_node
 
     def visit_While(self, node: ast.While):
@@ -561,27 +561,37 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def visit_BinOp(self, node: ast.BinOp):
         op = node.op
         if isinstance(op, ast.Add):
-            evt = TraceEvent.add
+            before_evt = TraceEvent.before_add
+            after_evt = TraceEvent.after_add
         elif isinstance(op, ast.Sub):
-            evt = TraceEvent.sub
+            before_evt = TraceEvent.before_sub
+            after_evt = TraceEvent.after_sub
         elif isinstance(op, ast.Mult):
-            evt = TraceEvent.mult
+            before_evt = TraceEvent.before_mult
+            after_evt = TraceEvent.after_mult
         elif isinstance(op, ast.MatMult):
-            evt = TraceEvent.mat_mult
+            before_evt = TraceEvent.before_mat_mult
+            after_evt = TraceEvent.after_mat_mult
         elif isinstance(op, ast.Div):
-            evt = TraceEvent.div
+            before_evt = TraceEvent.before_div
+            after_evt = TraceEvent.after_div
         elif isinstance(op, ast.FloorDiv):
-            evt = TraceEvent.floor_div
+            before_evt = TraceEvent.before_floor_div
+            after_evt = TraceEvent.after_floor_div
         elif isinstance(op, ast.Pow):
-            evt = TraceEvent.power
+            before_evt = TraceEvent.before_power
+            after_evt = TraceEvent.after_power
         elif isinstance(op, ast.BitAnd):
-            evt = TraceEvent.bit_and
+            before_evt = TraceEvent.before_bit_and
+            after_evt = TraceEvent.after_bit_and
         elif isinstance(op, ast.BitOr):
-            evt = TraceEvent.bit_or
+            before_evt = TraceEvent.before_bit_or
+            after_evt = TraceEvent.after_bit_or
         elif isinstance(op, ast.BitXor):
-            evt = TraceEvent.bit_xor
+            before_evt = TraceEvent.before_bit_xor
+            after_evt = TraceEvent.after_bit_xor
         else:
-            evt = None
+            after_evt = None
 
         for attr, operand_evt in [
             ("left", TraceEvent.left_binop_arg),
@@ -600,11 +610,32 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             else:
                 setattr(node, attr, self.visit(operand_node))
 
-        if evt in self.events_with_handlers:
+        ret = node
+        if before_evt in self.events_with_handlers:
             with fast.location_of(node):
-                return self.emit(evt, node, left=node.left, right=node.right)
-        else:
-            return node
+                ret = self.emit(
+                    before_evt,
+                    node,
+                    ret=fast.Lambda(
+                        body=fast.BinOp(
+                            op=op,
+                            left=fast.Name(id="x", ctx=ast.Load()),
+                            right=fast.Name(id="y", ctx=ast.Load()),
+                        ),
+                        args=ast.arguments(
+                            args=[fast.arg("x"), fast.arg("y")],
+                            defaults=[],
+                            kwonlyargs=[],
+                            kw_defaults=[],
+                            posonlyargs=[],
+                        ),
+                    ),
+                    before_expr_args=[node.left, node.right],
+                )
+        if after_evt in self.events_with_handlers:
+            with fast.location_of(node):
+                ret = self.emit(after_evt, node, ret=ret)
+        return ret
 
     if sys.version_info < (3, 8):
 

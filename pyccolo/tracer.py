@@ -43,7 +43,7 @@ from pyccolo.extra_builtins import (
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.import_hooks import patch_meta_path
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
-from pyccolo.trace_events import TraceEvent, AST_TO_EVENT_MAPPING
+from pyccolo.trace_events import AST_TO_EVENT_MAPPING, TraceEvent
 from pyccolo.trace_stack import TraceStack
 
 

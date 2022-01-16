@@ -414,3 +414,21 @@ def test_override_stmt():
             else:
                 assert x == 44
     del globals()["x"]
+
+
+def test_before_call():
+    class OverridesCall(pyc.BaseTracer):
+        @pyc.before_call
+        def before_call(self, ret, *_, **__):
+            return lambda: 42
+
+    assert (
+        OverridesCall.instance().exec(
+            """
+        def foo():
+            return 43
+        x = foo()
+        """
+        )["x"]
+        == 42
+    )

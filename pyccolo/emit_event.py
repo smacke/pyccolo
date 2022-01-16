@@ -4,6 +4,8 @@ import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, List
 
+from pyccolo.trace_events import BEFORE_EXPR_EVENTS
+
 if TYPE_CHECKING:
     from pyccolo.tracer import BaseTracer
 
@@ -11,6 +13,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_BEFORE_EXPR_EVENT_NAMES = {evt.value for evt in BEFORE_EXPR_EVENTS}
 _TRACER_STACK: "List[BaseTracer]" = []
 _allow_event_handling = True
 _allow_reentrant_event_handling = False
@@ -27,15 +30,22 @@ def allow_reentrant_event_handling():
         _allow_reentrant_event_handling = orig_allow_reentrant_handling
 
 
+def _make_ret(event, ret):
+    if event in _BEFORE_EXPR_EVENT_NAMES and not callable(ret):
+        return lambda: ret
+    else:
+        return ret
+
+
 def _emit_event(event, node_id, **kwargs):
     global _allow_event_handling
     global _allow_reentrant_event_handling
     if not _allow_event_handling and not _allow_reentrant_event_handling:
-        return kwargs.get("ret", None)
+        return _make_ret(event, kwargs.get("ret", None))
     frame = sys._getframe().f_back
     if frame.f_code.co_filename == __file__:
         # weird shit happens if we instrument this file, so exclude it.
-        return kwargs.get("ret", None)
+        return _make_ret(event, kwargs.get("ret", None))
     orig_allow_event_handling = _allow_event_handling
     orig_allow_reentrant_event_handling = _allow_reentrant_event_handling
     try:
@@ -56,4 +66,4 @@ def _emit_event(event, node_id, **kwargs):
     finally:
         _allow_event_handling = orig_allow_event_handling
         _allow_reentrant_event_handling = orig_allow_reentrant_event_handling
-    return kwargs.get("ret", None)
+    return _make_ret(event, kwargs.get("ret", None))

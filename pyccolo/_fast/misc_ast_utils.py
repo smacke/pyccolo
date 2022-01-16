@@ -7,7 +7,7 @@ from typing import Dict, FrozenSet, Optional, Set, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT
-from pyccolo.trace_events import TraceEvent
+from pyccolo.trace_events import BEFORE_EXPR_EVENTS, TraceEvent
 
 if sys.version_info < (3, 8):
     NumConst = ast.Num
@@ -63,14 +63,23 @@ class EmitterMixin:
         return fast.Num(id(self.orig_to_copy_mapping[orig_node_id]))
 
     def emit(
-        self, evt: TraceEvent, node_or_id: Union[int, ast.AST], args=None, **kwargs
-    ):
+        self,
+        evt: TraceEvent,
+        node_or_id: Union[int, ast.AST],
+        args=None,
+        before_expr_args=None,
+        **kwargs,
+    ) -> ast.Call:
         args = args or []
-        return fast.Call(
+        before_expr_args = before_expr_args or []
+        ret = fast.Call(
             func=self.emitter_ast(),
             args=[evt.to_ast(), self.get_copy_id_ast(node_or_id)] + args,
             keywords=fast.kwargs(**kwargs),
         )
+        if evt in BEFORE_EXPR_EVENTS:
+            ret = fast.Call(func=ret, args=before_expr_args)
+        return ret
 
     def make_tuple_event_for(
         self, node: ast.AST, event: TraceEvent, orig_node_id=None, **kwargs

@@ -69,16 +69,26 @@ class TraceEvent(Enum):
 
     left_binop_arg = "left_binop_arg"
     right_binop_arg = "right_binop_arg"
-    add = "add"
-    sub = "sub"
-    mult = "mult"
-    mat_mult = "mat_mult"
-    div = "div"
-    floor_div = "floor_div"
-    power = "power"
-    bit_and = "bit_and"
-    bit_or = "bit_or"
-    bit_xor = "bit_xor"
+    before_add = "before_add"
+    after_add = "after_add"
+    before_sub = "before_sub"
+    after_sub = "after_sub"
+    before_mult = "before_mult"
+    after_mult = "after_mult"
+    before_mat_mult = "before_mat_mult"
+    after_mat_mult = "after_mat_mult"
+    before_div = "before_div"
+    after_div = "after_div"
+    before_floor_div = "before_floor_div"
+    after_floor_div = "after_floor_div"
+    before_power = "before_power"
+    after_power = "after_power"
+    before_bit_and = "before_bit_and"
+    after_bit_and = "after_bit_and"
+    before_bit_or = "before_bit_or"
+    after_bit_or = "after_bit_or"
+    before_bit_xor = "before_bit_xor"
+    after_bit_xor = "after_bit_xor"
 
     ellipses = "ellipses"
 
@@ -107,6 +117,20 @@ class TraceEvent(Enum):
         return fast.Constant(self.name)
 
 
+BEFORE_EXPR_EVENTS = {
+    TraceEvent.before_add,
+    TraceEvent.before_sub,
+    TraceEvent.before_mult,
+    TraceEvent.before_mat_mult,
+    TraceEvent.before_div,
+    TraceEvent.before_floor_div,
+    TraceEvent.before_power,
+    TraceEvent.before_bit_and,
+    TraceEvent.before_bit_or,
+    TraceEvent.before_bit_xor,
+}
+
+
 AST_TO_EVENT_MAPPING = {
     ast.stmt: TraceEvent.after_stmt,
     ast.Assign: TraceEvent.after_assign_rhs,
@@ -120,14 +144,14 @@ AST_TO_EVENT_MAPPING = {
     ast.Tuple: TraceEvent.after_tuple_literal,
     ast.Set: TraceEvent.after_set_literal,
     ast.Return: TraceEvent.after_return,
-    ast.Add: TraceEvent.add,
-    ast.Sub: TraceEvent.sub,
-    ast.Mult: TraceEvent.mult,
-    ast.Div: TraceEvent.div,
-    ast.FloorDiv: TraceEvent.floor_div,
-    ast.MatMult: TraceEvent.mat_mult,
-    ast.Pow: TraceEvent.power,
-    ast.BitAnd: TraceEvent.bit_and,
-    ast.BitOr: TraceEvent.bit_or,
-    ast.BitXor: TraceEvent.bit_xor,
+    ast.Add: TraceEvent.after_add,
+    ast.Sub: TraceEvent.after_sub,
+    ast.Mult: TraceEvent.after_mult,
+    ast.Div: TraceEvent.after_div,
+    ast.FloorDiv: TraceEvent.after_floor_div,
+    ast.MatMult: TraceEvent.after_mat_mult,
+    ast.Pow: TraceEvent.after_power,
+    ast.BitAnd: TraceEvent.after_bit_and,
+    ast.BitOr: TraceEvent.after_bit_or,
+    ast.BitXor: TraceEvent.after_bit_xor,
 }
