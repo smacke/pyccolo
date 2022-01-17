@@ -8,7 +8,7 @@ from pyccolo.expr_rewriter import ExprRewriter
 from pyccolo.stmt_inserter import StatementInserter
 from pyccolo.stmt_mapper import StatementMapper
 from pyccolo.trace_events import TraceEvent
-from pyccolo.syntax_augmentation import AugmentationSpec
+from pyccolo.syntax_augmentation import AugmentationSpec, fix_positions
 
 if TYPE_CHECKING:
     from pyccolo.tracer import BaseTracer
@@ -33,6 +33,14 @@ class AstRewriter(ast.NodeTransformer):
         ] = defaultdict(set)
         self.orig_to_copy_mapping: Optional[Dict[int, ast.AST]] = None
 
+    def _get_order_of_specs_applied(self) -> Tuple[AugmentationSpec, ...]:
+        specs = []
+        for tracer in self._tracers:
+            for spec in tracer.syntax_augmentation_specs:
+                if spec not in specs:
+                    specs.append(spec)
+        return tuple(specs)
+
     def register_augmented_position(
         self, aug_spec: AugmentationSpec, lineno: int, col_offset: int
     ) -> None:
@@ -45,7 +53,10 @@ class AstRewriter(ast.NodeTransformer):
                 id(node) if self._module_id is None else self._module_id
             ],
             self._tracers,
-            self._augmented_positions_by_spec,
+            fix_positions(
+                self._augmented_positions_by_spec,
+                spec_order=self._get_order_of_specs_applied(),
+            ),
         )
         orig_to_copy_mapping = mapper(node)
         self.orig_to_copy_mapping = orig_to_copy_mapping

@@ -2,8 +2,19 @@
 # flake8: noqa
 import re
 import sys
+from collections import Counter, defaultdict
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, List, NamedTuple, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Set,
+    Tuple,
+    Union,
+)
 
 if TYPE_CHECKING:
     from pyccolo.ast_rewriter import AstRewriter
@@ -52,6 +63,36 @@ AUGMENTED_SYNTAX_REGEX_TEMPLATE = "".join(
         any=r"[\S\s]",  # match anything (more general than '.') -- space or non-space
     ).split()
 )
+
+
+def fix_positions(
+    pos_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]],
+    spec_order: Tuple[AugmentationSpec, ...],
+) -> Dict[AugmentationSpec, Set[Tuple[int, int]]]:
+    grouped_by_line: Dict[int, List[Tuple[int, AugmentationSpec]]] = defaultdict(list)
+    fixed_pos_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]] = {}
+    for spec, positions in pos_by_spec.items():
+        fixed_pos_by_spec[spec] = set()
+        for line, col in positions:
+            grouped_by_line[line].append((col, spec))
+
+    for line, cols_with_spec in grouped_by_line.items():
+        total_offset_by_spec: Dict[AugmentationSpec, int] = Counter()
+        offset_by_spec: Dict[AugmentationSpec, int] = Counter()
+        cols_with_spec.sort()
+        for col, spec in cols_with_spec:
+            offset = len(spec.token) - len(spec.replacement)
+            for prev_applied in spec_order:
+                # the offsets will only be messed up for specs that
+                # were applied earlier
+                total_offset_by_spec[prev_applied] += offset
+                if prev_applied == spec:
+                    break
+            offset_by_spec[spec] += offset
+            new_col = col - (total_offset_by_spec[spec] - offset_by_spec[spec])
+            fixed_pos_by_spec[spec].add((line, new_col))
+
+    return fixed_pos_by_spec
 
 
 def replace_tokens_and_get_augmented_positions(

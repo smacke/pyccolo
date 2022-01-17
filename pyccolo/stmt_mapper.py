@@ -61,7 +61,7 @@ class StatementMapper(ast.NodeVisitor):
         if isinstance(node, ast.Name):
             return node.col_offset + len(node.id)
         elif isinstance(node, ast.Attribute):
-            return getattr(node.value, "end_col_offset", -1)
+            return getattr(node.value, "end_col_offset", -1) + len(node.attr) + 1
         elif isinstance(node, ast.FunctionDef):
             # TODO: can be different if more spaces between 'def' and function name
             return node.col_offset + 4 + len(node.name)
