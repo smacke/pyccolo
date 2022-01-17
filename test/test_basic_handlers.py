@@ -441,6 +441,11 @@ def test_before_add_returning_callable():
         def before_add(self, *_, **__):
             return lambda x, y: (x + y) % 42
 
+        @pyc.after_add
+        def after_add(self, ret, *_, **__):
+            assert ret == 1
+            return ret + 1
+
     with OverridesAdd.instance():
         assert (
             pyc.exec(
@@ -448,7 +453,7 @@ def test_before_add_returning_callable():
             x = 41 + 2
             """
             )["x"]
-            == 1
+            == 2
         )
 
 
@@ -456,7 +461,12 @@ def test_before_add_returning_constant():
     class OverridesAdd(pyc.BaseTracer):
         @pyc.before_add
         def before_add(self, *_, **__):
-            return 42
+            return 41
+
+        @pyc.after_add
+        def after_add(self, ret, *_, **__):
+            assert ret == 41
+            return ret + 1
 
     with OverridesAdd.instance():
         assert (
