@@ -32,7 +32,7 @@ def allow_reentrant_event_handling():
 
 def _make_ret(event, ret):
     if event in _BEFORE_EXPR_EVENT_NAMES and not callable(ret):
-        return lambda: ret
+        return lambda *_: ret
     else:
         return ret
 
