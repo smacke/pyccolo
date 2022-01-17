@@ -433,3 +433,37 @@ def test_before_call():
         )["x"]
         == 42
     )
+
+
+def test_before_add_returning_callable():
+    class OverridesAdd(pyc.BaseTracer):
+        @pyc.before_add
+        def before_add(self, *_, **__):
+            return lambda x, y: (x + y) % 42
+
+    with OverridesAdd.instance():
+        assert (
+            pyc.exec(
+                """
+            x = 41 + 2
+            """
+            )["x"]
+            == 1
+        )
+
+
+def test_before_add_returning_constant():
+    class OverridesAdd(pyc.BaseTracer):
+        @pyc.before_add
+        def before_add(self, *_, **__):
+            return 42
+
+    with OverridesAdd.instance():
+        assert (
+            pyc.exec(
+                """
+            x = 41 + 4
+            """
+            )["x"]
+            == 42
+        )
