@@ -25,9 +25,10 @@ join = os.path.join
 EXCEPTED_FILES = {
     "version.py",
     "_version.py",
-    # weird shit happens if we instrument _emit_event, so exclude it.
+    # weird shit happens if we instrument _emit_event and import_hooks, so exclude them.
     # can be removed for coverage of non-pyccolo projects.
     "emit_event.py",
+    "import_hooks.py",
 }
 
 
@@ -37,7 +38,14 @@ class CountStatementsVisitor(ast.NodeVisitor):
 
     def generic_visit(self, node):
         if isinstance(node, ast.stmt):
-            self.num_stmts += 1
+            if not isinstance(node, ast.Raise):
+                self.num_stmts += 1
+            if (
+                isinstance(node, ast.If)
+                and isinstance(node.test, ast.Name)
+                and node.test.id == "TYPE_CHECKING"
+            ):
+                return
         super().generic_visit(node)
 
 
@@ -73,7 +81,7 @@ class CoverageTracer(pyc.BaseTracer):
             filename.endswith(excepted) for excepted in EXCEPTED_FILES
         )
 
-    @pyc.register_raw_handler(ast.stmt)
+    @pyc.register_raw_handler(pyc.before_stmt)
     def handle_stmt(self, _ret, stmt_id, frame, *_, **__):
         fname = frame.f_code.co_filename
         if fname == "<sandbox>":
@@ -126,7 +134,6 @@ if __name__ == "__main__":
         # we need to put it back
         # (can be omitted for non-pyccolo projects)
         pyc._TRACER_STACK.append(tracer)
-
         with patch_meta_path(pyc._TRACER_STACK):
             exit_code = pytest.console_main()
     sys.exit(exit_code)

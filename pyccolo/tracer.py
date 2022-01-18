@@ -131,7 +131,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             events_with_registered_handlers
         )
         self._ctx: Optional[ContextManager] = None
-        self._tracing_enabled_files: FrozenSet[str] = frozenset({SANDBOX_FNAME})
+        self._tracing_enabled_files: Set[str] = {SANDBOX_FNAME}
+        self._current_sandbox_fname: str = SANDBOX_FNAME
         self._saved_thunk: Optional[Union[str, ast.AST]] = None
         self._is_tracing_enabled = False
         self._is_tracing_hard_disabled = False
@@ -364,7 +365,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     ) -> bool:
         if is_reentrant and not self.allow_reentrant_events():
             return False
-        if filename == SANDBOX_FNAME and self.has_sys_trace_events:
+        if filename == self._current_sandbox_fname and self.has_sys_trace_events:
             ret = self._num_sandbox_calls_seen >= 2
             self._num_sandbox_calls_seen += evt == "call"
             return ret
@@ -438,15 +439,17 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         do_patch_meta_path = False
         orig_num_sandbox_calls_seen = self._num_sandbox_calls_seen
         orig_hard_disabled = self._is_tracing_hard_disabled
-        orig_tracing_enabled_files = self._tracing_enabled_files
         orig_exec_saved_thunk = getattr(builtins, EXEC_SAVED_THUNK, None)
+        orig_sandbox_fname = self._current_sandbox_fname
+        orig_tracing_enabled_files = self._tracing_enabled_files
         self._is_tracing_hard_disabled = disabled
         will_enable_tracing = (
             not self._is_tracing_hard_disabled and not self._is_tracing_enabled
         )
         should_push = self not in _TRACER_STACK
         if tracing_enabled_file is not None:
-            self._tracing_enabled_files = self._tracing_enabled_files | {
+            self._current_sandbox_fname = tracing_enabled_file
+            self._tracing_enabled_files = orig_tracing_enabled_files | {
                 tracing_enabled_file
             }
         try:
@@ -469,11 +472,14 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     yield
         finally:
             self._tracing_enabled_files = orig_tracing_enabled_files
+            self._current_sandbox_fname = orig_sandbox_fname
             self._is_tracing_hard_disabled = orig_hard_disabled
             if should_push:
                 del _TRACER_STACK[-1]
             if will_enable_tracing:
                 self._disable_tracing(check_enabled=False)
+            if should_push:
+                self.exit_tracing_hook()
             self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
             if len(_TRACER_STACK) == 0:
                 for extra_builtin in {
@@ -485,7 +491,6 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                         delattr(builtins, extra_builtin)
             elif orig_exec_saved_thunk is not None:
                 setattr(builtins, EXEC_SAVED_THUNK, orig_exec_saved_thunk)
-            self.exit_tracing_hook()
 
     def preprocess(self, code: str, rewriter: AstRewriter) -> str:
         for augmenter in self.make_syntax_augmenters(rewriter):
@@ -503,11 +508,12 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         code: Union[ast.Module, str],
         global_env: dict,
         local_env: dict,
-        filename: Optional[str] = "<file>",
+        filename: str = SANDBOX_FNAME,
         instrument: bool = True,
     ) -> None:
         with self.tracing_context(
-            disabled=self._is_tracing_hard_disabled
+            disabled=self._is_tracing_hard_disabled,
+            tracing_enabled_file=filename,
         ) if instrument else suppress():
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
@@ -523,6 +529,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         global_env: Optional[dict] = None,
         *,
         instrument: bool = True,
+        filename: str = SANDBOX_FNAME,
         num_extra_lookback_frames: int = 0,
     ) -> Dict[str, Any]:
         frame = None
@@ -554,9 +561,10 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             {env_name}.pop("builtins", None)
             """
         ).strip()
-        sandboxed_code = ast.parse(cast(str, sandboxed_code), SANDBOX_FNAME, "exec")
+        sandboxed_code = ast.parse(cast(str, sandboxed_code), filename, "exec")
         with self.tracing_context(
-            disabled=self._is_tracing_hard_disabled
+            disabled=self._is_tracing_hard_disabled,
+            tracing_enabled_file=filename,
         ) if instrument else suppress():
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
@@ -573,7 +581,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             fundef.body = code_body + fundef.body
             self.exec_raw(
                 sandboxed_code,
-                filename=SANDBOX_FNAME,
+                filename=filename,
                 global_env=global_env,
                 local_env=local_env,
                 instrument=False,

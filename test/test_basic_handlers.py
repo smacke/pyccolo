@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import ast
 import sys
+from types import FrameType
+
 import pyccolo as pyc
 
 
@@ -121,12 +123,14 @@ def test_sys_tracing_call():
             self.num_calls_seen = 0
 
         @pyc.register_handler(pyc.call)
-        def handle_call(self, *_, **__):
-            self.num_calls_seen += 1
+        def handle_call(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name in ("foo", "bar"):
+                self.num_calls_seen += 1
 
         @pyc.register_handler(pyc.return_)
-        def handle_return(self, *_, **__):
-            assert self.num_calls_seen >= 1
+        def handle_return(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name in ("foo", "bar"):
+                assert self.num_calls_seen >= 1
 
     sys_tracer = sys.gettrace()
     tracer = TracesCalls.instance()
@@ -168,36 +172,42 @@ def test_composed_sys_tracing_calls():
 
     class TracesCalls1(pyc.BaseTracer):
         @pyc.register_handler(pyc.call)
-        def handle_call(self, *_, **__):
-            nonlocal num_calls_seen_1
-            num_calls_seen_1 += 1
-            assert num_calls_seen_1 > num_calls_seen_2
-            assert num_calls_seen_1 > num_calls_seen_3
+        def handle_call(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name == "foo":
+                nonlocal num_calls_seen_1
+                num_calls_seen_1 += 1
+                assert num_calls_seen_1 > num_calls_seen_2
+                assert num_calls_seen_1 > num_calls_seen_3
 
         @pyc.register_handler(pyc.return_)
-        def handle_return(self, *_, **__):
-            assert num_calls_seen_1 >= 1
+        def handle_return(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name == "foo":
+                assert num_calls_seen_1 >= 1
 
     class TracesCalls2(pyc.BaseTracer):
         @pyc.register_handler(pyc.call)
-        def handle_call(self, *_, **__):
-            nonlocal num_calls_seen_2
-            num_calls_seen_2 += 1
-            assert num_calls_seen_2 > num_calls_seen_3
+        def handle_call(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name == "foo":
+                nonlocal num_calls_seen_2
+                num_calls_seen_2 += 1
+                assert num_calls_seen_2 > num_calls_seen_3
 
         @pyc.register_handler(pyc.return_)
-        def handle_return(self, *_, **__):
-            assert num_calls_seen_2 >= 1
+        def handle_return(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name == "foo":
+                assert num_calls_seen_2 >= 1
 
     class TracesCalls3(pyc.BaseTracer):
         @pyc.register_handler(pyc.call)
-        def handle_call(self, *_, **__):
-            nonlocal num_calls_seen_3
-            num_calls_seen_3 += 1
+        def handle_call(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name == "foo":
+                nonlocal num_calls_seen_3
+                num_calls_seen_3 += 1
 
         @pyc.register_handler(pyc.return_)
-        def handle_return(self, *_, **__):
-            assert num_calls_seen_3 >= 1
+        def handle_return(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name == "foo":
+                assert num_calls_seen_3 >= 1
 
     with TracesCalls1.instance().tracing_context():
         with TracesCalls2.instance().tracing_context():
@@ -287,16 +297,17 @@ def test_tracing_context_manager_toggling():
 
     class TracesStatements(pyc.BaseTracer):
         @pyc.register_handler(ast.stmt)
-        def handle_stmt(self, _evt, _node, frame, *_, **__):
+        def handle_stmt(self, _ret, _node, frame, *_, **__):
             if frame.f_code.co_filename == "<sandbox>":
                 nonlocal num_stmts_seen
                 num_stmts_seen += 1
 
     class TracesCalls(pyc.BaseTracer):
         @pyc.register_handler(pyc.call)
-        def handle_call(self, *_, **__):
-            nonlocal num_calls_seen
-            num_calls_seen += 1
+        def handle_call(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name == "foo":
+                nonlocal num_calls_seen
+                num_calls_seen += 1
 
     stmt_tracer = TracesStatements()
     call_tracer = TracesCalls()
@@ -304,7 +315,13 @@ def test_tracing_context_manager_toggling():
     with stmt_tracer.tracing_enabled():
         with stmt_tracer.tracing_disabled():
             with call_tracer.tracing_enabled():
-                pyc.exec("(lambda: 5)()")
+                pyc.exec(
+                    """
+                    def foo():
+                        return 5
+                    foo()
+                """
+                )
         pyc.exec("x = 1")
 
     assert num_stmts_seen == 1
@@ -314,7 +331,9 @@ def test_tracing_context_manager_toggling():
     with pyc.tracing_disabled((stmt_tracer, call_tracer)):
         pyc.exec(
             """
-            (lambda: 5)()
+            def foo():
+                return 5
+            foo()
             x = 1
             """
         )
@@ -324,12 +343,14 @@ def test_tracing_context_manager_toggling():
     with pyc.tracing_enabled((stmt_tracer, call_tracer)):
         pyc.exec(
             """
-            (lambda: 5)()
+            def foo():
+                return 5
+            foo()
             x = 1
             """
         )
 
-    assert num_stmts_seen == 2
+    assert num_stmts_seen == 3
     assert num_calls_seen == 1
 
 
@@ -341,13 +362,17 @@ def test_composes_with_existing_sys_tracer():
     # in case we are using codecov
     prev_sys_tracer = sys.gettrace()
 
-    def existing_tracer(_frame, evt, *args, **kwargs):
-        if evt == "call" and _frame.f_code.co_filename == "<sandbox>":
+    def existing_tracer(frame: FrameType, evt, *args, **kwargs):
+        if (
+            evt == "call"
+            and frame.f_code.co_filename == "<sandbox>"
+            and frame.f_code.co_name in ("foo", "bar")
+        ):
             nonlocal num_calls_seen_from_existing_tracer
             num_calls_seen_from_existing_tracer += 1
         if prev_sys_tracer is not None:
             cur_sys_tracer = sys.gettrace()
-            ret = prev_sys_tracer(_frame, evt, *args, **kwargs)
+            ret = prev_sys_tracer(frame, evt, *args, **kwargs)
             if sys.gettrace() != cur_sys_tracer:
                 sys_settrace(cur_sys_tracer)
             if ret == prev_sys_tracer:
@@ -361,12 +386,14 @@ def test_composes_with_existing_sys_tracer():
             self.num_calls_seen = 0
 
         @pyc.register_handler(pyc.call)
-        def handle_call(self, *_, **__):
-            self.num_calls_seen += 1
+        def handle_call(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name in ("foo", "bar"):
+                self.num_calls_seen += 1
 
         @pyc.register_handler(pyc.return_)
-        def handle_return(self, *_, **__):
-            assert self.num_calls_seen >= 1
+        def handle_return(self, _ret, _node, frame: FrameType, *_, **__):
+            if frame.f_code.co_name in ("foo", "bar"):
+                assert self.num_calls_seen >= 1
 
     tracer = TracesCalls.instance()
     try:

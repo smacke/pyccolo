@@ -14,9 +14,8 @@ logging.basicConfig(level=logging.INFO)
 
 
 _RECORDED_EVENTS = []
-
-
 _DIFFER = difflib.Differ()
+_FILENAME = "<trace_event_sandbox>"
 
 
 def patch_events_and_emitter(testfunc):
@@ -60,8 +59,9 @@ def patch_events_and_emitter(testfunc):
             frame: FrameType,
             **kwargs,
         ):
-            if frame.f_code.co_filename == "<sandbox>":
-                _RECORDED_EVENTS.append(pyc.TraceEvent(event))
+            non_str_event = pyc.TraceEvent(event)
+            if frame.f_code.co_filename == _FILENAME and non_str_event in events:
+                _RECORDED_EVENTS.append(non_str_event)
             return original_emit_event(self, event, node_id, frame, **kwargs)
 
         try:
@@ -100,7 +100,7 @@ def subsets(draw, elements):
 @patch_events_and_emitter
 def test_recorded_events_simple(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracer().exec('logging.debug("foo")')
+    pyc.BaseTracer().exec('logging.debug("foo")', filename=_FILENAME)
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
             [
@@ -130,7 +130,8 @@ def test_recorded_events_two_stmts(events):
         """
         x = [1, 2, 3]
         logging.debug(x)
-        """
+        """,
+        filename=_FILENAME,
     )
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
@@ -166,7 +167,9 @@ def test_recorded_events_two_stmts(events):
 @patch_events_and_emitter
 def test_nested_chains_no_call(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracer().exec('logging.debug("foo is %s", logging.debug("foo"))')
+    pyc.BaseTracer().exec(
+        'logging.debug("foo is %s", logging.debug("foo"))', filename=_FILENAME
+    )
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
             [
@@ -202,7 +205,7 @@ def test_nested_chains_no_call(events):
 @patch_events_and_emitter
 def test_list_nested_in_dict(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracer().exec("x = {1: [2, 3, 4]}")
+    pyc.BaseTracer().exec("x = {1: [2, 3, 4]}", filename=_FILENAME)
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
             [
@@ -234,7 +237,8 @@ def test_function_call(events):
         def foo(x):
             return [x]
         foo([42])
-        """
+        """,
+        filename=_FILENAME,
     )
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
@@ -276,7 +280,7 @@ def test_function_call(events):
 @patch_events_and_emitter
 def test_lambda_in_tuple(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracer().exec("x = (lambda: 42,)")
+    pyc.BaseTracer().exec("x = (lambda: 42,)", filename=_FILENAME)
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
             [
@@ -310,7 +314,8 @@ def test_fancy_slices(events):
         foo = Foo(1)
         arr = np.zeros((3, 3, 3))
         logging.debug(arr[foo.x:foo.x+1,...])
-        """
+        """,
+        filename=_FILENAME,
     )
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
@@ -418,7 +423,8 @@ def test_for_loop(events):
         """
         for i in range(10):
             pass
-        """
+        """,
+        filename=_FILENAME,
     )
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
@@ -457,7 +463,8 @@ def test_while_loop(events):
         i = 0
         while i < 10:
             i += 1
-        """
+        """,
+        filename=_FILENAME,
     )
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
@@ -497,7 +504,8 @@ def test_loop_with_continue(events):
         for i in range(10):
             continue
             print("hi")
-        """
+        """,
+        filename=_FILENAME,
     )
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
@@ -536,7 +544,8 @@ def test_for_loop_nested_in_while_loop(events):
         while i < 10:
             for j in range(2):
                 i += 1
-        """
+        """,
+        filename=_FILENAME,
     )
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
@@ -593,7 +602,8 @@ def test_lambda_wrapping_call(events):
             return z
         lam = lambda: f()
         x = lam()
-        """
+        """,
+        filename=_FILENAME,
     )
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
