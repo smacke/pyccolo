@@ -267,7 +267,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                         logger.exception("An exception while handling evt %s", event)
                     new_ret = None
                 if new_ret is None:
-                    if event == TraceEvent.call:
+                    if event in (TraceEvent.call, TraceEvent.exception):
                         new_ret = self.sys_tracer
                     else:
                         new_ret = old_ret
