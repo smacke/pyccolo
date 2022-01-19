@@ -197,7 +197,7 @@ for a full list.
 Note that, for AST events, Python source is only transformed to emit some event
 when there is at least one tracer active that has at least one handler
 registered for that event. This prevents the transformed source from becoming
-extremely bloated when only a few handlers are needed.
+extremely bloated when only a few events are needed.
 
 ## Handler Interface
 
