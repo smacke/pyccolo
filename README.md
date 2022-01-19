@@ -163,13 +163,13 @@ print(bar?.foo)
 ```
 
 ```bash
-pyc bar.py -t pyccolo.examples.NullCoalescer
+> pyc bar.py -t pyccolo.examples.NullCoalescer
 ```
 
 You can also run `bar` as a module (indeed, `pyc` performs this internally when provided a file):
 
 ```bash
-pyc -m bar -t pyccolo.examples.NullCoalescer
+> pyc -m bar -t pyccolo.examples.NullCoalescer
 ```
 
 Note that you can specify multiple tracer classes after the `-t` argument;
