@@ -153,7 +153,7 @@ later when instrumentation is not desired).
 
 You can execute arbitrary scripts with instrumentation enabled with the `pyc` command line tool.
 For example, to use the `NullCoalescer` tracer defined in [pyccolo/examples/null_coalesce.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/null_coalesce.py),
-you can call `pyc` as follows, given some example script `foo.py`:
+you can call `pyc` as follows, given some example script `bar.py`:
 
 ```python
 # bar.py
