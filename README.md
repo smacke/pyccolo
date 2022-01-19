@@ -157,7 +157,7 @@ you can call `pyc` as follows, given some example script `bar.py`:
 
 ```python
 # bar.py
-foo = None
+bar = None
 # prints `None` since bar?.foo coalesces to `None`
 print(bar?.foo)
 ```
