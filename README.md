@@ -187,7 +187,7 @@ Pyccolo handlers can be registered for many kinds of events. Some of the more co
 - `pyc.after_stmt`, emitted after a statement executes;
 - `pyc.before_attribute_load`, emitted in [load contexts](https://docs.python.org/3/library/ast.html#ast.Load) before an attribute is accessed;
 - `pyc.after_attribute_load`, emitted in load contexts after an attribute is accessed;
-- `pyc.load_name`, emitted when a variable is used in a load context (e.g. `foo` in `bar = foo` or `bar = foo.baz`);
+- `pyc.load_name`, emitted when a variable is used in a load context (e.g. `foo` in `bar = foo.baz`);
 - `pyc.call` and `pyc.return_`, two non-AST trace events built-in to Python.
 
 There are many different Pyccolo events, and more are always being added. See
