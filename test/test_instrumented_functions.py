@@ -11,7 +11,7 @@ def test_basic_decorator():
 
     tracer = IncrementsAssignValue.instance()
 
-    @tracer.instrumented
+    @tracer
     def f():
         x = 41
         return x
@@ -34,7 +34,7 @@ def test_decorated_tracing_decorator():
         return new_f
 
     @twice
-    @tracer.instrumented
+    @tracer
     def f():
         x = 41
         return x

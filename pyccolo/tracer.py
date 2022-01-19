@@ -432,6 +432,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
         return instrumented_f
 
+    def __call__(self, f):
+        return self.instrumented(f)
+
     def exit_tracing_hook(self) -> None:
         pass
 
