@@ -222,7 +222,7 @@ defined on other tracer classes.
 
 ## Performance
 
-Pyccolo instrumentation adds significant overhead to your program. In some
+Pyccolo instrumentation adds significant overhead to Python. In some
 cases, this overhead can be partially mitigated if, for example, you only need
 instrumentation the first time a statement runs. In such cases, you can
 deactivate instrumentation after, e.g., the first time a function executes, or
