@@ -131,7 +131,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             events_with_registered_handlers
         )
         self._ctx: Optional[ContextManager] = None
-        self._tracing_enabled_files: Set[str] = {SANDBOX_FNAME}
+        self._tracing_enabled_files: Set[str] = {SANDBOX_FNAME, self.defined_file}
         self._current_sandbox_fname: str = SANDBOX_FNAME
         self._saved_thunk: Optional[Union[str, ast.AST]] = None
         self._is_tracing_enabled = False
@@ -267,7 +267,10 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                         logger.exception("An exception while handling evt %s", event)
                     new_ret = None
                 if new_ret is None:
-                    new_ret = old_ret
+                    if event == TraceEvent.call:
+                        new_ret = self.sys_tracer
+                    else:
+                        new_ret = old_ret
                 elif new_ret is Null:
                     new_ret = None
                 kwargs["ret"] = new_ret
