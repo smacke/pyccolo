@@ -46,8 +46,8 @@ if __name__ == "__main__":
 ```
 
 Instrumentation is provided by a *tracer class* that inherit from
-`pyccolo.BaseTracer`. This class rewrites Python source code with additional
-triggers that execute when events of interest kick off, such as when a
+`pyccolo.BaseTracer`. This class rewrites Python source code with instrumentation that
+triggers that whenever events of interest occur, such as when a
 statement is about to execute. By registering a handler with the associated
 event (with the `@pyc.before_stmt` decorator, in this case), we can enrich our
 programs with additional observability, or even alter their behavior
