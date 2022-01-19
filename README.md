@@ -59,7 +59,7 @@ if __name__ == "__main__":
 ```
 
 This program is enough to demonstrate the core concepts and features of
-Pyccolo. Instrumentation is provided by a * tracer class* that inherit from
+Pyccolo. Instrumentation is provided by a *tracer class* that inherit from
 `pyccolo.BaseTracer`. This class rewrites Python source code with additional
 triggers that execute when events of interest kick off, such as when a
 statement is about to execute, as in the above example. By registering a
