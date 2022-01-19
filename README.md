@@ -9,7 +9,7 @@ Pyccolo
 [![Python Versions](https://img.shields.io/pypi/pyversions/pyccolo.svg)](https://pypi.org/project/pyccolo)
 [![PyPI Version](https://img.shields.io/pypi/v/pyccolo.svg)](https://pypi.org/project/pyccolo)
 
-Pyccolo is a software library for embedding source-level instrumentation in
+Pyccolo is a library for embedding source-level instrumentation in
 Python (as opposed to bytecode-level). It aims to be *ergonomic*, *composable*,
 and *portable*, by providing an intuitive interface, making it easy to layer
 multiple levels of instrumentation, and allowing the same code to work across
