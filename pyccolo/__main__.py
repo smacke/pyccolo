@@ -35,7 +35,7 @@ def make_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-t",
-        "--tracers",
+        "--tracer",
         nargs="+",
         help="Tracers to use for instrumentation.",
         required=True,
@@ -53,7 +53,7 @@ def validate_args(args: argparse.Namespace) -> None:
 def run(args: argparse.Namespace) -> None:
     validate_args(args)
     tracers = []
-    for tracer_ref in args.tracers:
+    for tracer_ref in args.tracer:
         tracers.append(resolve_tracer(tracer_ref))
     if args.module is not None:
         module_to_run = args.module
