@@ -203,7 +203,7 @@ extremely bloated when only a few events are needed.
 
 Every Pyccolo handler is passed four positional arguments:
 1. The return value, for instrumented expressions;
-2. The AST node (or node id, if using `register_raw_handler(...)`);
+2. The AST node (or node id, if using `register_raw_handler(...)`, or `None`, for `sys` events);
 3. The stack frame, at the point where instrumentation kicks in;
 4. The event (useful when the same handler is registered for multiple events).
 
