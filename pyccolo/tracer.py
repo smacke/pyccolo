@@ -250,7 +250,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             if self._is_tracing_hard_disabled:
                 return kwargs.get("ret", None)
             event = evt if isinstance(evt, TraceEvent) else TraceEvent(evt)
-            for handler, use_raw_node_id in self._event_handlers[event]:
+            for handler, use_raw_node_id in self._event_handlers.get(event, []):
                 old_ret = kwargs.pop("ret", None)
                 try:
                     node_id_or_node = (
