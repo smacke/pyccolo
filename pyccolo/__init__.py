@@ -23,6 +23,7 @@ from pyccolo.trace_stack import TraceStack
 from pyccolo.tracer import (
     BaseTracer,
     Null,
+    Skip,
     register_handler,
     register_raw_handler,
     skip_when_tracing_disabled,
@@ -210,6 +211,7 @@ __all__ = [
     "AugmentationType",
     "BaseTracer",
     "Null",
+    "Skip",
     "TraceStack",
     "allow_reentrant_event_handling",
     "event",

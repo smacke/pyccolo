@@ -504,3 +504,21 @@ def test_before_add_returning_constant():
             )["x"]
             == 42
         )
+
+
+def test_skip():
+    class SkipsSecondHandler(pyc.BaseTracer):
+        @pyc.before_add
+        def before_add(self, *_, **__):
+            return 41
+
+        @pyc.after_add
+        def after_add(self, ret, *_, **__):
+            assert ret == 41
+            return pyc.Skip
+
+        @pyc.after_add
+        def skipped_after_add(self, ret, *_, **__):
+            return ret + 1
+
+    assert SkipsSecondHandler.instance().exec("x = 41 + 4")["x"] == 41

@@ -56,6 +56,7 @@ internal_directories = (
     os.path.dirname(os.path.dirname((lambda: 0).__code__.co_filename)),
 )
 Null = object()
+Skip = object()
 SANDBOX_FNAME = "<sandbox>"
 
 
@@ -266,7 +267,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     else:
                         logger.exception("An exception while handling evt %s", event)
                     new_ret = None
-                if new_ret is None:
+                should_break = new_ret is Skip
+                if new_ret is None or new_ret is Skip:
                     if event in (TraceEvent.call, TraceEvent.exception):
                         new_ret = self.sys_tracer
                     else:
@@ -276,6 +278,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 kwargs["ret"] = new_ret
                 if event == TraceEvent.before_stmt:
                     self._saved_thunk = new_ret
+                if should_break:
+                    break
             return kwargs.get("ret", None)
         except KeyboardInterrupt as ki:
             self._disable_tracing(check_enabled=False)
@@ -350,7 +354,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             sys.settrace = original_settrace
 
     def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
-        return False
+        return True
 
     def should_instrument_file(self, filename: str) -> bool:
         return False
@@ -372,9 +376,13 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             ret = self._num_sandbox_calls_seen >= 2
             self._num_sandbox_calls_seen += evt == "call"
             return ret
-        return self._should_instrument_file_impl(
-            filename
-        ) or self.file_passes_filter_for_event(evt, filename)
+        return (
+            evt == TraceEvent.init_module.value
+            or self._should_instrument_file_impl(filename)
+        ) and (
+            evt == TraceEvent.import_.value
+            or self.file_passes_filter_for_event(evt, filename)
+        )
 
     def make_ast_rewriter(self, **kwargs) -> AstRewriter:
         return self.ast_rewriter_cls(_TRACER_STACK, **kwargs)
