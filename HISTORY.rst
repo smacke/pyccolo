@@ -1,6 +1,14 @@
 History
 =======
 
+0.0.7 (2022-01-06)
+------------------
+* Add cli;
+* Add basic readme documentation;
+* Allow returning pyc.Skip for skipping subsequent handlers for same event;
+* Misc improvements to file filter hooks;
+* Allow returning lambdas for before_expr events;
+
 0.0.6 (2022-01-06)
 ------------------
 * Misc ergonomics improvements;
