@@ -24,6 +24,12 @@ tools and other instrumentation:
 - Tools to uncover [semantic memory leaks](http://ithare.com/java-vs-c-trading-ub-for-semantic-memory-leaks-same-problem-different-punishment-for-failure/)
 - \<Your tool here!>
 
+## Install
+
+```bash
+pip install pyccolo
+```
+
 ## Hello World
 
 Below is a simple script that uses Pyccolo to print "Hello, world!" before
