@@ -9,11 +9,14 @@ Pyccolo
 [![Python Versions](https://img.shields.io/pypi/pyversions/pyccolo.svg)](https://pypi.org/project/pyccolo)
 [![PyPI Version](https://img.shields.io/pypi/v/pyccolo.svg)](https://pypi.org/project/pyccolo)
 
-Pyccolo is a library for embedding source-level instrumentation in
-Python (as opposed to bytecode-level). It aims to be *ergonomic*, *composable*,
-and *portable*, by providing an intuitive interface, making it easy to layer
+Pyccolo is a library for declarative instrumentation in Python; i.e., it lets
+you specify the *what* of the instrumentation you wish to perform, and takes
+care of the *how* for you.  It aims to be *ergonomic*, *composable*, and
+*portable*, by providing an intuitive interface, making it easy to layer
 multiple levels of instrumentation, and allowing the same code to work across
-multiple versions of Python (3.6 to 3.10), with few exceptions.
+multiple versions of Python (3.6 to 3.10), with few exceptions. Portability
+across versions is accomplished by embedding instrumentation at the level of
+source code (as opposed to bytecode-level instrumentation).
 
 Pyccolo can be used (and has been used) to implement various kinds of dynamic analysis
 tools and other instrumentation:
@@ -52,8 +55,8 @@ if __name__ == "__main__":
 ```
 
 Instrumentation is provided by a *tracer class* that inherit from
-`pyccolo.BaseTracer`. This class rewrites Python source code with instrumentation that
-triggers whenever events of interest occur, such as when a
+`pyccolo.BaseTracer`. This class rewrites Python source code with
+instrumentation that triggers whenever events of interest occur, such as when a
 statement is about to execute. By registering a handler with the associated
 event (with the `@pyc.before_stmt` decorator, in this case), we can enrich our
 programs with additional observability, or even alter their behavior
