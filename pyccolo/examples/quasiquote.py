@@ -16,9 +16,9 @@ class _ReplaceUnquoteTransformer(ast.NodeTransformer):
         if isinstance(node.value, ast.Name) and node.value.id == "u":
             to_wrap = node.slice
             if isinstance(to_wrap, ast.Index):
-                to_wrap = to_wrap.value
+                to_wrap = to_wrap.value  # type: ignore
             return (
-                ast.parse(
+                ast.parse(  # type: ignore
                     repr(
                         eval(
                             compile(ast.Expression(to_wrap), "<file>", "eval"),
@@ -47,15 +47,12 @@ class QuasiQuoter(pyc.BaseTracer):
 
         # need to create dummy references to avoid NameError
         builtins.q = None
-        builtins.u = None
 
     def exit_tracing_hook(self) -> None:
         import builtins
 
         if hasattr(builtins, "q"):
             delattr(builtins, "q")
-        if hasattr(builtins, "u"):
-            delattr(builtins, "u")
 
     @pyc.before_subscript_slice(
         when=lambda node: hasattr(node, "value")
