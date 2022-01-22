@@ -3,6 +3,7 @@ Example of an quasiquoter for Pyccolo, similar to MacroPy's.
 Ref: https://macropy3.readthedocs.io/en/latest/reference.html#quasiquote
 """
 import ast
+import copy
 
 import pyccolo as pyc
 
@@ -65,7 +66,7 @@ class QuasiQuoter(pyc.BaseTracer):
             to_visit = to_visit.value
         return lambda: _ReplaceUnquoteTransformer(
             frame.f_locals, frame.f_globals
-        ).visit(to_visit)
+        ).visit(copy.deepcopy(to_visit))
 
     @pyc.load_name(when=lambda node: node.id == "q")
     def load_q(self, *_, **__):
