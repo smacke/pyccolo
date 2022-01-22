@@ -132,8 +132,27 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     elts = slc.elts if isinstance(slc, ast.Tuple) else slc.dims  # type: ignore
                     elts = [self._maybe_convert_ast_subscript(elt) for elt in elts]  # type: ignore
                     slc = fast.Tuple(elts, ast.Load())
-                if self.handler_condition_by_event[TraceEvent.subscript_slice](node):
-                    slc = self.emit(TraceEvent.subscript_slice, node, ret=slc)
+                if self.handler_condition_by_event[TraceEvent.before_subscript_slice](
+                    node
+                ):
+                    slc = self.emit(
+                        TraceEvent.before_subscript_slice,
+                        node,
+                        ret=fast.Lambda(
+                            body=slc,
+                            args=ast.arguments(
+                                args=[],
+                                defaults=[],
+                                kwonlyargs=[],
+                                kw_defaults=[],
+                                posonlyargs=[],
+                            ),
+                        ),
+                    )
+                if self.handler_condition_by_event[TraceEvent.after_subscript_slice](
+                    node
+                ):
+                    slc = self.emit(TraceEvent.after_subscript_slice, node, ret=slc)
                 if self.handler_condition_by_event[evt_to_use](node.slice):
                     replacement_slice: ast.expr = self.emit(
                         TraceEvent._load_saved_slice, node.slice

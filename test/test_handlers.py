@@ -543,3 +543,18 @@ def test_conditional_instrumentation():
     assert d["a"] == 1
     assert d["b"] == 0
     assert d["c"] == 2
+
+
+def test_override_subscript_slice():
+    from pyccolo.examples import QuasiQuoter
+
+    with QuasiQuoter.instance():
+        d = pyc.exec(
+            """
+            node = q[a + b]
+            lst = [1, 2, 3]
+            x = lst[-1]
+            """
+        )
+    assert d["x"] == d["lst"][-1] == 3
+    assert isinstance(d["node"], ast.BinOp), "got %s" % type(d["node"])

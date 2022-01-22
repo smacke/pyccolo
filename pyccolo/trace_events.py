@@ -29,7 +29,8 @@ class TraceEvent(Enum):
     before_subscript_del = "before_subscript_del"
     after_subscript_load = "after_subscript_load"
 
-    subscript_slice = "subscript_slice"
+    before_subscript_slice = "before_subscript_slice"
+    after_subscript_slice = "after_subscript_slice"
     _load_saved_slice = "_load_saved_slice"
 
     before_load_complex_symbol = "before_load_complex_symbol"
@@ -131,6 +132,7 @@ BEFORE_EXPR_EVENTS = {
     TraceEvent.before_bit_and,
     TraceEvent.before_bit_or,
     TraceEvent.before_bit_xor,
+    TraceEvent.before_subscript_slice,
 }
 
 

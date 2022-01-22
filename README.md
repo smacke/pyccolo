@@ -21,6 +21,7 @@ source code (as opposed to bytecode-level instrumentation).
 Pyccolo can be used (and has been used) to implement various kinds of dynamic analysis
 tools and other instrumentation:
 - Code coverage (see [pyccolo/examples/coverage.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/coverage.py))
+- Syntactic macros such as quasiquotes (see [pyccolo/examples/quasiquote.py)](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/quasiquote.py))
 - Syntax-augmented Python (3.8 and up, see [pyccolo/examples/null_coalesce.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/null_coalesce.py))
 - Dynamic dataflow analysis performed by [nbsafety](https://github.com/nbsafety-project/nbsafety)
 - Tools to find unused imports at runtime (candidates for lazy importing)
