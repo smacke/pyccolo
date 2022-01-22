@@ -551,10 +551,17 @@ def test_override_subscript_slice():
     with QuasiQuoter.instance():
         d = pyc.exec(
             """
-            node = q[a + b]
+            a = 10
+            b = 2
             lst = [1, 2, 3]
             x = lst[-1]
+            node1 = q[a + b]
+            node2 = q[1 + u[a + b]]
             """
         )
     assert d["x"] == d["lst"][-1] == 3
-    assert isinstance(d["node"], ast.BinOp), "got %s" % type(d["node"])
+    node1, node2 = d["node1"], d["node2"]
+    assert isinstance(node1, ast.BinOp), "got %s" % type(node1)
+    assert isinstance(node2, ast.BinOp), "got %s" % type(node2)
+    assert node2.left.n == 1
+    assert node2.right.n == 12
