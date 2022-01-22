@@ -2,7 +2,16 @@
 import ast
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    DefaultDict,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+)
 
 from pyccolo.expr_rewriter import ExprRewriter
 from pyccolo.stmt_inserter import StatementInserter
@@ -60,22 +69,45 @@ class AstRewriter(ast.NodeTransformer):
         )
         orig_to_copy_mapping = mapper(node)
         self.orig_to_copy_mapping = orig_to_copy_mapping
-        # very important that the eavesdropper does not create new ast nodes for ast.stmt (but just
-        # modifies existing ones), since StatementInserter relies on being able to map these
-        events_with_handlers: Set[TraceEvent] = set()
+        raw_handler_conditions_by_event: DefaultDict[
+            TraceEvent, List[Callable[[ast.AST], bool]]
+        ] = defaultdict(list)
         for tracer in self._tracers:
             for evt in tracer.events_with_registered_handlers:
-                if self._path is None or tracer._file_passes_filter_impl(
+                if self._path is not None and not tracer._file_passes_filter_impl(
                     evt.value, self._path
                 ):
-                    events_with_handlers.add(evt)
-        frozen_events_with_handlers = frozenset(events_with_handlers)
+                    continue
+                handler_data = tracer._event_handlers.get(
+                    evt, [(None, False, lambda *_: True)]
+                )
+                for _, use_raw_node_id, raw_condition in handler_data:
+                    condition: Callable[[ast.AST], bool] = (
+                        (lambda nd: raw_condition(id(nd)))  # type: ignore
+                        if use_raw_node_id
+                        else raw_condition
+                    )
+                    raw_handler_conditions_by_event[evt].append(condition)
+        handler_condition_by_event: DefaultDict[
+            TraceEvent, Callable[[ast.AST], bool]
+        ] = defaultdict(lambda: (lambda *_: False))
+        for evt, raw_conditions in raw_handler_conditions_by_event.items():
+            assert len(raw_conditions) > 0
+            if len(raw_conditions) == 1:
+                condition = raw_conditions[0]
+            else:
+                condition = lambda nd: any(  # noqa: E731
+                    raw(nd) for raw in raw_conditions
+                )
+            handler_condition_by_event[evt] = condition
+        # very important that the eavesdropper does not create new ast nodes for ast.stmt (but just
+        # modifies existing ones), since StatementInserter relies on being able to map these
         expr_rewriter = ExprRewriter(
-            orig_to_copy_mapping, frozen_events_with_handlers, self._tracers[-1].guards
+            orig_to_copy_mapping, handler_condition_by_event, self._tracers[-1].guards
         )
         for i in range(len(node.body)):
             node.body[i] = expr_rewriter.visit(node.body[i])
         node = StatementInserter(
-            orig_to_copy_mapping, frozen_events_with_handlers, self._tracers[-1].guards
+            orig_to_copy_mapping, handler_condition_by_event, self._tracers[-1].guards
         ).visit(node)
         return node

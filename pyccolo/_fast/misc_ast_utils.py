@@ -3,7 +3,7 @@ import ast
 import builtins
 import sys
 import typing
-from typing import Dict, FrozenSet, Optional, Set, Union
+from typing import Callable, DefaultDict, Dict, Optional, Set, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT
@@ -43,11 +43,11 @@ class EmitterMixin:
     def __init__(
         self,
         orig_to_copy_mapping: Dict[int, ast.AST],
-        events_with_handlers: FrozenSet[TraceEvent],
+        handler_condition_by_event: DefaultDict[TraceEvent, Callable[[ast.AST], bool]],
         guards: Set[str],
     ):
         self.orig_to_copy_mapping = orig_to_copy_mapping
-        self.events_with_handlers = events_with_handlers
+        self.handler_condition_by_event = handler_condition_by_event
         self.guards: Set[str] = guards
 
     def register_guard(self, guard: str) -> None:
@@ -84,7 +84,7 @@ class EmitterMixin:
     def make_tuple_event_for(
         self, node: ast.AST, event: TraceEvent, orig_node_id=None, **kwargs
     ):
-        if event not in self.events_with_handlers:
+        if not self.handler_condition_by_event[event](node):
             return node
         with fast.location_of(node):
             tuple_node = fast.Tuple(

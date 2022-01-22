@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 import logging
-from typing import cast, Dict, FrozenSet, List, Set, Union
+from typing import cast, Callable, DefaultDict, Dict, List, Set, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import (
@@ -60,10 +60,12 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
     def __init__(
         self,
         orig_to_copy_mapping: Dict[int, ast.AST],
-        events_with_handlers: FrozenSet[TraceEvent],
+        handler_condition_by_event: DefaultDict[TraceEvent, Callable[[ast.AST], bool]],
         guards: Set[str],
     ):
-        EmitterMixin.__init__(self, orig_to_copy_mapping, events_with_handlers, guards)
+        EmitterMixin.__init__(
+            self, orig_to_copy_mapping, handler_condition_by_event, guards
+        )
         self._init_stmt_inserted: bool = False
         self._global_nonlocal_stripper: StripGlobalAndNonlocalDeclarations = (
             StripGlobalAndNonlocalDeclarations()
@@ -94,7 +96,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                             self.emit(
                                 before_loop_evt, node, ret=fast.NameConstant(True)
                             )
-                            if before_loop_evt in self.events_with_handlers
+                            if self.handler_condition_by_event[before_loop_evt](node)
                             else None,
                         ]
                     ),
@@ -112,7 +114,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                             ],
                         ),
                     ]
-                    if after_loop_evt in self.events_with_handlers
+                    if self.handler_condition_by_event[after_loop_evt](node)
                     else orig_body,
                     orelse=loop_node_copy.body,
                 ),
@@ -142,8 +144,9 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                                 node,
                                 ret=fast.NameConstant(True),
                             )
-                            if TraceEvent.before_function_body
-                            in self.events_with_handlers
+                            if self.handler_condition_by_event[
+                                TraceEvent.before_function_body
+                            ](fundef_copy)
                             else None,
                         ]
                     ),
@@ -161,7 +164,9 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                             ],
                         ),
                     ]
-                    if TraceEvent.after_function_execution in self.events_with_handlers
+                    if self.handler_condition_by_event[
+                        TraceEvent.after_function_execution
+                    ](fundef_copy)
                     else orig_body,
                     orelse=fundef_copy.body,
                 ),
@@ -174,7 +179,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         prev_stmt: ast.stmt,
         prev_stmt_copy: ast.stmt,
     ) -> List[ast.stmt]:
-        if TraceEvent.after_stmt not in self.events_with_handlers:
+        if not self.handler_condition_by_event[TraceEvent.after_stmt](prev_stmt_copy):
             return [self.visit(prev_stmt)]
         if (
             isinstance(prev_stmt, ast.Expr)
@@ -200,7 +205,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         if not self._init_stmt_inserted and isinstance(node, ast.Module):
             self._init_stmt_inserted = True
             with fast.location_of(stmt_copy):
-                if TraceEvent.init_module in self.events_with_handlers:
+                if self.handler_condition_by_event[TraceEvent.init_module](node):
                     stmts_to_extend.extend(
                         fast.parse(
                             f'{EMIT_EVENT}("{TraceEvent.init_module.name}", '
@@ -210,7 +215,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         main_and_maybe_after = self._make_main_and_after_stmt_stmts(
             node, field_name, inner_node, stmt_copy
         )
-        if TraceEvent.before_stmt in self.events_with_handlers:
+        if self.handler_condition_by_event[TraceEvent.before_stmt](stmt_copy):
             with fast.location_of(stmt_copy):
                 stmts_to_extend.append(
                     fast.If(
@@ -228,12 +233,15 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                 )
         else:
             stmts_to_extend.extend(main_and_maybe_after)
-        if TraceEvent.after_module_stmt in self.events_with_handlers:
-            if isinstance(node, ast.Module) and field_name == "body":
-                assert not isinstance(inner_node, ast.Return)
-                stmts_to_extend.append(
-                    _get_parsed_append_stmt(stmt_copy, evt=TraceEvent.after_module_stmt)
-                )
+        if (
+            isinstance(node, ast.Module)
+            and field_name == "body"
+            and self.handler_condition_by_event[TraceEvent.after_module_stmt](stmt_copy)
+        ):
+            assert not isinstance(inner_node, ast.Return)
+            stmts_to_extend.append(
+                _get_parsed_append_stmt(stmt_copy, evt=TraceEvent.after_module_stmt)
+            )
         return stmts_to_extend
 
     def generic_visit(self, node):

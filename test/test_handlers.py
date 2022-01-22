@@ -522,3 +522,24 @@ def test_skip():
             return ret + 1
 
     assert SkipsSecondHandler.instance().exec("x = 41 + 4")["x"] == 41
+
+
+def test_conditional_instrumentation():
+    class IncrementsX(pyc.BaseTracer):
+        @pyc.load_name(when=lambda node: node.id == "x")
+        def load_x(self, ret, *_, **__):
+            return ret + 1
+
+    with IncrementsX.instance():
+        d = pyc.exec(
+            """
+            x = 0
+            y = 0
+            a = x
+            b = y
+            c = a + b + x + y
+            """
+        )
+    assert d["a"] == 1
+    assert d["b"] == 0
+    assert d["c"] == 2

@@ -87,17 +87,20 @@ class MetaTracerStateMachine(MetaHasTraits):
         return obj
 
 
+_HANDLER_DATA_T = Tuple[Callable[..., Any], bool, Callable[..., bool]]
+
+
 class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     ast_rewriter_cls = AstRewriter
     defined_file = ""
 
     _MANAGER_CLASS_REGISTERED = False
     EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[
-        TraceEvent, List[Tuple[Callable[..., Any], bool]]
+        TraceEvent, List[_HANDLER_DATA_T]
     ] = defaultdict(list)
     EVENT_HANDLERS_BY_CLASS: Dict[
         "Type[BaseTracer]",
-        DefaultDict[TraceEvent, List[Tuple[Callable[..., Any], bool]]],
+        DefaultDict[TraceEvent, List[_HANDLER_DATA_T]],
     ] = {}
 
     EVENT_LOGGER = logging.getLogger("events")
@@ -121,10 +124,21 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             )
         super().__init__()
         self._has_fancy_sys_tracing = sys.version_info >= (3, 7)
-        self._event_handlers = defaultdict(list)
+        self._event_handlers: DefaultDict[
+            TraceEvent, List[_HANDLER_DATA_T]
+        ] = defaultdict(list)
         events_with_registered_handlers = set()
         for clazz in reversed(self.__class__.mro()):
-            for evt, handlers in self.EVENT_HANDLERS_BY_CLASS.get(clazz, {}).items():
+            for evt, raw_handlers in self.EVENT_HANDLERS_BY_CLASS.get(
+                clazz, {}
+            ).items():
+                handlers: List[_HANDLER_DATA_T] = []
+                for (*handler_info, raw_condition) in raw_handlers:
+                    condition: Optional[Callable[..., bool]] = getattr(
+                        self, getattr(raw_condition, "__name__", "<empty>"), None
+                    )
+                    condition = raw_condition if condition is None else condition
+                    handlers.append((*handler_info, condition))  # type: ignore
                 self._event_handlers[evt].extend(handlers)
                 if not issubclass(BaseTracer, clazz) and len(handlers) > 0:
                     events_with_registered_handlers.add(evt)
@@ -250,7 +264,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             if self._is_tracing_hard_disabled:
                 return kwargs.get("ret", None)
             event = evt if isinstance(evt, TraceEvent) else TraceEvent(evt)
-            for handler, use_raw_node_id in self._event_handlers.get(event, []):
+            for handler, use_raw_node_id, condition in self._event_handlers.get(
+                event, []
+            ):
                 old_ret = kwargs.pop("ret", None)
                 try:
                     node_id_or_node = (
@@ -258,9 +274,13 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                         if use_raw_node_id
                         else self.ast_node_by_id.get(node_id, None)
                     )
-                    new_ret = handler(
-                        self, old_ret, node_id_or_node, frame, event, **kwargs
-                    )
+                    # if condition(node_id_or_node):
+                    if True:
+                        new_ret = handler(
+                            self, old_ret, node_id_or_node, frame, event, **kwargs
+                        )
+                    else:
+                        continue
                 except Exception as exc:
                     if self.should_propagate_handler_exception(event, exc):
                         raise exc
@@ -642,8 +662,10 @@ def register_handler(
         Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]
     ],
     use_raw_node_id: bool = False,
+    when: Optional[Callable[..., bool]] = None,
 ):
     events = event if isinstance(event, tuple) else (event,)
+    when = (lambda *_: True) if when is None else when
 
     if TraceEvent.opcode in events and sys.version_info < (3, 7):
         raise ValueError("can't trace opcodes on Python < 3.7")
@@ -654,14 +676,25 @@ def register_handler(
                 AST_TO_EVENT_MAPPING[evt]
                 if type(evt) is type and issubclass(evt, ast.AST)
                 else evt
-            ].append((handler, use_raw_node_id))
+            ].append((handler, use_raw_node_id, when))
         return handler
 
     return _inner_registrar
 
 
-def __event_call__(self, handler):
-    return register_handler(self)(handler)
+def __event_call__(self, handler=None, **kwargs):
+    if handler is None:
+
+        def _register_func(_handler):
+            return register_handler(self, **kwargs)(_handler)
+
+        return _register_func
+    else:
+        if len(kwargs) > 0:
+            raise ValueError(
+                "keyword arguments not supported for simple handler registration"
+            )
+        return register_handler(self)(handler)
 
 
 TraceEvent.__call__ = __event_call__  # type: ignore
@@ -670,9 +703,10 @@ TraceEvent.__call__ = __event_call__  # type: ignore
 def register_raw_handler(
     event: Union[
         Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]
-    ]
+    ],
+    **kwargs,
 ):
-    return register_handler(event, use_raw_node_id=True)
+    return register_handler(event, use_raw_node_id=True, **kwargs)
 
 
 def skip_when_tracing_disabled(handler):

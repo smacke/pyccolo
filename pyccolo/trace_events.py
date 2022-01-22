@@ -111,7 +111,7 @@ class TraceEvent(Enum):
     def __repr__(self):
         return "<" + str(self) + ">"
 
-    def __call__(self, handler):
+    def __call__(self, handler=None, **kwargs):
         # this will be filled by tracer.py
         ...
 
