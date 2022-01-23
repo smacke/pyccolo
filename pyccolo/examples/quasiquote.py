@@ -31,7 +31,7 @@ class _QuasiquoteTransformer(ast.NodeTransformer):
 
 def is_macro(name):
     return (
-        lambda node: hasattr(node, "value")
+        lambda node: isinstance(node, ast.Subscript)
         and isinstance(node.value, ast.Name)
         and node.value.id == name
     )
