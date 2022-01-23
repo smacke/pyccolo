@@ -546,9 +546,9 @@ def test_conditional_instrumentation():
 
 
 def test_quasiquotes():
-    from pyccolo.examples import QuasiQuoter
+    from pyccolo.examples import Quasiquoter
 
-    with QuasiQuoter.instance():
+    with Quasiquoter.instance():
         nested = pyc.eval("q[u[str(q[42])]]")
         binop = pyc.eval("q[41 + 1]")
         d = pyc.exec(
@@ -561,6 +561,8 @@ def test_quasiquotes():
             node2 = q[1 + u[a + b]]
             node3 = q["a" + "b"]
             node4 = q[name["a"] + "b"]
+            node5 = q[ast_literal[node3] + ast_literal[node4]]
+            node6 = q[ast_list[node1, node2, node3, node4, node5]]
             """
         )
     assert nested.s.startswith("<ast.")
@@ -571,7 +573,14 @@ def test_quasiquotes():
     assert binop.right.n == 1
 
     assert d["x"] == d["lst"][-1] == 3
-    node1, node2, node3, node4 = d["node1"], d["node2"], d["node3"], d["node4"]
+    node1, node2, node3, node4, node5, node6 = (
+        d["node1"],
+        d["node2"],
+        d["node3"],
+        d["node4"],
+        d["node5"],
+        d["node6"],
+    )
     assert isinstance(node1, ast.BinOp), "got %s" % type(node1)
     assert isinstance(node2, ast.BinOp), "got %s" % type(node2)
     assert node2.left.n == 1
@@ -581,3 +590,12 @@ def test_quasiquotes():
     assert node3.right.s == "b"
     assert isinstance(node4.left, ast.Name) and node4.left.id == "a"
     assert node4.right.s == "b"
+
+    assert isinstance(node5, ast.BinOp)
+    assert isinstance(node5.op, ast.Add)
+    assert ast.dump(node5.left) == ast.dump(node3)
+    assert ast.dump(node5.right) == ast.dump(node4)
+
+    assert isinstance(node6, ast.List)
+    for elt, expected in zip(node6.elts, [node1, node2, node3, node4, node5]):
+        assert ast.dump(elt) == ast.dump(expected)
