@@ -565,7 +565,7 @@ def test_quasiquotes():
             node6 = q[ast_list[node1, node2, node3, node4, node5]]
             """
         )
-    assert nested.s.startswith("<ast.")
+    assert nested.s.startswith("<ast.") or nested.s.startswith("<_ast.")
 
     assert isinstance(binop, ast.BinOp)
     assert isinstance(binop.op, ast.Add)
