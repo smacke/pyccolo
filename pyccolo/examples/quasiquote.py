@@ -1,11 +1,19 @@
 """
 Example of an quasiquoter for Pyccolo, similar to MacroPy's.
 Ref: https://macropy3.readthedocs.io/en/latest/reference.html#quasiquote
+
+Currently 'q', 'u', and 'name' operators are supported; e.g.,
+a = 10
+b = 2
+q[1 + u[a + b]]  -> BinOp(Add, left=Num(1), right=Num(12))
 """
 import ast
 import copy
 
 import pyccolo as pyc
+
+
+_MACROS = {"q", "u", "name"}
 
 
 class _ReplaceUnquoteTransformer(ast.NodeTransformer):
@@ -14,25 +22,25 @@ class _ReplaceUnquoteTransformer(ast.NodeTransformer):
         self._global_env = global_env
 
     def visit_Subscript(self, node: ast.Subscript):
-        if isinstance(node.value, ast.Name) and node.value.id == "u":
+        if isinstance(node.value, ast.Name) and node.value.id in _MACROS - {"q"}:
             to_wrap = node.slice
             if isinstance(to_wrap, ast.Index):
                 to_wrap = to_wrap.value  # type: ignore
-            return (
-                ast.parse(  # type: ignore
-                    repr(
-                        eval(
-                            compile(ast.Expression(to_wrap), "<file>", "eval"),
-                            self._global_env,
-                            self._local_env,
-                        )
-                    )
-                )
-                .body[0]
-                .value
-            )
+            raw = pyc.eval(to_wrap, self._local_env, self._global_env)
+            if node.value.id == "name":
+                return ast.Name(raw, ast.Load())  # type: ignore
+            else:
+                return ast.parse(repr(raw)).body[0].value  # type: ignore
         else:
             return node
+
+
+def is_subscript(name):
+    return (
+        lambda node: hasattr(node, "value")
+        and isinstance(node.value, ast.Name)
+        and node.value.id == name
+    )
 
 
 class QuasiQuoter(pyc.BaseTracer):
@@ -42,25 +50,23 @@ class QuasiQuoter(pyc.BaseTracer):
 
     _identity_subscript = _IdentitySubscript()
 
-    @pyc.init_module
-    def init_module(self, *_, **__):
+    def enter_tracing_hook(self) -> None:
         import builtins
 
-        # need to create dummy references to avoid NameError
-        builtins.q = None
+        # need to create dummy reference to avoid NameError
+        for macro in _MACROS:
+            if not hasattr(builtins, macro):
+                setattr(builtins, macro, None)
 
     def exit_tracing_hook(self) -> None:
         import builtins
 
-        if hasattr(builtins, "q"):
-            delattr(builtins, "q")
+        for macro in _MACROS:
+            if hasattr(builtins, macro):
+                delattr(builtins, macro)
 
-    @pyc.before_subscript_slice(
-        when=lambda node: hasattr(node, "value")
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "q"
-    )
-    def quote_slice_handler(self, _ret, node, frame, *_, **__):
+    @pyc.before_subscript_slice(when=is_subscript("q"))
+    def quote_handler(self, _ret, node, frame, *_, **__):
         to_visit = node.slice
         if isinstance(node.slice, ast.Index):
             to_visit = to_visit.value
@@ -68,6 +74,6 @@ class QuasiQuoter(pyc.BaseTracer):
             frame.f_locals, frame.f_globals
         ).visit(copy.deepcopy(to_visit))
 
-    @pyc.load_name(when=lambda node: node.id == "q")
+    @pyc.before_subscript_load(when=is_subscript("q"))
     def load_q(self, *_, **__):
         return self._identity_subscript

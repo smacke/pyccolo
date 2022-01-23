@@ -11,6 +11,7 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    Union,
 )
 
 from pyccolo.expr_rewriter import ExprRewriter
@@ -25,6 +26,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
+
+
+CONDITION = Callable[[ast.AST], bool]
 
 
 class AstRewriter(ast.NodeTransformer):
@@ -55,8 +59,28 @@ class AstRewriter(ast.NodeTransformer):
     ) -> None:
         self._augmented_positions_by_spec[aug_spec].add((lineno, col_offset))
 
+    @staticmethod
+    def _make_condition(
+        use_raw_node_id: bool, raw_condition: Union[CONDITION, Callable[[int], bool]]
+    ) -> CONDITION:
+        return (
+            (lambda nd: raw_condition(id(nd)))  # type: ignore
+            if use_raw_node_id
+            else raw_condition
+        )
+
+    @staticmethod
+    def _make_composite_condition(raw_conditions: List[CONDITION]) -> CONDITION:
+        assert len(raw_conditions) > 0
+        if len(raw_conditions) == 1:
+            return raw_conditions[0]
+        else:
+            return lambda nd: any(raw(nd) for raw in raw_conditions)
+
     def visit(self, node: ast.AST):
-        assert isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef))
+        assert isinstance(
+            node, (ast.Expression, ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)
+        )
         mapper = StatementMapper(
             self._tracers[-1].line_to_stmt_by_module_id[
                 id(node) if self._module_id is None else self._module_id
@@ -70,8 +94,9 @@ class AstRewriter(ast.NodeTransformer):
         orig_to_copy_mapping = mapper(node)
         self.orig_to_copy_mapping = orig_to_copy_mapping
         raw_handler_conditions_by_event: DefaultDict[
-            TraceEvent, List[Callable[[ast.AST], bool]]
+            TraceEvent, List[CONDITION]
         ] = defaultdict(list)
+
         for tracer in self._tracers:
             for evt in tracer.events_with_registered_handlers:
                 if self._path is not None and not tracer._file_passes_filter_impl(
@@ -82,32 +107,29 @@ class AstRewriter(ast.NodeTransformer):
                     evt, [(None, False, lambda *_: True)]
                 )
                 for _, use_raw_node_id, raw_condition in handler_data:
-                    condition: Callable[[ast.AST], bool] = (
-                        (lambda nd: raw_condition(id(nd)))  # type: ignore
-                        if use_raw_node_id
-                        else raw_condition
+                    condition: CONDITION = self._make_condition(
+                        use_raw_node_id, raw_condition
                     )
                     raw_handler_conditions_by_event[evt].append(condition)
-        handler_condition_by_event: DefaultDict[
-            TraceEvent, Callable[[ast.AST], bool]
-        ] = defaultdict(lambda: (lambda *_: False))
+        handler_condition_by_event: DefaultDict[TraceEvent, CONDITION] = defaultdict(
+            lambda: (lambda *_: False)
+        )
         for evt, raw_conditions in raw_handler_conditions_by_event.items():
-            assert len(raw_conditions) > 0
-            if len(raw_conditions) == 1:
-                condition = raw_conditions[0]
-            else:
-                condition = lambda nd: any(  # noqa: E731
-                    raw(nd) for raw in raw_conditions
-                )
+            condition = self._make_composite_condition(raw_conditions)
             handler_condition_by_event[evt] = condition
         # very important that the eavesdropper does not create new ast nodes for ast.stmt (but just
         # modifies existing ones), since StatementInserter relies on being able to map these
         expr_rewriter = ExprRewriter(
             orig_to_copy_mapping, handler_condition_by_event, self._tracers[-1].guards
         )
-        for i in range(len(node.body)):
-            node.body[i] = expr_rewriter.visit(node.body[i])
-        node = StatementInserter(
-            orig_to_copy_mapping, handler_condition_by_event, self._tracers[-1].guards
-        ).visit(node)
+        if isinstance(node, ast.Expression):
+            node = expr_rewriter.visit(node)
+        else:
+            for i in range(len(node.body)):
+                node.body[i] = expr_rewriter.visit(node.body[i])
+            node = StatementInserter(
+                orig_to_copy_mapping,
+                handler_condition_by_event,
+                self._tracers[-1].guards,
+            ).visit(node)
         return node

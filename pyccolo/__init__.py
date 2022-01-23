@@ -10,7 +10,7 @@ import inspect
 import textwrap
 import types
 from contextlib import contextmanager
-from typing import Any, Dict
+from typing import Any, Dict, Union
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.emit_event import _TRACER_STACK, allow_reentrant_event_handling
 from pyccolo.extra_builtins import make_guard_name
@@ -138,11 +138,20 @@ def instance() -> BaseTracer:
     return tracer()
 
 
-def parse(code: str) -> ast.Module:
-    return tracer().parse(code)
+def parse(code: str, mode: str = "exec") -> Union[ast.Module, ast.Expression]:
+    return tracer().parse(code, mode=mode)
 
 
-def exec(code: str, *args, **kwargs) -> Dict[str, Any]:
+def eval(code: Union[str, ast.expr, ast.Expression], *args, **kwargs) -> Any:
+    return tracer().eval(
+        code,
+        *args,
+        num_extra_lookback_frames=kwargs.pop("num_extra_lookback_frames", 0) + 1,
+        **kwargs,
+    )
+
+
+def exec(code: Union[str, ast.Module, ast.stmt], *args, **kwargs) -> Dict[str, Any]:
     return tracer().exec(
         code,
         *args,

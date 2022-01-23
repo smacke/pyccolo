@@ -274,13 +274,12 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                         if use_raw_node_id
                         else self.ast_node_by_id.get(node_id, None)
                     )
-                    # if condition(node_id_or_node):
-                    if True:
+                    if condition(node_id_or_node):
                         new_ret = handler(
                             self, old_ret, node_id_or_node, frame, event, **kwargs
                         )
                     else:
-                        continue
+                        new_ret = None
                 except Exception as exc:
                     if self.should_propagate_handler_exception(event, exc):
                         raise exc
@@ -439,7 +438,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         finally:
             self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
 
-    def instrumented(self, f):
+    def instrumented(self, f: Callable) -> Callable:
         f_defined_file = f.__code__.co_filename
         with self.tracing_disabled():
             code = ast.parse(textwrap.dedent(inspect.getsource(f)))
@@ -460,8 +459,17 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
         return instrumented_f
 
-    def __call__(self, f):
-        return self.instrumented(f)
+    def __call__(self, code: Union[str, ast.Module, ast.stmt, Callable]):
+        if isinstance(code, (str, ast.AST)):
+            return self.exec(code, num_extra_lookback_frames=1)
+        else:
+            return self.instrumented(code)
+
+    def __getitem__(self, code: Union[str, ast.Module, ast.stmt, Callable]):
+        return self(code)
+
+    def enter_tracing_hook(self) -> None:
+        pass
 
     def exit_tracing_hook(self) -> None:
         pass
@@ -486,23 +494,25 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             self._tracing_enabled_files = orig_tracing_enabled_files | {
                 tracing_enabled_file
             }
+        if getattr(builtins, EMIT_EVENT, None) is not _emit_event:
+            setattr(builtins, EMIT_EVENT, _emit_event)
+            for guard in self.guards:
+                self.deactivate_guard(guard)
+        if not hasattr(builtins, TRACING_ENABLED):
+            setattr(builtins, TRACING_ENABLED, False)
+        setattr(builtins, EXEC_SAVED_THUNK, self.exec_saved_thunk)
+        if len(_TRACER_STACK) == 0:
+            do_patch_meta_path = True
+        if should_push:
+            _TRACER_STACK.append(self)  # type: ignore
+        do_patch_sys_settrace = self.has_sys_trace_events and will_enable_tracing
         try:
-            if getattr(builtins, EMIT_EVENT, None) is not _emit_event:
-                setattr(builtins, EMIT_EVENT, _emit_event)
-                for guard in self.guards:
-                    self.deactivate_guard(guard)
-            if not hasattr(builtins, TRACING_ENABLED):
-                setattr(builtins, TRACING_ENABLED, False)
-            setattr(builtins, EXEC_SAVED_THUNK, self.exec_saved_thunk)
-            if len(_TRACER_STACK) == 0:
-                do_patch_meta_path = True
-            if should_push:
-                _TRACER_STACK.append(self)  # type: ignore
-            do_patch_sys_settrace = self.has_sys_trace_events and will_enable_tracing
             with patch_meta_path(_TRACER_STACK) if do_patch_meta_path else suppress():
                 with self._patch_sys_settrace() if do_patch_sys_settrace else suppress():
                     if will_enable_tracing:
                         self._enable_tracing()
+                    if should_push:
+                        self.enter_tracing_hook()
                     yield
         finally:
             self._tracing_enabled_files = orig_tracing_enabled_files
@@ -531,20 +541,21 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             code = augmenter(code)
         return code
 
-    def parse(self, code: str) -> ast.Module:
+    def parse(self, code: str, mode="exec") -> Union[ast.Module, ast.Expression]:
         rewriter = self.make_ast_rewriter()
         for tracer in _TRACER_STACK:
             code = tracer.preprocess(code, rewriter)
-        return rewriter.visit(ast.parse(code))
+        return rewriter.visit(ast.parse(code, mode=mode))
 
     def exec_raw(
         self,
-        code: Union[ast.Module, str],
+        code: Union[ast.Module, ast.Expression, str],
         global_env: dict,
         local_env: dict,
         filename: str = SANDBOX_FNAME,
         instrument: bool = True,
-    ) -> None:
+        do_eval: bool = False,
+    ) -> Any:
         with self.tracing_context(
             disabled=self._is_tracing_hard_disabled,
             tracing_enabled_file=filename,
@@ -554,18 +565,18 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 code = self.parse(code)
             if instrument:
                 code = self.make_ast_rewriter().visit(code)
-            exec(compile(code, filename, "exec"), global_env, local_env)
+            code_obj = compile(code, filename, "eval" if do_eval else "exec")
+            if do_eval:
+                return eval(code_obj, global_env, local_env)
+            else:
+                return exec(code_obj, global_env, local_env)
 
-    def exec(
-        self,
-        code: Union[ast.Module, ast.stmt, str],
-        local_env: Optional[dict] = None,
-        global_env: Optional[dict] = None,
-        *,
-        instrument: bool = True,
-        filename: str = SANDBOX_FNAME,
-        num_extra_lookback_frames: int = 0,
-    ) -> Dict[str, Any]:
+    @staticmethod
+    def _get_environments(
+        local_env: Optional[dict],
+        global_env: Optional[dict],
+        num_extra_lookback_frames: int,
+    ) -> Tuple[dict, dict]:
         frame = None
         if global_env is None or local_env is None:
             frame = sys._getframe().f_back
@@ -575,6 +586,58 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             local_env = frame.f_locals
         if global_env is None:
             global_env = frame.f_globals
+        return local_env, global_env
+
+    def eval(
+        self,
+        code: Union[str, ast.expr, ast.Expression],
+        local_env: Optional[dict] = None,
+        global_env: Optional[dict] = None,
+        *,
+        instrument: bool = True,
+        filename: str = SANDBOX_FNAME,
+        num_extra_lookback_frames: int = 0,
+    ) -> Any:
+        local_env, global_env = self._get_environments(
+            local_env, global_env, num_extra_lookback_frames + 1
+        )
+        with self.tracing_context(
+            disabled=self._is_tracing_hard_disabled,
+            tracing_enabled_file=filename,
+        ) if instrument else suppress():
+            visited = False
+            if isinstance(code, str):
+                if instrument:
+                    visited = True
+                    code = cast(ast.Expression, self.parse(code, mode="eval"))
+                else:
+                    code = cast(ast.Expression, ast.parse(code, mode="eval"))
+            if not isinstance(code, ast.Expression):
+                code = ast.Expression(code)
+            if instrument and not visited:
+                code = self.make_ast_rewriter().visit(code)
+            return self.exec_raw(
+                code,  # type: ignore
+                filename=filename,
+                global_env=global_env,
+                local_env=local_env,
+                instrument=False,
+                do_eval=True,
+            )
+
+    def exec(
+        self,
+        code: Union[str, ast.Module, ast.stmt],
+        local_env: Optional[dict] = None,
+        global_env: Optional[dict] = None,
+        *,
+        instrument: bool = True,
+        filename: str = SANDBOX_FNAME,
+        num_extra_lookback_frames: int = 0,
+    ) -> Dict[str, Any]:
+        local_env, global_env = self._get_environments(
+            local_env, global_env, num_extra_lookback_frames + 1
+        )
         # pytest inserts variables prepended with "@"; we don't want these
         args_to_use = [
             k for k in local_env.keys() if not k.startswith("@") and k != "__"
@@ -600,17 +663,25 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             disabled=self._is_tracing_hard_disabled,
             tracing_enabled_file=filename,
         ) if instrument else suppress():
+            visited = False
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
                 if instrument:
-                    code = self.parse(code)
+                    visited = True
+                    code = cast(ast.Module, self.parse(code))
                 else:
-                    code = ast.parse(code)
+                    code = cast(ast.Module, ast.parse(code))
+            if not isinstance(code, ast.Module):
+                assert isinstance(code, ast.stmt)
+                code = ast.Module([code])
+            if instrument and not visited:
+                code = self.make_ast_rewriter().visit(code)
             # prepend the stuff before "return locals()"
             fundef: ast.FunctionDef = cast(ast.FunctionDef, sandboxed_code.body[1])
             if isinstance(code, ast.Module):
                 code_body: List[ast.stmt] = code.body
-            elif not isinstance(code, list):
+            else:
+                assert isinstance(code, ast.stmt)
                 code_body = [code]
             fundef.body = code_body + fundef.body
             self.exec_raw(

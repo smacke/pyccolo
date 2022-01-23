@@ -137,7 +137,8 @@ class StatementMapper(ast.NodeVisitor):
                         self._tracers[-1].parent_node_by_id[id(child)] = nc
 
     def __call__(
-        self, node: Union[ast.Module, ast.FunctionDef, ast.AsyncFunctionDef]
+        self,
+        node: Union[ast.Expression, ast.Module, ast.FunctionDef, ast.AsyncFunctionDef],
     ) -> Dict[int, ast.AST]:
         # for some bizarre reason we need to visit once to clear empty nodes apparently
         self.visit(node)
