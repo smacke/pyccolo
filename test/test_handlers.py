@@ -599,3 +599,12 @@ def test_quasiquotes():
     assert isinstance(node6, ast.List)
     for elt, expected in zip(node6.elts, [node1, node2, node3, node4, node5]):
         assert ast.dump(elt) == ast.dump(expected)
+
+
+def test_quick_lambda():
+    from pyccolo.examples import QuickLambdaTracer, Quasiquoter
+
+    Quasiquoter.clear_instance()
+    with QuickLambdaTracer.instance():
+        assert pyc.eval("f[_ + _](41, 1)") == 42
+        assert pyc.eval("f[_ + f[_ * _](3, 4)](1)") == 13

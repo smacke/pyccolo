@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Example of an quasiquoter for Pyccolo, similar to MacroPy's.
 Ref: https://macropy3.readthedocs.io/en/latest/reference.html#quasiquote
@@ -99,5 +100,5 @@ class Quasiquoter(pyc.BaseTracer):
         return any(is_macro(m)(node) for m in self.macros)
 
     @pyc.before_subscript_load(when=is_any_macro)
-    def load_macro_result(self, *_, **__):
+    def load_macro_result(self, _ret, node, *_, **__):
         return _identity_subscript

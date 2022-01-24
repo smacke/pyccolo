@@ -43,7 +43,7 @@ from pyccolo.extra_builtins import (
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.import_hooks import patch_meta_path
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
-from pyccolo.trace_events import AST_TO_EVENT_MAPPING, TraceEvent
+from pyccolo.trace_events import AST_TO_EVENT_MAPPING, SYS_TRACE_EVENTS, TraceEvent
 from pyccolo.trace_stack import TraceStack
 
 
@@ -167,16 +167,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def has_sys_trace_events(self):
         return any(
             evt in self.events_with_registered_handlers
-            for evt in (
-                TraceEvent.line,
-                TraceEvent.call,
-                TraceEvent.return_,
-                TraceEvent.exception,
-                TraceEvent.opcode,
-                TraceEvent.c_call,
-                TraceEvent.c_return,
-                TraceEvent.c_exception,
-            )
+            for evt in SYS_TRACE_EVENTS
         )
 
     @property
@@ -392,8 +383,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         if is_reentrant and not self.allow_reentrant_events():
             return False
         if filename == self._current_sandbox_fname and self.has_sys_trace_events:
-            ret = self._num_sandbox_calls_seen >= 2
             self._num_sandbox_calls_seen += evt == "call"
+            ret = self._num_sandbox_calls_seen >= 2
             return ret
         return (
             evt == TraceEvent.init_module.value
@@ -567,6 +558,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 code = self.make_ast_rewriter().visit(code)
             code_obj = compile(code, filename, "eval" if do_eval else "exec")
             if do_eval:
+                self._num_sandbox_calls_seen = 2
                 return eval(code_obj, global_env, local_env)
             else:
                 return exec(code_obj, global_env, local_env)

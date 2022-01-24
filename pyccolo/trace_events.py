@@ -120,6 +120,15 @@ class TraceEvent(Enum):
         return fast.Constant(self.name)
 
 
+SYS_TRACE_EVENTS = {
+    TraceEvent.line,
+    TraceEvent.call,
+    TraceEvent.return_,
+    TraceEvent.exception,
+    TraceEvent.opcode,
+}
+
+
 BEFORE_EXPR_EVENTS = {
     TraceEvent.before_add,
     TraceEvent.before_sub,
