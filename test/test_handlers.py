@@ -7,11 +7,11 @@ import pyccolo as pyc
 
 
 def test_sandbox():
-    env = pyc.exec("x = 42", {})
+    env = pyc.exec("x = 42", local_env={})
     assert env["x"] == 42
     assert len(env) == 1, "got %s" % env
 
-    env = pyc.exec("locals()['x'] = 43", {})
+    env = pyc.exec("locals()['x'] = 43", local_env={})
     assert env["x"] == 43
     assert len(env) == 1, "got %s" % env
 
@@ -22,7 +22,7 @@ def test_instrumented_sandbox():
         def handle_assign(self, ret, *_, **__):
             return ret + 1
 
-    env = IncrementsAssignValue.instance().exec("x = 42", {})
+    env = IncrementsAssignValue.instance().exec("x = 42", local_env={})
     assert env["x"] == 43, "got %s" % env["x"]
     assert len(env) == 1
 
@@ -62,7 +62,7 @@ def test_two_handlers():
             return ret * 2
 
     with TwoAssignMutations.instance().tracing_context():
-        env = pyc.exec("x = 42", {})
+        env = pyc.exec("x = 42", local_env={})
     # env = TwoAssignMutations.instance().exec("x = 42")
     assert env["x"] == 86, (
         "got %s" % env["x"]
@@ -83,7 +83,7 @@ def test_two_handlers_from_separate_classes():
 
     with AssignMutation1.instance():
         with AssignMutation2.instance():
-            env = pyc.exec("x = 42", {})
+            env = pyc.exec("x = 42", local_env={})
 
     assert env["x"] == 86, (
         "got %s" % env["x"]
@@ -101,16 +101,16 @@ def test_null():
         def handle_assign_2(self, ret, *_, **__):
             assert ret is None
 
-    env = IncrementsAssignValue.instance().exec("x = 42", {})
+    env = IncrementsAssignValue.instance().exec("x = 42", local_env={})
     assert env["x"] is None
     assert len(env) == 1
 
 
 def test_pass_sandboxed_environ():
-    env = pyc.exec("x = 42", {})
+    env = pyc.exec("x = 42", local_env={})
     assert env["x"] == 42
     assert len(env) == 1, "got %s" % env
-    env = pyc.exec("y = x + 1", env)
+    env = pyc.exec("y = x + 1", local_env=env)
     assert len(env) == 2
     assert env["x"] == 42
     assert env["y"] == 43
@@ -141,7 +141,7 @@ def test_sys_tracing_call():
             pass
         foo(); foo()
         """,
-        {},
+        local_env={},
     )
     assert sys.gettrace() is sys_tracer
     assert len(env) == 1
@@ -218,7 +218,7 @@ def test_composed_sys_tracing_calls():
                         pass
                     foo(); foo()
                     """,
-                    {},
+                    local_env={},
                 )
     assert sys.gettrace() is original_tracer
     assert len(env) == 1
@@ -239,7 +239,7 @@ def test_composed_sys_tracing_calls():
                 pass
             foo(); foo()
             """,
-            {},
+            local_env={},
         )
     assert sys.gettrace() is original_tracer
     assert len(env) == 1

@@ -166,8 +166,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     @property
     def has_sys_trace_events(self):
         return any(
-            evt in self.events_with_registered_handlers
-            for evt in SYS_TRACE_EVENTS
+            evt in self.events_with_registered_handlers for evt in SYS_TRACE_EVENTS
         )
 
     @property
@@ -565,8 +564,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
     @staticmethod
     def _get_environments(
-        local_env: Optional[dict],
         global_env: Optional[dict],
+        local_env: Optional[dict],
         num_extra_lookback_frames: int,
     ) -> Tuple[dict, dict]:
         frame = None
@@ -574,24 +573,24 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             frame = sys._getframe().f_back
             for _ in range(num_extra_lookback_frames):
                 frame = frame.f_back
-        if local_env is None:
-            local_env = frame.f_locals
         if global_env is None:
             global_env = frame.f_globals
-        return local_env, global_env
+        if local_env is None:
+            local_env = frame.f_locals
+        return global_env, local_env
 
     def eval(
         self,
         code: Union[str, ast.expr, ast.Expression],
-        local_env: Optional[dict] = None,
         global_env: Optional[dict] = None,
+        local_env: Optional[dict] = None,
         *,
         instrument: bool = True,
         filename: str = SANDBOX_FNAME,
         num_extra_lookback_frames: int = 0,
     ) -> Any:
-        local_env, global_env = self._get_environments(
-            local_env, global_env, num_extra_lookback_frames + 1
+        global_env, local_env = self._get_environments(
+            global_env, local_env, num_extra_lookback_frames + 1
         )
         with self.tracing_context(
             disabled=self._is_tracing_hard_disabled,
@@ -610,9 +609,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 code = self.make_ast_rewriter().visit(code)
             return self.exec_raw(
                 code,  # type: ignore
-                filename=filename,
                 global_env=global_env,
                 local_env=local_env,
+                filename=filename,
                 instrument=False,
                 do_eval=True,
             )
@@ -620,15 +619,15 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def exec(
         self,
         code: Union[str, ast.Module, ast.stmt],
-        local_env: Optional[dict] = None,
         global_env: Optional[dict] = None,
+        local_env: Optional[dict] = None,
         *,
         instrument: bool = True,
         filename: str = SANDBOX_FNAME,
         num_extra_lookback_frames: int = 0,
     ) -> Dict[str, Any]:
-        local_env, global_env = self._get_environments(
-            local_env, global_env, num_extra_lookback_frames + 1
+        global_env, local_env = self._get_environments(
+            global_env, local_env, num_extra_lookback_frames + 1
         )
         # pytest inserts variables prepended with "@"; we don't want these
         args_to_use = [
@@ -678,9 +677,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             fundef.body = code_body + fundef.body
             self.exec_raw(
                 sandboxed_code,
-                filename=filename,
                 global_env=global_env,
                 local_env=local_env,
+                filename=filename,
                 instrument=False,
             )
         return local_env.pop(env_name)

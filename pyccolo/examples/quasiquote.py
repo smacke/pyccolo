@@ -17,15 +17,15 @@ import pyccolo as pyc
 
 
 class _QuasiquoteTransformer(ast.NodeTransformer):
-    def __init__(self, local_env, global_env):
-        self._local_env = local_env
+    def __init__(self, global_env, local_env):
         self._global_env = global_env
+        self._local_env = local_env
 
     def visit_Subscript(self, node: ast.Subscript):
         if isinstance(
             node.value, ast.Name
         ) and node.value.id in Quasiquoter.instance().macros - {"q"}:
-            return pyc.eval(node, self._local_env, self._global_env)
+            return pyc.eval(node, self._global_env, self._local_env)
         else:
             return node
 
@@ -71,7 +71,7 @@ class Quasiquoter(pyc.BaseTracer):
         to_visit = node.slice
         if isinstance(node.slice, ast.Index):
             to_visit = to_visit.value
-        return lambda: _QuasiquoteTransformer(frame.f_locals, frame.f_globals).visit(
+        return lambda: _QuasiquoteTransformer(frame.f_globals, frame.f_locals).visit(
             copy.deepcopy(to_visit)
         )
 

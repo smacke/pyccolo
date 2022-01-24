@@ -45,4 +45,4 @@ class QuickLambdaTracer(Quasiquoter):
         )
         with pyc.allow_reentrant_event_handling():
             ast_lambda = pyc.eval(f"q[lambda {lambda_args}: ast_literal[lambda_body]]")
-            return lambda: pyc.eval(ast_lambda, frame.f_locals, frame.f_globals)
+            return lambda: pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
