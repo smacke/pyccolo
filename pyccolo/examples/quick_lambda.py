@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+"""
+Implementation of quick lambdas in Pyccolo, similar to MacroPy's.
+Ref: https://macropy3.readthedocs.io/en/latest/quick_lambda.html#quicklambda
+
+Example:
+```
+with QuickLambdaTracer.instance():
+    assert pyc.eval("f[_ + _](3, 4)") == 7
+```
+"""
 import ast
 import copy
 

@@ -4,7 +4,7 @@ History
 0.0.8 (2022-01-23)
 ------------------
 * Add eval helper;
-* Add syntactic macro examples;
+* Add syntactic macro examples (quasiquotes and quick lambdas);
 * Add support for conditional handlers;
 
 0.0.7 (2022-01-06)
