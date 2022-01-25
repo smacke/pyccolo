@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.9 (2022-01-24)
+------------------
+* Allow per-handler reentrancy;
+
 0.0.8 (2022-01-23)
 ------------------
 * Add eval helper;

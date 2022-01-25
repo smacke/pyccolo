@@ -66,7 +66,7 @@ class Quasiquoter(pyc.BaseTracer):
             if hasattr(builtins, macro):
                 delattr(builtins, macro)
 
-    @pyc.before_subscript_slice(when=is_macro("q"))
+    @pyc.before_subscript_slice(when=is_macro("q"), reentrant=True)
     def quote_handler(self, _ret, node, frame, *_, **__):
         to_visit = node.slice
         if isinstance(node.slice, ast.Index):
@@ -75,30 +75,28 @@ class Quasiquoter(pyc.BaseTracer):
             copy.deepcopy(to_visit)
         )
 
-    @pyc.after_subscript_slice(when=is_macro("u"))
+    @pyc.after_subscript_slice(when=is_macro("u"), reentrant=True)
     def unquote_handler(self, ret, *_, **__):
-        with pyc.allow_reentrant_event_handling():
-            return pyc.eval(f"q[{repr(ret)}]")
+        return pyc.eval(f"q[{repr(ret)}]")
 
-    @pyc.after_subscript_slice(when=is_macro("name"))
+    @pyc.after_subscript_slice(when=is_macro("name"), reentrant=True)
     def name_handler(self, ret, *_, **__):
         assert isinstance(ret, str)
-        with pyc.allow_reentrant_event_handling():
-            return pyc.eval(f"q[{ret}]")
+        return pyc.eval(f"q[{ret}]")
 
-    @pyc.after_subscript_slice(when=is_macro("ast_literal"))
+    @pyc.after_subscript_slice(when=is_macro("ast_literal"), reentrant=True)
     def ast_literal_handler(self, ret, *_, **__):
         # technically we could get away without even having this handler
         assert isinstance(ret, ast.AST)
         return ret
 
-    @pyc.after_subscript_slice(when=is_macro("ast_list"))
+    @pyc.after_subscript_slice(when=is_macro("ast_list"), reentrant=True)
     def ast_list_handler(self, ret, *_, **__):
         return ast.List(elts=list(ret))
 
     def is_any_macro(self, node):
         return any(is_macro(m)(node) for m in self.macros)
 
-    @pyc.before_subscript_load(when=is_any_macro)
-    def load_macro_result(self, _ret, node, *_, **__):
+    @pyc.before_subscript_load(when=is_any_macro, reentrant=True)
+    def load_macro_result(self, _ret, *_, **__):
         return _identity_subscript

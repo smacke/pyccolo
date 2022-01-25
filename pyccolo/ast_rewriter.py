@@ -104,9 +104,9 @@ class AstRewriter(ast.NodeTransformer):
                 ):
                     continue
                 handler_data = tracer._event_handlers.get(
-                    evt, [(None, False, lambda *_: True)]
+                    evt, [(None, False, False, lambda *_: True)]
                 )
-                for _, use_raw_node_id, raw_condition in handler_data:
+                for _, use_raw_node_id, __, raw_condition in handler_data:
                     condition: CONDITION = self._make_condition(
                         use_raw_node_id, raw_condition
                     )

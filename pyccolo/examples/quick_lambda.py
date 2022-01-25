@@ -40,7 +40,7 @@ class QuickLambdaTracer(Quasiquoter):
         self.macros.add("f")
         self._arg_replacer = _ArgReplacer()
 
-    @pyc.before_subscript_slice(when=is_macro("f"))
+    @pyc.before_subscript_slice(when=is_macro("f"), reentrant=True)
     def handle_quick_lambda(self, _ret, node, frame, *_, **__):
         orig_ctr = self._arg_replacer.ctr
         orig_lambda_body = node.slice
@@ -53,6 +53,5 @@ class QuickLambdaTracer(Quasiquoter):
         lambda_args = ", ".join(
             f"_{arg_idx}" for arg_idx in range(orig_ctr, orig_ctr + num_lambda_args)
         )
-        with pyc.allow_reentrant_event_handling():
-            ast_lambda = pyc.eval(f"q[lambda {lambda_args}: ast_literal[lambda_body]]")
-            return lambda: pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
+        ast_lambda = pyc.eval(f"q[lambda {lambda_args}: ast_literal[lambda_body]]")
+        return lambda: pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)

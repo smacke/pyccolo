@@ -87,7 +87,7 @@ class MetaTracerStateMachine(MetaHasTraits):
         return obj
 
 
-_HANDLER_DATA_T = Tuple[Callable[..., Any], bool, Callable[..., bool]]
+_HANDLER_DATA_T = Tuple[Callable[..., Any], bool, bool, Callable[..., bool]]
 
 
 class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
@@ -248,15 +248,21 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         evt: Union[str, TraceEvent],
         node_id: Optional[int],
         frame: FrameType,
+        reentrant_handlers_only: bool = False,
         **kwargs: Any,
     ):
         try:
             if self._is_tracing_hard_disabled:
                 return kwargs.get("ret", None)
             event = evt if isinstance(evt, TraceEvent) else TraceEvent(evt)
-            for handler, use_raw_node_id, condition in self._event_handlers.get(
-                event, []
-            ):
+            for (
+                handler,
+                use_raw_node_id,
+                reentrant,
+                condition,
+            ) in self._event_handlers.get(event, []):
+                if reentrant_handlers_only and not reentrant:
+                    continue
                 old_ret = kwargs.pop("ret", None)
                 try:
                     node_id_or_node = (
@@ -724,6 +730,7 @@ def register_handler(
         Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]
     ],
     use_raw_node_id: bool = False,
+    reentrant: bool = False,
     when: Optional[Callable[..., bool]] = None,
 ):
     events = event if isinstance(event, tuple) else (event,)
@@ -738,7 +745,7 @@ def register_handler(
                 AST_TO_EVENT_MAPPING[evt]
                 if type(evt) is type and issubclass(evt, ast.AST)
                 else evt
-            ].append((handler, use_raw_node_id, when))
+            ].append((handler, use_raw_node_id, reentrant, when))
         return handler
 
     return _inner_registrar
@@ -795,12 +802,13 @@ class BaseTracer(_InternalBaseTracer):
             TraceEvent.before_subscript_load,
             TraceEvent.before_subscript_store,
             TraceEvent.before_subscript_del,
-        )
+        ),
+        reentrant=True,
     )
     def _save_slice_for_later(self, *_, attr_or_subscript: Any, **__):
         self._saved_slice = attr_or_subscript
 
-    @register_raw_handler(TraceEvent._load_saved_slice)
+    @register_raw_handler(TraceEvent._load_saved_slice, reentrant=True)
     def _load_saved_slice(self, *_, **__):
         ret = self._saved_slice
         self._saved_slice = None

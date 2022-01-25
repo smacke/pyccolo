@@ -40,8 +40,6 @@ def _make_ret(event, ret):
 def _emit_event(event, node_id, **kwargs):
     global _allow_event_handling
     global _allow_reentrant_event_handling
-    if not _allow_event_handling and not _allow_reentrant_event_handling:
-        return _make_ret(event, kwargs.get("ret", None))
     frame = sys._getframe().f_back
     if frame.f_code.co_filename == __file__:
         # weird shit happens if we instrument this file, so exclude it.
@@ -50,6 +48,7 @@ def _emit_event(event, node_id, **kwargs):
     orig_allow_reentrant_event_handling = _allow_reentrant_event_handling
     try:
         is_reentrant = not _allow_event_handling
+        reentrant_handlers_only = is_reentrant and not _allow_reentrant_event_handling
         _allow_event_handling = False
         _allow_reentrant_event_handling = False
         for tracer in _TRACER_STACK:
@@ -60,7 +59,13 @@ def _emit_event(event, node_id, **kwargs):
                     _allow_reentrant_event_handling = (
                         orig_allow_reentrant_event_handling
                     )
-                    kwargs["ret"] = tracer._emit_event(event, node_id, frame, **kwargs)
+                    kwargs["ret"] = tracer._emit_event(
+                        event,
+                        node_id,
+                        frame,
+                        reentrant_handlers_only=reentrant_handlers_only,
+                        **kwargs,
+                    )
                 finally:
                     _allow_reentrant_event_handling = False
     finally:
