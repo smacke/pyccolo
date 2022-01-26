@@ -70,28 +70,8 @@ class TraceEvent(Enum):
 
     left_binop_arg = "left_binop_arg"
     right_binop_arg = "right_binop_arg"
-    before_add = "before_add"
-    after_add = "after_add"
-    before_sub = "before_sub"
-    after_sub = "after_sub"
-    before_mult = "before_mult"
-    after_mult = "after_mult"
-    before_mat_mult = "before_mat_mult"
-    after_mat_mult = "after_mat_mult"
-    before_div = "before_div"
-    after_div = "after_div"
-    before_mod = "before_mod"
-    after_mod = "after_mod"
-    before_floor_div = "before_floor_div"
-    after_floor_div = "after_floor_div"
-    before_power = "before_power"
-    after_power = "after_power"
-    before_bit_and = "before_bit_and"
-    after_bit_and = "after_bit_and"
-    before_bit_or = "before_bit_or"
-    after_bit_or = "after_bit_or"
-    before_bit_xor = "before_bit_xor"
-    after_bit_xor = "after_bit_xor"
+    before_binop = "before_binop"
+    after_binop = "after_binop"
 
     ellipses = "ellipses"
 
@@ -130,17 +110,7 @@ SYS_TRACE_EVENTS = {
 
 
 BEFORE_EXPR_EVENTS = {
-    TraceEvent.before_add,
-    TraceEvent.before_sub,
-    TraceEvent.before_mult,
-    TraceEvent.before_mat_mult,
-    TraceEvent.before_div,
-    TraceEvent.before_mod,
-    TraceEvent.before_floor_div,
-    TraceEvent.before_power,
-    TraceEvent.before_bit_and,
-    TraceEvent.before_bit_or,
-    TraceEvent.before_bit_xor,
+    TraceEvent.before_binop,
     TraceEvent.before_subscript_slice,
 }
 
@@ -158,14 +128,5 @@ AST_TO_EVENT_MAPPING = {
     ast.Tuple: TraceEvent.after_tuple_literal,
     ast.Set: TraceEvent.after_set_literal,
     ast.Return: TraceEvent.after_return,
-    ast.Add: TraceEvent.after_add,
-    ast.Sub: TraceEvent.after_sub,
-    ast.Mult: TraceEvent.after_mult,
-    ast.Div: TraceEvent.after_div,
-    ast.FloorDiv: TraceEvent.after_floor_div,
-    ast.MatMult: TraceEvent.after_mat_mult,
-    ast.Pow: TraceEvent.after_power,
-    ast.BitAnd: TraceEvent.after_bit_and,
-    ast.BitOr: TraceEvent.after_bit_or,
-    ast.BitXor: TraceEvent.after_bit_xor,
+    ast.BinOp: TraceEvent.after_binop,
 }

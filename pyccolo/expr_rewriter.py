@@ -3,7 +3,7 @@ import ast
 import logging
 import sys
 from contextlib import contextmanager
-from typing import cast, Callable, DefaultDict, Dict, List, Optional, Set, Tuple, Union
+from typing import cast, Callable, DefaultDict, Dict, List, Optional, Set, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import TRACING_ENABLED, make_guard_name
@@ -596,39 +596,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             target.ctx = ast.Del()  # type: ignore
         return ret
 
-    @staticmethod
-    def _get_events_for_binop(
-        op: ast.AST,
-    ) -> Tuple[Optional[TraceEvent], Optional[TraceEvent]]:
-        if isinstance(op, ast.Add):
-            return TraceEvent.before_add, TraceEvent.after_add
-        elif isinstance(op, ast.Sub):
-            return TraceEvent.before_sub, TraceEvent.after_sub
-        elif isinstance(op, ast.Mult):
-            return TraceEvent.before_mult, TraceEvent.after_mult
-        elif isinstance(op, ast.MatMult):
-            return TraceEvent.before_mat_mult, TraceEvent.after_mat_mult
-        elif isinstance(op, ast.Div):
-            return TraceEvent.before_div, TraceEvent.after_div
-        elif isinstance(op, ast.Mod):
-            return TraceEvent.before_mod, TraceEvent.after_mod
-        elif isinstance(op, ast.FloorDiv):
-            return TraceEvent.before_floor_div, TraceEvent.after_floor_div
-        elif isinstance(op, ast.Pow):
-            return TraceEvent.before_power, TraceEvent.after_power
-        elif isinstance(op, ast.BitAnd):
-            return TraceEvent.before_bit_and, TraceEvent.after_bit_and
-        elif isinstance(op, ast.BitOr):
-            return TraceEvent.before_bit_or, TraceEvent.after_bit_or
-        elif isinstance(op, ast.BitXor):
-            return TraceEvent.before_bit_xor, TraceEvent.after_bit_xor
-        else:
-            return None, None
-
     def visit_BinOp(self, node: ast.BinOp) -> Union[ast.BinOp, ast.Call]:
         untraced_node = self.orig_to_copy_mapping[id(node)]
         op = node.op
-        before_evt, after_evt = self._get_events_for_binop(op)
 
         for attr, operand_evt in [
             ("left", TraceEvent.left_binop_arg),
@@ -648,10 +618,10 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 setattr(node, attr, self.visit(operand_node))
 
         ret: Union[ast.BinOp, ast.Call] = node
-        if self.handler_condition_by_event[before_evt](untraced_node):
+        if self.handler_condition_by_event[TraceEvent.before_binop](untraced_node):
             with fast.location_of(node):
                 ret = self.emit(
-                    before_evt,
+                    TraceEvent.before_binop,
                     node,
                     ret=fast.Lambda(
                         body=fast.BinOp(
@@ -669,9 +639,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     ),
                     before_expr_args=[node.left, node.right],
                 )
-        if self.handler_condition_by_event[after_evt](untraced_node):
+        if self.handler_condition_by_event[TraceEvent.after_binop](untraced_node):
             with fast.location_of(node):
-                ret = self.emit(after_evt, node, ret=ret)
+                ret = self.emit(TraceEvent.after_binop, node, ret=ret)
         return ret
 
     if sys.version_info < (3, 8):

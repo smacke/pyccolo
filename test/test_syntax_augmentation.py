@@ -16,9 +16,9 @@ if sys.version_info >= (3, 8):  # noqa
             def syntax_augmentation_specs(self):
                 return [add_42_spec]
 
-            @pyc.register_raw_handler(pyc.after_add)
-            def handle_add(self, ret, node_id, *_, **__):
-                if add_42_spec in self.get_augmentations(node_id):
+            @pyc.after_binop(when=lambda node: isinstance(node.op, ast.Add))
+            def handle_add(self, ret, node, *_, **__):
+                if add_42_spec in self.get_augmentations(id(node)):
                     return ret + 42
                 else:
                     return ret

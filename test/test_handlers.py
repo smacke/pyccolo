@@ -464,11 +464,11 @@ def test_before_call():
 
 def test_before_add_returning_callable():
     class OverridesAdd(pyc.BaseTracer):
-        @pyc.before_add
+        @pyc.before_binop(when=lambda node: isinstance(node.op, ast.Add))
         def before_add(self, *_, **__):
             return lambda x, y: (x + y) % 42
 
-        @pyc.after_add
+        @pyc.after_binop(when=lambda node: isinstance(node.op, ast.Add))
         def after_add(self, ret, *_, **__):
             assert ret == 1
             return ret + 1
@@ -486,11 +486,11 @@ def test_before_add_returning_callable():
 
 def test_before_add_returning_constant():
     class OverridesAdd(pyc.BaseTracer):
-        @pyc.before_add
+        @pyc.before_binop(when=lambda node: isinstance(node.op, ast.Add))
         def before_add(self, *_, **__):
             return 41
 
-        @pyc.after_add
+        @pyc.after_binop(when=lambda node: isinstance(node.op, ast.Add))
         def after_add(self, ret, *_, **__):
             assert ret == 41
             return ret + 1
@@ -508,16 +508,16 @@ def test_before_add_returning_constant():
 
 def test_skip():
     class SkipsSecondHandler(pyc.BaseTracer):
-        @pyc.before_add
+        @pyc.before_binop(when=lambda node: isinstance(node.op, ast.Add))
         def before_add(self, *_, **__):
             return 41
 
-        @pyc.after_add
+        @pyc.after_binop(when=lambda node: isinstance(node.op, ast.Add))
         def after_add(self, ret, *_, **__):
             assert ret == 41
             return pyc.Skip
 
-        @pyc.after_add
+        @pyc.after_binop(when=lambda node: isinstance(node.op, ast.Add))
         def skipped_after_add(self, ret, *_, **__):
             return ret + 1
 
