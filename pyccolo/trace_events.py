@@ -73,6 +73,11 @@ class TraceEvent(Enum):
     before_binop = "before_binop"
     after_binop = "after_binop"
 
+    left_compare_arg = "left_compare_arg"
+    compare_arg = "compare_arg"
+    before_compare = "before_compare"
+    after_compare = "after_compare"
+
     ellipses = "ellipses"
 
     line = "line"
@@ -111,6 +116,7 @@ SYS_TRACE_EVENTS = {
 
 BEFORE_EXPR_EVENTS = {
     TraceEvent.before_binop,
+    TraceEvent.before_compare,
     TraceEvent.before_subscript_slice,
 }
 
@@ -129,4 +135,5 @@ AST_TO_EVENT_MAPPING = {
     ast.Set: TraceEvent.after_set_literal,
     ast.Return: TraceEvent.after_return,
     ast.BinOp: TraceEvent.after_binop,
+    ast.Compare: TraceEvent.after_compare,
 }

@@ -479,7 +479,11 @@ def test_while_loop(events):
                 pyc.before_stmt,
             ]
             + [
+                pyc.before_compare,
                 pyc.load_name,
+                pyc.left_compare_arg,
+                pyc.compare_arg,
+                pyc.after_compare,
                 pyc.before_while_loop_body,
                 pyc.before_stmt,
                 pyc.after_stmt,
@@ -487,7 +491,11 @@ def test_while_loop(events):
             ]
             * 10
             + [
+                pyc.before_compare,
                 pyc.load_name,
+                pyc.left_compare_arg,
+                pyc.compare_arg,
+                pyc.after_compare,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
             ],
@@ -560,7 +568,11 @@ def test_for_loop_nested_in_while_loop(events):
                 pyc.before_stmt,
             ]
             + [
+                pyc.before_compare,
                 pyc.load_name,
+                pyc.left_compare_arg,
+                pyc.compare_arg,
+                pyc.after_compare,
                 pyc.before_while_loop_body,
                 pyc.before_stmt,
                 pyc.before_load_complex_symbol,
@@ -583,7 +595,11 @@ def test_for_loop_nested_in_while_loop(events):
             ]
             * 5
             + [
+                pyc.before_compare,
                 pyc.load_name,
+                pyc.left_compare_arg,
+                pyc.compare_arg,
+                pyc.after_compare,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
             ],

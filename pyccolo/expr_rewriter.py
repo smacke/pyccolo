@@ -644,6 +644,61 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 ret = self.emit(TraceEvent.after_binop, node, ret=ret)
         return ret
 
+    def visit_Compare(self, node: ast.Compare) -> Union[ast.Compare, ast.Call]:
+        # TODO: this is pretty similar to BinOp above; maybe can dedup some code
+        untraced_node = self.orig_to_copy_mapping[id(node)]
+
+        if self.handler_condition_by_event[TraceEvent.left_compare_arg](node.left):
+            with fast.location_of(node.left):
+                node.left = self.emit(
+                    TraceEvent.left_compare_arg, node.left, ret=self.visit(node.left)
+                )
+        else:
+            node.left = self.visit(node.left)
+
+        for idx, comparator in enumerate(node.comparators):
+            if self.handler_condition_by_event[TraceEvent.compare_arg](comparator):
+                with fast.location_of(comparator):
+                    node.comparators[idx] = self.emit(
+                        TraceEvent.compare_arg, comparator, ret=self.visit(comparator)
+                    )
+            else:
+                node.comparators[idx] = self.visit(comparator)
+
+        ret: Union[ast.Compare, ast.Call] = node
+        if self.handler_condition_by_event[TraceEvent.before_compare](untraced_node):
+            with fast.location_of(node):
+                ret = self.emit(
+                    TraceEvent.before_compare,
+                    node,
+                    ret=fast.Lambda(
+                        body=fast.Compare(
+                            ops=node.ops,
+                            left=fast.Name(id="x", ctx=ast.Load()),
+                            comparators=[
+                                fast.Name(id=f"y_{i}", ctx=ast.Load())
+                                for i in range(len(node.comparators))
+                            ],
+                        ),
+                        args=ast.arguments(
+                            args=[fast.arg("x", None)]
+                            + [
+                                fast.arg(f"y_{i}", None)
+                                for i in range(len(node.comparators))
+                            ],
+                            defaults=[],
+                            kwonlyargs=[],
+                            kw_defaults=[],
+                            posonlyargs=[],
+                        ),
+                    ),
+                    before_expr_args=[node.left] + node.comparators,
+                )
+        if self.handler_condition_by_event[TraceEvent.after_compare](untraced_node):
+            with fast.location_of(node):
+                ret = self.emit(TraceEvent.after_compare, node, ret=ret)
+        return ret
+
     if sys.version_info < (3, 8):
 
         def visit_Ellipsis(self, node: ast.Ellipsis):

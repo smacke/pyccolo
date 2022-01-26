@@ -90,6 +90,10 @@ left_binop_arg = TraceEvent.left_binop_arg
 right_binop_arg = TraceEvent.right_binop_arg
 before_binop = TraceEvent.before_binop
 after_binop = TraceEvent.after_binop
+left_compare_arg = TraceEvent.left_compare_arg
+compare_arg = TraceEvent.compare_arg
+before_compare = TraceEvent.before_compare
+after_compare = TraceEvent.after_compare
 
 
 # redundant; do this just in case we forgot to add stubs in trace_events.py
