@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.10 (2022-01-26)
+------------------
+* Simplify binop events;
+* Add compare events;
+
 0.0.9 (2022-01-24)
 ------------------
 * Allow per-handler reentrancy;
