@@ -37,10 +37,14 @@ def test_dynamic_behavior():
     assert Predicate.TRUE.dynamic_call(None)
     assert not Predicate.FALSE.dynamic_call(None)
 
-    static_false = CompositePredicate.any([_rand(0), _rand(0), _rand(0)])
+    static_false = CompositePredicate.any(
+        [_rand(0, static=True), _rand(0, static=True), _rand(0, static=True)]
+    )
     assert not static_false(None)
     assert static_false.dynamic_call(None)  # none of the filters kick in dynamically
 
-    dynamic_false = CompositePredicate.any([_rand(0), _rand(0), _rand(0, dynamic=True)])
+    dynamic_false = CompositePredicate.any(
+        [_rand(0, static=True), _rand(0, static=True), _rand(0)]
+    )
     assert not dynamic_false(None)
     assert not dynamic_false.dynamic_call(None)

@@ -13,7 +13,7 @@ class Predicate:
         self,
         condition: Callable[[ast.AST], bool],
         use_raw_node_id: Literal[False],
-        dynamic: bool = False,
+        static: bool = True,
     ) -> None:
         ...
 
@@ -22,7 +22,7 @@ class Predicate:
         self,
         condition: Callable[[int], bool],
         use_raw_node_id: Literal[True],
-        dynamic: bool = False,
+        static: bool = False,
     ) -> None:
         ...
 
@@ -31,7 +31,7 @@ class Predicate:
         self,
         condition: Callable[..., bool],
         use_raw_node_id: bool = False,
-        dynamic: bool = False,
+        static: bool = False,
     ) -> None:
         ...
 
@@ -39,11 +39,11 @@ class Predicate:
         self,
         condition: Callable[..., bool],
         use_raw_node_id: bool = False,
-        dynamic: bool = False,
+        static: bool = False,
     ) -> None:
         self.condition = condition
         self.use_raw_node_id = use_raw_node_id
-        self.dynamic = dynamic
+        self.static = static
 
     def __call__(self, node: Union[ast.AST, int]) -> bool:
         node_or_id = (
@@ -52,20 +52,20 @@ class Predicate:
         return self.condition(node_or_id)  # type: ignore
 
     def dynamic_call(self, node: Union[ast.AST, int]) -> bool:
-        return self(node) if self.dynamic else True
+        return True if self.static else self(node)
 
 
-Predicate.TRUE = Predicate(lambda *_: True, dynamic=True)
-Predicate.FALSE = Predicate(lambda *_: False, dynamic=True)
+Predicate.TRUE = Predicate(lambda *_: True)
+Predicate.FALSE = Predicate(lambda *_: False)
 
 
 class CompositePredicate(Predicate):
     def __init__(self, base_predicates: Sequence[Predicate], reducer=any) -> None:
         self.base_predicates = list(base_predicates)
         self.dynamic_base_predicates = [
-            pred for pred in base_predicates if pred.dynamic
+            pred for pred in base_predicates if not pred.static
         ]
-        self.dynamic = len(self.dynamic_base_predicates) > 0
+        self.static = len(self.dynamic_base_predicates) == 0
         self.use_raw_node_id = all(pred.use_raw_node_id for pred in base_predicates)
         self.reducer = reducer
 
@@ -80,9 +80,7 @@ class CompositePredicate(Predicate):
 
     def dynamic_call(self, node: Union[ast.AST, int]) -> bool:
         return (
-            self(node, predicates=self.dynamic_base_predicates)
-            if self.dynamic
-            else True
+            True if self.static else self(node, predicates=self.dynamic_base_predicates)
         )
 
     @classmethod

@@ -273,7 +273,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     )
                     if (
                         predicate is Predicate.TRUE
-                        or not predicate.dynamic
+                        or predicate.static
                         or predicate.dynamic_call(node_id_or_node)
                     ):
                         new_ret = handler(
