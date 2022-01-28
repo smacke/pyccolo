@@ -4,6 +4,7 @@ import logging
 from collections import defaultdict
 from typing import (
     TYPE_CHECKING,
+    Callable,
     DefaultDict,
     Dict,
     List,
@@ -55,6 +56,9 @@ class AstRewriter(ast.NodeTransformer):
     ) -> None:
         self._augmented_positions_by_spec[aug_spec].add((lineno, col_offset))
 
+    def _make_node_copy_flyweight(self, predicate: Predicate) -> Callable[..., bool]:
+        return lambda node: predicate(self.orig_to_copy_mapping.get(id(node), node))
+
     def visit(self, node: ast.AST):
         assert isinstance(
             node, (ast.Expression, ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)
@@ -88,11 +92,15 @@ class AstRewriter(ast.NodeTransformer):
                 )
                 for _, use_raw_node_id, __, predicate in handler_data:
                     raw_handler_predicates_by_event[evt].append(predicate)
-        handler_predicate_by_event: DefaultDict[TraceEvent, Predicate] = defaultdict(
-            lambda: Predicate(lambda *_: False)  # type: ignore
+        handler_predicate_by_event: DefaultDict[
+            TraceEvent, Callable[..., bool]
+        ] = defaultdict(
+            lambda: (lambda *_: False)  # type: ignore
         )
         for evt, raw_predicates in raw_handler_predicates_by_event.items():
-            handler_predicate_by_event[evt] = CompositePredicate.any(raw_predicates)
+            handler_predicate_by_event[evt] = self._make_node_copy_flyweight(
+                CompositePredicate.any(raw_predicates)
+            )
         # very important that the eavesdropper does not create new ast nodes for ast.stmt (but just
         # modifies existing ones), since StatementInserter relies on being able to map these
         expr_rewriter = ExprRewriter(

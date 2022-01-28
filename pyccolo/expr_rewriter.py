@@ -3,7 +3,7 @@ import ast
 import logging
 import sys
 from contextlib import contextmanager
-from typing import cast, DefaultDict, Dict, List, Optional, Set, Union
+from typing import cast, Callable, DefaultDict, Dict, List, Optional, Set, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import TRACING_ENABLED, make_guard_name
@@ -13,7 +13,6 @@ from pyccolo.fast import (
     make_composite_condition,
     subscript_to_slice,
 )
-from pyccolo.predicate import Predicate
 from pyccolo.trace_events import TraceEvent
 
 
@@ -25,11 +24,11 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def __init__(
         self,
         orig_to_copy_mapping: Dict[int, ast.AST],
-        handler_condition_by_event: DefaultDict[TraceEvent, Predicate],
+        handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
         guards: Set[str],
     ):
         EmitterMixin.__init__(
-            self, orig_to_copy_mapping, handler_condition_by_event, guards
+            self, orig_to_copy_mapping, handler_predicate_by_event, guards
         )
         self._top_level_node_for_symbol: Optional[ast.AST] = None
 
@@ -42,7 +41,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         return ret
 
     def visit_Name(self, node: ast.Name):
-        if isinstance(node.ctx, ast.Load) and self.handler_condition_by_event[
+        if isinstance(node.ctx, ast.Load) and self.handler_predicate_by_event[
             TraceEvent.load_name
         ](node):
             with fast.location_of(node):
@@ -133,7 +132,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     elts = slc.elts if isinstance(slc, ast.Tuple) else slc.dims  # type: ignore
                     elts = [self._maybe_convert_ast_subscript(elt) for elt in elts]  # type: ignore
                     slc = fast.Tuple(elts, ast.Load())
-                if self.handler_condition_by_event[TraceEvent.before_subscript_slice](
+                if self.handler_predicate_by_event[TraceEvent.before_subscript_slice](
                     node
                 ):
                     slc = self.emit(
@@ -150,11 +149,11 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                             ),
                         ),
                     )
-                if self.handler_condition_by_event[TraceEvent.after_subscript_slice](
+                if self.handler_predicate_by_event[TraceEvent.after_subscript_slice](
                     node
                 ):
                     slc = self.emit(TraceEvent.after_subscript_slice, node, ret=slc)
-                if self.handler_condition_by_event[evt_to_use](node.slice):
+                if self.handler_predicate_by_event[evt_to_use](node.slice):
                     replacement_slice: ast.expr = self.emit(
                         TraceEvent._load_saved_slice, node.slice
                     )
@@ -189,7 +188,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
 
         with fast.location_of(node):
             end_kwargs["call_context"] = fast.NameConstant(call_context)
-            if self.handler_condition_by_event[TraceEvent.before_load_complex_symbol](
+            if self.handler_predicate_by_event[TraceEvent.before_load_complex_symbol](
                 orig_node
             ):
                 node = self.make_tuple_event_for(
@@ -198,7 +197,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     orig_node_id=orig_node_id,
                     **(begin_kwargs or {}),
                 )
-            if self.handler_condition_by_event[TraceEvent.after_load_complex_symbol](
+            if self.handler_predicate_by_event[TraceEvent.after_load_complex_symbol](
                 orig_node
             ):
                 end_kwargs["ret"] = node
@@ -219,7 +218,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         orig_node_id = id(orig_node)
         with fast.location_of(node.value):
             is_subscript = isinstance(node, ast.Subscript)
-            should_emit_evt = self.handler_condition_by_event[evt_to_use](orig_node)
+            should_emit_evt = self.handler_predicate_by_event[evt_to_use](orig_node)
             with self.attrsub_context(node):
                 extra_keywords: Dict[str, ast.AST] = {}
                 if isinstance(node.value, ast.Name):
@@ -257,7 +256,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 if is_subscript
                 else TraceEvent.after_attribute_load
             )
-            if self.handler_condition_by_event[after_evt](orig_node):
+            if self.handler_predicate_by_event[after_evt](orig_node):
                 with fast.location_of(node):
                     node = self.emit(  # type: ignore
                         after_evt,
@@ -282,7 +281,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             with fast.location_of(maybe_kwarg):
                 with self.attrsub_context(None):
                     new_arg_value = self.visit(maybe_kwarg)
-                if self.handler_condition_by_event[TraceEvent.argument](maybe_kwarg):
+                if self.handler_predicate_by_event[TraceEvent.argument](maybe_kwarg):
                     with self.attrsub_context(None):
                         new_arg_value = cast(
                             ast.expr,
@@ -329,7 +328,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         #
         # This effectively rewrites function calls as follows:
         # f(a, b, ..., c) -> trace(f, 'enter argument list')(a, b, ..., c)
-        if self.handler_condition_by_event[TraceEvent.before_call](orig_node):
+        if self.handler_predicate_by_event[TraceEvent.before_call](orig_node):
             with fast.location_of(node.func):
                 node.func = self.emit(
                     TraceEvent.before_call,
@@ -339,7 +338,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 )
 
         # f(a, b, ..., c) -> trace(f(a, b, ..., c), 'exit argument list')
-        if self.handler_condition_by_event[TraceEvent.after_call](orig_node):
+        if self.handler_predicate_by_event[TraceEvent.after_call](orig_node):
             with fast.location_of(node):
                 node = self.emit(
                     TraceEvent.after_call,
@@ -361,13 +360,13 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         orig_value_id = id(orig_value)
         with fast.location_of(node.value):
             node.value = self.visit(node.value)
-            if self.handler_condition_by_event[TraceEvent.before_assign_rhs](
+            if self.handler_predicate_by_event[TraceEvent.before_assign_rhs](
                 orig_value
             ):
                 node.value = self.make_tuple_event_for(
                     node.value, TraceEvent.before_assign_rhs, orig_node_id=orig_value_id
                 )
-            if self.handler_condition_by_event[TraceEvent.after_assign_rhs](orig_value):
+            if self.handler_predicate_by_event[TraceEvent.after_assign_rhs](orig_value):
                 node.value = self.emit(
                     TraceEvent.after_assign_rhs, orig_value_id, ret=node.value
                 )
@@ -387,7 +386,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                             node,
                             ret=fast.NameConstant(True),
                         )
-                        if self.handler_condition_by_event[
+                        if self.handler_predicate_by_event[
                             TraceEvent.before_lambda_body
                         ](node)
                         else None,
@@ -396,11 +395,11 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 body=ret_node.body,
                 orelse=untraced_lam.body,
             )
-            if self.handler_condition_by_event[TraceEvent.before_lambda](untraced_lam):
+            if self.handler_predicate_by_event[TraceEvent.before_lambda](untraced_lam):
                 ret_node = self.make_tuple_event_for(
                     ret_node, TraceEvent.before_lambda, orig_node_id=id(node)
                 )
-            if self.handler_condition_by_event[TraceEvent.after_lambda](untraced_lam):
+            if self.handler_predicate_by_event[TraceEvent.after_lambda](untraced_lam):
                 ret_node = self.emit(TraceEvent.after_lambda, node, ret=ret_node)  # type: ignore
         return ret_node
 
@@ -471,12 +470,12 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             return ret_node
         with fast.location_of(node):
             lit_before_evt = self._ast_container_to_literal_trace_evt(node, before=True)
-            if self.handler_condition_by_event[lit_before_evt](untraced_lit):
+            if self.handler_predicate_by_event[lit_before_evt](untraced_lit):
                 ret_node = self.make_tuple_event_for(
                     ret_node, lit_before_evt, orig_node_id=id(node)
                 )
             lit_after_evt = self._ast_container_to_literal_trace_evt(node, before=False)
-            if self.handler_condition_by_event[lit_after_evt](untraced_lit):
+            if self.handler_predicate_by_event[lit_after_evt](untraced_lit):
                 ret_node = self.emit(lit_after_evt, node, ret=ret_node)
         return ret_node
 
@@ -513,7 +512,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 saw_starred = True
                 traced_elts.append(elt)
                 continue
-            elif not is_load or not self.handler_condition_by_event[elt_trace_evt](
+            elif not is_load or not self.handler_predicate_by_event[elt_trace_evt](
                 node
             ):
                 traced_elts.append(self.visit(elt))
@@ -541,7 +540,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             else:
                 with fast.location_of(k):
                     traced_key = self.visit(k)
-                    if self.handler_condition_by_event[TraceEvent.dict_key](k):
+                    if self.handler_predicate_by_event[TraceEvent.dict_key](k):
                         traced_key = self.emit(
                             TraceEvent.dict_key,
                             k,
@@ -556,7 +555,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 else:
                     key_node_id_ast = self.get_copy_id_ast(k)
                 traced_value = self.visit(v)
-                if self.handler_condition_by_event[TraceEvent.dict_value](v):
+                if self.handler_predicate_by_event[TraceEvent.dict_value](v):
                     traced_value = self.emit(
                         TraceEvent.dict_value,
                         v,
@@ -575,7 +574,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         orig_node_value = node.value
         with fast.location_of(node):
             node.value = self.visit(node.value)
-            if self.handler_condition_by_event[TraceEvent.before_return](
+            if self.handler_predicate_by_event[TraceEvent.before_return](
                 orig_node_value
             ):
                 node.value = self.make_tuple_event_for(
@@ -583,7 +582,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     TraceEvent.before_return,
                     orig_node_id=id(orig_node_value),
                 )
-            if self.handler_condition_by_event[TraceEvent.after_return](
+            if self.handler_predicate_by_event[TraceEvent.after_return](
                 orig_node_value
             ):
                 node.value = self.emit(
@@ -606,7 +605,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             ("right", TraceEvent.right_binop_arg),
         ]:
             operand_node = getattr(node, attr)
-            if self.handler_condition_by_event[operand_evt](operand_node):
+            if self.handler_predicate_by_event[operand_evt](operand_node):
                 with fast.location_of(operand_node):
                     setattr(
                         node,
@@ -619,7 +618,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 setattr(node, attr, self.visit(operand_node))
 
         ret: Union[ast.BinOp, ast.Call] = node
-        if self.handler_condition_by_event[TraceEvent.before_binop](untraced_node):
+        if self.handler_predicate_by_event[TraceEvent.before_binop](untraced_node):
             with fast.location_of(node):
                 ret = self.emit(
                     TraceEvent.before_binop,
@@ -640,7 +639,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     ),
                     before_expr_args=[node.left, node.right],
                 )
-        if self.handler_condition_by_event[TraceEvent.after_binop](untraced_node):
+        if self.handler_predicate_by_event[TraceEvent.after_binop](untraced_node):
             with fast.location_of(node):
                 ret = self.emit(TraceEvent.after_binop, node, ret=ret)
         return ret
@@ -649,7 +648,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         # TODO: this is pretty similar to BinOp above; maybe can dedup some code
         untraced_node = self.orig_to_copy_mapping[id(node)]
 
-        if self.handler_condition_by_event[TraceEvent.left_compare_arg](node.left):
+        if self.handler_predicate_by_event[TraceEvent.left_compare_arg](node.left):
             with fast.location_of(node.left):
                 node.left = self.emit(
                     TraceEvent.left_compare_arg, node.left, ret=self.visit(node.left)
@@ -658,7 +657,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             node.left = self.visit(node.left)
 
         for idx, comparator in enumerate(node.comparators):
-            if self.handler_condition_by_event[TraceEvent.compare_arg](comparator):
+            if self.handler_predicate_by_event[TraceEvent.compare_arg](comparator):
                 with fast.location_of(comparator):
                     node.comparators[idx] = self.emit(
                         TraceEvent.compare_arg, comparator, ret=self.visit(comparator)
@@ -667,7 +666,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 node.comparators[idx] = self.visit(comparator)
 
         ret: Union[ast.Compare, ast.Call] = node
-        if self.handler_condition_by_event[TraceEvent.before_compare](untraced_node):
+        if self.handler_predicate_by_event[TraceEvent.before_compare](untraced_node):
             with fast.location_of(node):
                 ret = self.emit(
                     TraceEvent.before_compare,
@@ -695,7 +694,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     ),
                     before_expr_args=[node.left] + node.comparators,
                 )
-        if self.handler_condition_by_event[TraceEvent.after_compare](untraced_node):
+        if self.handler_predicate_by_event[TraceEvent.after_compare](untraced_node):
             with fast.location_of(node):
                 ret = self.emit(TraceEvent.after_compare, node, ret=ret)
         return ret
@@ -703,7 +702,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     if sys.version_info < (3, 8):
 
         def visit_Ellipsis(self, node: ast.Ellipsis):
-            if self.handler_condition_by_event[TraceEvent.ellipses](node):
+            if self.handler_predicate_by_event[TraceEvent.ellipses](node):
                 with fast.location_of(node):
                     return self.emit(TraceEvent.ellipses, node, ret=node)
             else:
@@ -712,7 +711,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     else:
 
         def visit_Constant(self, node: ast.Constant):
-            if node.value is ... and self.handler_condition_by_event[
+            if node.value is ... and self.handler_predicate_by_event[
                 TraceEvent.ellipses
             ](node):
                 with fast.location_of(node):

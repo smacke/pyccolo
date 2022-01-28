@@ -3,11 +3,10 @@ import ast
 import builtins
 import sys
 import typing
-from typing import DefaultDict, Dict, Optional, Set, Union
+from typing import Callable, DefaultDict, Dict, Optional, Set, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT
-from pyccolo.predicate import Predicate
 from pyccolo.trace_events import BEFORE_EXPR_EVENTS, TraceEvent
 
 if sys.version_info < (3, 8):
@@ -44,11 +43,11 @@ class EmitterMixin:
     def __init__(
         self,
         orig_to_copy_mapping: Dict[int, ast.AST],
-        handler_condition_by_event: DefaultDict[TraceEvent, Predicate],
+        handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
         guards: Set[str],
     ):
         self.orig_to_copy_mapping = orig_to_copy_mapping
-        self.handler_condition_by_event = handler_condition_by_event
+        self.handler_predicate_by_event = handler_predicate_by_event
         self.guards: Set[str] = guards
 
     def register_guard(self, guard: str) -> None:
@@ -85,7 +84,7 @@ class EmitterMixin:
     def make_tuple_event_for(
         self, node: ast.AST, event: TraceEvent, orig_node_id=None, **kwargs
     ):
-        if not self.handler_condition_by_event[event](node):
+        if not self.handler_predicate_by_event[event](node):
             return node
         with fast.location_of(node):
             tuple_node = fast.Tuple(
