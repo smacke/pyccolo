@@ -3,7 +3,7 @@ import ast
 import logging
 import sys
 from contextlib import contextmanager
-from typing import cast, Callable, DefaultDict, Dict, List, Optional, Set, Union
+from typing import cast, DefaultDict, Dict, List, Optional, Set, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import TRACING_ENABLED, make_guard_name
@@ -13,6 +13,7 @@ from pyccolo.fast import (
     make_composite_condition,
     subscript_to_slice,
 )
+from pyccolo.predicate import Predicate
 from pyccolo.trace_events import TraceEvent
 
 
@@ -24,7 +25,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def __init__(
         self,
         orig_to_copy_mapping: Dict[int, ast.AST],
-        handler_condition_by_event: DefaultDict[TraceEvent, Callable[[ast.AST], bool]],
+        handler_condition_by_event: DefaultDict[TraceEvent, Predicate],
         guards: Set[str],
     ):
         EmitterMixin.__init__(

@@ -12,6 +12,7 @@ q[1 + u[a + b]]  -> BinOp(Add, left=Num(1), right=Num(12))
 """
 import ast
 import copy
+from typing import Callable
 
 import pyccolo as pyc
 
@@ -30,12 +31,16 @@ class _QuasiquoteTransformer(ast.NodeTransformer):
             return node
 
 
-def is_macro(name):
+def _is_macro(name: str) -> Callable[[ast.AST], bool]:
     return (
         lambda node: isinstance(node, ast.Subscript)
         and isinstance(node.value, ast.Name)
         and node.value.id == name
     )
+
+
+def is_macro(name: str) -> pyc.Predicate:
+    return pyc.Predicate(_is_macro(name), dynamic=True)
 
 
 class _IdentitySubscript:
@@ -95,8 +100,10 @@ class Quasiquoter(pyc.BaseTracer):
         return ast.List(elts=list(ret))
 
     def is_any_macro(self, node):
-        return any(is_macro(m)(node) for m in self.macros)
+        return any(_is_macro(m)(node) for m in self.macros)
 
-    @pyc.before_subscript_load(when=is_any_macro, reentrant=True)
+    @pyc.before_subscript_load(
+        when=pyc.Predicate(is_any_macro, dynamic=True), reentrant=True
+    )
     def load_macro_result(self, _ret, *_, **__):
         return _identity_subscript

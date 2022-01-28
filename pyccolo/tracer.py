@@ -33,6 +33,7 @@ from typing import (
 from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
 
+from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.emit_event import _emit_event, _TRACER_STACK
 from pyccolo.extra_builtins import (
     EMIT_EVENT,
@@ -40,8 +41,8 @@ from pyccolo.extra_builtins import (
     TRACING_ENABLED,
     make_guard_name,
 )
-from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.import_hooks import patch_meta_path
+from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
 from pyccolo.trace_events import AST_TO_EVENT_MAPPING, SYS_TRACE_EVENTS, TraceEvent
 from pyccolo.trace_stack import TraceStack
@@ -87,7 +88,7 @@ class MetaTracerStateMachine(MetaHasTraits):
         return obj
 
 
-_HANDLER_DATA_T = Tuple[Callable[..., Any], bool, bool, Callable[..., bool]]
+_HANDLER_DATA_T = Tuple[Callable[..., Any], bool, bool, Predicate]
 
 
 class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
@@ -129,16 +130,16 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         ] = defaultdict(list)
         events_with_registered_handlers = set()
         for clazz in reversed(self.__class__.mro()):
-            for evt, raw_handlers in self.EVENT_HANDLERS_BY_CLASS.get(
-                clazz, {}
-            ).items():
-                handlers: List[_HANDLER_DATA_T] = []
-                for (*handler_info, raw_condition) in raw_handlers:
-                    condition: Optional[Callable[..., bool]] = getattr(
-                        self, getattr(raw_condition, "__name__", "<empty>"), None
-                    )
-                    condition = raw_condition if condition is None else condition
-                    handlers.append((*handler_info, condition))  # type: ignore
+            for evt, handlers in self.EVENT_HANDLERS_BY_CLASS.get(clazz, {}).items():
+                for *_, predicate in handlers:
+                    if hasattr(predicate, "condition"):
+                        condition: Optional[Callable[..., bool]] = getattr(
+                            self,
+                            getattr(predicate.condition, "__name__", "<empty>"),
+                            None,
+                        )
+                        if condition is not None:
+                            predicate.condition = condition
                 self._event_handlers[evt].extend(handlers)
                 if not issubclass(BaseTracer, clazz) and len(handlers) > 0:
                     events_with_registered_handlers.add(evt)
@@ -259,7 +260,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 handler,
                 use_raw_node_id,
                 reentrant,
-                condition,
+                predicate,
             ) in self._event_handlers.get(event, []):
                 if reentrant_handlers_only and not reentrant:
                     continue
@@ -270,7 +271,11 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                         if use_raw_node_id
                         else self.ast_node_by_id.get(node_id, None)
                     )
-                    if condition(node_id_or_node):
+                    if (
+                        predicate is Predicate.TRUE
+                        or not predicate.dynamic
+                        or predicate.dynamic_call(node_id_or_node)
+                    ):
                         new_ret = handler(
                             self, old_ret, node_id_or_node, frame, event, **kwargs
                         )
@@ -729,12 +734,17 @@ def register_handler(
     event: Union[
         Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]
     ],
-    use_raw_node_id: bool = False,
+    when: Optional[Union[Callable[..., bool], Predicate]] = None,
     reentrant: bool = False,
-    when: Optional[Callable[..., bool]] = None,
+    use_raw_node_id: bool = False,
 ):
     events = event if isinstance(event, tuple) else (event,)
-    when = (lambda *_: True) if when is None else when
+    when = Predicate.TRUE if when is None else when
+    if isinstance(when, Predicate):
+        pred: Predicate = when
+    else:
+        pred = Predicate(when, use_raw_node_id=use_raw_node_id)  # type: ignore
+    pred.use_raw_node_id = use_raw_node_id
 
     if TraceEvent.opcode in events and sys.version_info < (3, 7):
         raise ValueError("can't trace opcodes on Python < 3.7")
@@ -745,7 +755,7 @@ def register_handler(
                 AST_TO_EVENT_MAPPING[evt]
                 if type(evt) is type and issubclass(evt, ast.AST)
                 else evt
-            ].append((handler, use_raw_node_id, reentrant, when))
+            ].append((handler, use_raw_node_id, reentrant, pred))
         return handler
 
     return _inner_registrar

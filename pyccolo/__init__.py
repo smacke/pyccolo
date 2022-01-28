@@ -14,6 +14,7 @@ from typing import Any, Dict, Union
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.emit_event import _TRACER_STACK, allow_reentrant_event_handling
 from pyccolo.extra_builtins import make_guard_name
+from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import (
     AugmentationSpec,
     AugmentationType,
@@ -196,6 +197,7 @@ __all__ = [
     "AugmentationType",
     "BaseTracer",
     "Null",
+    "Predicate",
     "Skip",
     "TraceStack",
     "allow_reentrant_event_handling",

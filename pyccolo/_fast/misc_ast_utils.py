@@ -3,10 +3,11 @@ import ast
 import builtins
 import sys
 import typing
-from typing import Callable, DefaultDict, Dict, Optional, Set, Union
+from typing import DefaultDict, Dict, Optional, Set, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT
+from pyccolo.predicate import Predicate
 from pyccolo.trace_events import BEFORE_EXPR_EVENTS, TraceEvent
 
 if sys.version_info < (3, 8):
@@ -43,7 +44,7 @@ class EmitterMixin:
     def __init__(
         self,
         orig_to_copy_mapping: Dict[int, ast.AST],
-        handler_condition_by_event: DefaultDict[TraceEvent, Callable[[ast.AST], bool]],
+        handler_condition_by_event: DefaultDict[TraceEvent, Predicate],
         guards: Set[str],
     ):
         self.orig_to_copy_mapping = orig_to_copy_mapping
