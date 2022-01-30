@@ -2,3 +2,23 @@
 line-length = 88
 target-version = ['py39']
 extend-exclude = '(^/versioneer|_version|.*uses_null_coalesce)\.py'
+
+[tool.pytest.ini_options]
+markers = ['integration: mark a test as an integration test.']
+filterwarnings = [
+    'ignore::DeprecationWarning',
+    'ignore::pytest.PytestAssertRewriteWarning',
+]
+
+[tool.coverage.run]
+source = ['pyccolo/**']
+omit = ['pyccolo/_version.py', 'pyccolo/version.py', 'pyccolo/examples/**']
+
+[tool.coverage.report]
+exclude_lines = [
+    'pragma: no cover *$',
+    '^ *if TYPE_CHECKING:',
+    '^ *except Exception',
+    '^ *raise',
+    '^ *\.\.\.',
+]

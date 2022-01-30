@@ -28,7 +28,7 @@ typecheck:
 check_no_typing:
 	rm -f .coverage
 	rm -rf htmlcov
-	pytest --cov-config=.coveragerc --cov=pyccolo
+	pytest --cov-config=pyproject.toml --cov=pyccolo
 
 check: blackcheck lint typecheck check_no_typing
 
