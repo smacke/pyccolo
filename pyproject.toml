@@ -11,7 +11,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ['pyccolo/**']
+source = ['pyccolo']
 omit = ['pyccolo/_version.py', 'pyccolo/version.py', 'pyccolo/examples/**']
 
 [tool.coverage.report]
