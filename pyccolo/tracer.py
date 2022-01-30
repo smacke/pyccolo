@@ -703,8 +703,13 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         # lambdas that we generate vs that user generates
         code = lam.__code__
         assert code.co_name == "<lambda>"
-        lam.__code__ = code.replace(co_name="<traced_lambda>")
-        return lam
+        if sys.version_info >= (3, 8):
+            lam.__code__ = code.replace(co_name="<traced_lambda>")
+            return lam
+        else:
+            # workaround for older Python
+            # mainly we just want a lambda not created in the module we're instrumenting
+            return lambda *args: lam(*args)
 
     def exec_saved_thunk(self):
         assert self._saved_thunk is not None
