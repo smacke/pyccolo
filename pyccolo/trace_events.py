@@ -12,6 +12,7 @@ class TraceEvent(Enum):
     before_stmt = "before_stmt"
     after_stmt = "after_stmt"
     after_module_stmt = "after_module_stmt"
+    after_expr_stmt = "after_expr_stmt"
 
     load_name = "load_name"
 
@@ -35,6 +36,9 @@ class TraceEvent(Enum):
 
     before_load_complex_symbol = "before_load_complex_symbol"
     after_load_complex_symbol = "after_load_complex_symbol"
+
+    after_if_test = "after_if_test"
+    after_while_test = "after_while_test"
 
     before_lambda = "before_lambda"
     after_lambda = "after_lambda"
@@ -62,11 +66,14 @@ class TraceEvent(Enum):
 
     before_assign_rhs = "before_assign_rhs"
     after_assign_rhs = "after_assign_rhs"
+    before_augassign_rhs = "before_augassign_rhs"
+    after_augassign_rhs = "after_augassign_rhs"
 
     before_function_body = "before_function_body"
     after_function_execution = "after_function_execution"
 
     before_lambda_body = "before_lambda_body"
+    after_lambda_body = "after_lambda_body"
 
     left_binop_arg = "left_binop_arg"
     right_binop_arg = "right_binop_arg"

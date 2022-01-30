@@ -1,6 +1,12 @@
 History
 =======
 
+0.0.11 (2022-01-30)
+------------------
+* Expanded predicate functionality;
+* New events for after if / while test, after expr stmts, after lambda body, before / after augassign rhs;
+* Disambiguate between user and generated lambdas (e.g. used for before expr events);
+
 0.0.10 (2022-01-26)
 ------------------
 * Simplify binop events;

@@ -342,26 +342,53 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             node, call_context=True, orig_node_id=orig_node_id
         )
 
+    def visit_Expr(self, node: ast.Expr) -> ast.Expr:
+        with fast.location_of(node):
+            node.value = self.visit(node.value)
+            if self.handler_predicate_by_event[TraceEvent.after_expr_stmt](node):
+                node.value = self.emit(TraceEvent.after_expr_stmt, node, ret=node.value)
+            return node
+
     def visit_Assign(self, node: ast.Assign):
-        new_targets = []
-        for target in node.targets:
-            new_targets.append(self.visit(target))
-        node.targets = new_targets
+        return self.visit_Assign_or_AugAssign(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign):
+        return self.visit_Assign_or_AugAssign(node)
+
+    def visit_Assign_or_AugAssign(self, node: Union[ast.Assign, ast.AugAssign]):
+        if isinstance(node, ast.Assign):
+            new_targets = []
+            for target in node.targets:
+                new_targets.append(self.visit(target))
+            node.targets = new_targets
+        else:
+            node.target = self.visit(node.target)
         orig_value = node.value
         orig_value_id = id(orig_value)
+        if isinstance(node, ast.Assign):
+            before_evt = TraceEvent.before_assign_rhs
+            after_evt = TraceEvent.after_assign_rhs
+        else:
+            before_evt = TraceEvent.before_augassign_rhs
+            after_evt = TraceEvent.after_augassign_rhs
         with fast.location_of(node.value):
             node.value = self.visit(node.value)
-            if self.handler_predicate_by_event[TraceEvent.before_assign_rhs](
-                orig_value
-            ):
+            if self.handler_predicate_by_event[before_evt](orig_value):
                 node.value = self.make_tuple_event_for(
-                    node.value, TraceEvent.before_assign_rhs, orig_node_id=orig_value_id
+                    node.value, before_evt, orig_node_id=orig_value_id
                 )
-            if self.handler_predicate_by_event[TraceEvent.after_assign_rhs](orig_value):
-                node.value = self.emit(
-                    TraceEvent.after_assign_rhs, orig_value_id, ret=node.value
-                )
+            if self.handler_predicate_by_event[after_evt](orig_value):
+                node.value = self.emit(after_evt, orig_value_id, ret=node.value)
         return node
+
+    def visit_If(self, node: ast.If):
+        with fast.location_of(node):
+            node.test = self.visit(node.test)
+            node.body = [self.visit(stmt) for stmt in node.body]
+            node.orelse = [self.visit(stmt) for stmt in node.orelse]
+            if self.handler_predicate_by_event[TraceEvent.after_if_test](node):
+                node.test = self.emit(TraceEvent.after_if_test, node, ret=node.test)
+            return node
 
     def visit_Lambda(self, node: ast.Lambda):
         assert isinstance(getattr(node, "ctx", ast.Load()), ast.Load)
@@ -379,13 +406,19 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                         )
                         if self.handler_predicate_by_event[
                             TraceEvent.before_lambda_body
-                        ](node)
+                        ](untraced_lam)
                         else None,
                     ]
                 ),
                 body=ret_node.body,
                 orelse=untraced_lam.body,
             )
+            if self.handler_predicate_by_event[TraceEvent.after_lambda_body](
+                untraced_lam
+            ):
+                ret_node.body = self.emit(
+                    TraceEvent.after_lambda_body, node, ret=ret_node.body
+                )
             if self.handler_predicate_by_event[TraceEvent.before_lambda](untraced_lam):
                 ret_node = self.make_tuple_event_for(
                     ret_node, TraceEvent.before_lambda, orig_node_id=id(node)
@@ -401,6 +434,13 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 loop_guard = make_guard_name(loop_node_copy)
                 self.register_guard(loop_guard)
                 with fast.location_of(node):
+                    visited_test = self.visit(field)
+                    if self.handler_predicate_by_event[TraceEvent.after_while_test](
+                        node
+                    ):
+                        visited_test = self.emit(
+                            TraceEvent.after_while_test, node, ret=visited_test
+                        )
                     node.test = fast.IfExp(
                         test=make_composite_condition(
                             [
@@ -408,7 +448,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                                 make_test(loop_guard),
                             ]
                         ),
-                        body=self.visit(field),
+                        body=visited_test,
                         orelse=loop_node_copy.test,
                     )
             elif isinstance(field, list):
