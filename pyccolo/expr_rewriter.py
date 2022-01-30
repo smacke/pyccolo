@@ -138,16 +138,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     slc = self.emit(
                         TraceEvent.before_subscript_slice,
                         node,
-                        ret=fast.Lambda(
-                            body=slc,
-                            args=ast.arguments(
-                                args=[],
-                                defaults=[],
-                                kwonlyargs=[],
-                                kw_defaults=[],
-                                posonlyargs=[],
-                            ),
-                        ),
+                        ret=self.make_lambda(body=slc),
                     )
                 if self.handler_predicate_by_event[TraceEvent.after_subscript_slice](
                     node
@@ -623,19 +614,13 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 ret = self.emit(
                     TraceEvent.before_binop,
                     node,
-                    ret=fast.Lambda(
+                    ret=self.make_lambda(
                         body=fast.BinOp(
                             op=op,
                             left=fast.Name(id="x", ctx=ast.Load()),
                             right=fast.Name(id="y", ctx=ast.Load()),
                         ),
-                        args=ast.arguments(
-                            args=[fast.arg("x", None), fast.arg("y", None)],
-                            defaults=[],
-                            kwonlyargs=[],
-                            kw_defaults=[],
-                            posonlyargs=[],
-                        ),
+                        args=[fast.arg("x", None), fast.arg("y", None)],
                     ),
                     before_expr_args=[node.left, node.right],
                 )
@@ -671,7 +656,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 ret = self.emit(
                     TraceEvent.before_compare,
                     node,
-                    ret=fast.Lambda(
+                    ret=self.make_lambda(
                         body=fast.Compare(
                             ops=node.ops,
                             left=fast.Name(id="x", ctx=ast.Load()),
@@ -680,17 +665,11 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                                 for i in range(len(node.comparators))
                             ],
                         ),
-                        args=ast.arguments(
-                            args=[fast.arg("x", None)]
-                            + [
-                                fast.arg(f"y_{i}", None)
-                                for i in range(len(node.comparators))
-                            ],
-                            defaults=[],
-                            kwonlyargs=[],
-                            kw_defaults=[],
-                            posonlyargs=[],
-                        ),
+                        args=[fast.arg("x", None)]
+                        + [
+                            fast.arg(f"y_{i}", None)
+                            for i in range(len(node.comparators))
+                        ],
                     ),
                     before_expr_args=[node.left] + node.comparators,
                 )

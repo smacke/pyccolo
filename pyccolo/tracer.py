@@ -38,6 +38,7 @@ from pyccolo.emit_event import _emit_event, _TRACER_STACK
 from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
+    TRACE_LAMBDA,
     TRACING_ENABLED,
     make_guard_name,
 )
@@ -502,6 +503,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         if not hasattr(builtins, TRACING_ENABLED):
             setattr(builtins, TRACING_ENABLED, False)
         setattr(builtins, EXEC_SAVED_THUNK, self.exec_saved_thunk)
+        setattr(builtins, TRACE_LAMBDA, self.trace_lambda)
         if len(_TRACER_STACK) == 0:
             do_patch_meta_path = True
         if should_push:
@@ -529,8 +531,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             if len(_TRACER_STACK) == 0:
                 for extra_builtin in {
                     EMIT_EVENT,
-                    TRACING_ENABLED,
                     EXEC_SAVED_THUNK,
+                    TRACE_LAMBDA,
+                    TRACING_ENABLED,
                 } | self.guards:
                     if hasattr(builtins, extra_builtin):
                         delattr(builtins, extra_builtin)
@@ -694,6 +697,14 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 instrument=False,
             )
         return local_env.pop(env_name)
+
+    def trace_lambda(self, lam):
+        # for now, this is primarily so that we can distinguish between
+        # lambdas that we generate vs that user generates
+        code = lam.__code__
+        assert code.co_name == "<lambda>"
+        lam.__code__ = code.replace(co_name="<traced_lambda>")
+        return lam
 
     def exec_saved_thunk(self):
         assert self._saved_thunk is not None

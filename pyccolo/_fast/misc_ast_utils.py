@@ -3,10 +3,10 @@ import ast
 import builtins
 import sys
 import typing
-from typing import Callable, DefaultDict, Dict, Optional, Set, Union
+from typing import Callable, DefaultDict, Dict, List, Optional, Set, Union
 
 from pyccolo import fast
-from pyccolo.extra_builtins import EMIT_EVENT
+from pyccolo.extra_builtins import EMIT_EVENT, TRACE_LAMBDA
 from pyccolo.trace_events import BEFORE_EXPR_EVENTS, TraceEvent
 
 if sys.version_info < (3, 8):
@@ -54,13 +54,33 @@ class EmitterMixin:
         self.guards.add(guard)
         setattr(builtins, guard, True)
 
-    def emitter_ast(self) -> ast.Name:
-        return fast.Name(EMIT_EVENT, ast.Load())
+    @staticmethod
+    def make_func_name(name=EMIT_EVENT) -> ast.Name:
+        return fast.Name(name, ast.Load())
 
     def get_copy_id_ast(self, orig_node_id: Union[int, ast.AST]) -> NumConst:
         if not isinstance(orig_node_id, int):
             orig_node_id = id(orig_node_id)
         return fast.Num(id(self.orig_to_copy_mapping[orig_node_id]))
+
+    def make_lambda(
+        self, body: ast.expr, args: Optional[List[ast.arg]] = None
+    ) -> ast.Call:
+        return fast.Call(
+            func=self.make_func_name(TRACE_LAMBDA),
+            args=[
+                fast.Lambda(
+                    body=body,
+                    args=ast.arguments(
+                        args=[] if args is None else args,
+                        defaults=[],
+                        kwonlyargs=[],
+                        kw_defaults=[],
+                        posonlyargs=[],
+                    ),
+                )
+            ],
+        )
 
     def emit(
         self,
@@ -73,7 +93,7 @@ class EmitterMixin:
         args = args or []
         before_expr_args = before_expr_args or []
         ret = fast.Call(
-            func=self.emitter_ast(),
+            func=self.make_func_name(),
             args=[evt.to_ast(), self.get_copy_id_ast(node_or_id)] + args,
             keywords=fast.kwargs(**kwargs),
         )
