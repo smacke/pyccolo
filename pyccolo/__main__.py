@@ -3,12 +3,10 @@
 Allows running scripts and modules with Pyccolo instrumentation enabled.
 """
 import argparse
-import importlib
 import os
 import sys
 from pathlib import Path
 from runpy import run_module
-from typing import Type
 
 import pyccolo as pyc
 
@@ -20,11 +18,6 @@ def get_script_as_module(script: str) -> str:
     module_name = os.path.splitext(script_path.name)[0]
     sys.path.insert(0, script_dir)
     return module_name
-
-
-def resolve_tracer(ref: str) -> Type[pyc.BaseTracer]:
-    module, attr = ref.rsplit(".", 1)
-    return getattr(importlib.import_module(module), attr)
 
 
 def make_parser() -> argparse.ArgumentParser:
@@ -54,7 +47,7 @@ def run(args: argparse.Namespace) -> None:
     validate_args(args)
     tracers = []
     for tracer_ref in args.tracer:
-        tracers.append(resolve_tracer(tracer_ref))
+        tracers.append(pyc.resolve_tracer(tracer_ref))
     if args.module is not None:
         module_to_run = args.module
     else:

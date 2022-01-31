@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.12 (2022-01-30)
+------------------
+* Expose logic for resolving tracer class based on module path;
+
 0.0.11 (2022-01-30)
 ------------------
 * Expanded predicate functionality;

@@ -29,7 +29,7 @@ from pyccolo.tracer import (
     register_raw_handler,
     skip_when_tracing_disabled,
 )
-from pyccolo.utils import multi_context
+from pyccolo.utils import multi_context, resolve_tracer
 from pyccolo._version import get_versions
 
 
@@ -217,6 +217,7 @@ __all__ = [
     "parse",
     "register_handler",
     "register_raw_handler",
+    "resolve_tracer",
     "skip_when_tracing_disabled",
     "tracer",
     "tracing_context",
