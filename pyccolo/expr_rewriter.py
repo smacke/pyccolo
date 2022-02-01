@@ -349,6 +349,12 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 node.value = self.emit(TraceEvent.after_expr_stmt, node, ret=node.value)
             return node
 
+    def visit_With(self, node: ast.With) -> ast.With:
+        if self.is_tracing_disabled_context(node):
+            return node
+        else:
+            return cast(ast.With, self.generic_visit(node))
+
     def visit_Assign(self, node: ast.Assign):
         return self.visit_Assign_or_AugAssign(node)
 

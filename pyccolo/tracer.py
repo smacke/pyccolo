@@ -34,7 +34,7 @@ from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
 
 from pyccolo.ast_rewriter import AstRewriter
-from pyccolo.emit_event import _emit_event, _TRACER_STACK
+from pyccolo.emit_event import _emit_event, _TRACER_STACK, SkipAll
 from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
@@ -129,6 +129,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         self._event_handlers: DefaultDict[
             TraceEvent, List[_HANDLER_DATA_T]
         ] = defaultdict(list)
+        self._handler_names: Set[str] = set()
         events_with_registered_handlers = set()
         for clazz in reversed(self.__class__.mro()):
             for evt, handlers in self.EVENT_HANDLERS_BY_CLASS.get(clazz, {}).items():
@@ -142,6 +143,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                         if condition is not None:
                             predicate.condition = condition
                 self._event_handlers[evt].extend(handlers)
+                self._handler_names |= {handler[0].__name__ for handler in handlers}
                 if not issubclass(BaseTracer, clazz) and len(handlers) > 0:
                     events_with_registered_handlers.add(evt)
         self.events_with_registered_handlers: FrozenSet[TraceEvent] = frozenset(
@@ -153,8 +155,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         self._saved_thunk: Optional[Union[str, ast.AST]] = None
         self._is_tracing_enabled = False
         self._is_tracing_hard_disabled = False
-        self.sys_tracer = self._sys_tracer
-        self.existing_tracer = None
+        self.existing_tracer = sys.gettrace()
+        self.sys_tracer = self._make_composed_tracer(self.existing_tracer)
         self.augmented_node_ids_by_spec: Dict[AugmentationSpec, Set[int]] = defaultdict(
             set
         )
@@ -245,6 +247,23 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     ) -> bool:
         return False
 
+    def _handle_skipall_emit_return(self, event, old_ret):
+        if event in (TraceEvent.call, TraceEvent.exception):
+            return (SkipAll, self.sys_tracer)
+        else:
+            return (SkipAll, old_ret)
+
+    def _handle_normal_emit_return(self, event, old_ret, new_ret):
+        should_break = new_ret is Skip
+        if new_ret is None or new_ret is Skip:
+            if event in (TraceEvent.call, TraceEvent.exception):
+                new_ret = self.sys_tracer
+            else:
+                new_ret = old_ret
+        elif new_ret is Null:
+            new_ret = None
+        return new_ret, should_break
+
     def _emit_event(
         self,
         evt: Union[str, TraceEvent],
@@ -288,14 +307,12 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     else:
                         logger.exception("An exception while handling evt %s", event)
                     new_ret = None
-                should_break = new_ret is Skip
-                if new_ret is None or new_ret is Skip:
-                    if event in (TraceEvent.call, TraceEvent.exception):
-                        new_ret = self.sys_tracer
-                    else:
-                        new_ret = old_ret
-                elif new_ret is Null:
-                    new_ret = None
+                if new_ret is SkipAll:
+                    return self._handle_skipall_emit_return(event, old_ret)
+                else:
+                    new_ret, should_break = self._handle_normal_emit_return(
+                        event, old_ret, new_ret
+                    )
                 kwargs["ret"] = new_ret
                 if event == TraceEvent.before_stmt:
                     self._saved_thunk = new_ret
@@ -312,15 +329,20 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def _make_composed_tracer(self, existing_tracer):  # pragma: no cover
         @functools.wraps(self._sys_tracer)
         def _composed_tracer(frame: FrameType, evt: str, arg: Any, **kwargs):
-            orig_sys_tracer = sys.gettrace()
-            existing_ret = existing_tracer(frame, evt, arg, **kwargs)
-            if sys.gettrace() is not orig_sys_tracer:
-                # to deal with the existing tracer messing with things
-                sys_settrace(orig_sys_tracer)
             if self._is_tracing_enabled:
                 my_ret = self._sys_tracer(frame, evt, arg, **kwargs)
             else:
                 my_ret = None
+            if isinstance(my_ret, tuple) and len(my_ret) > 1 and my_ret[0] is SkipAll:
+                return my_ret[1]
+            orig_sys_tracer = sys.gettrace()
+            if existing_tracer is None:
+                existing_ret = None
+            else:
+                existing_ret = existing_tracer(frame, evt, arg, **kwargs)
+            if sys.gettrace() is not orig_sys_tracer:
+                # to deal with the existing tracer messing with things
+                sys_settrace(orig_sys_tracer)
             if my_ret is None and evt == "call":
                 return existing_ret
             else:
@@ -347,10 +369,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         self._is_tracing_enabled = True
         if self.has_sys_trace_events:
             self.existing_tracer = existing_tracer or sys.gettrace()
-            if self.existing_tracer is None:
-                self.sys_tracer = self._sys_tracer
-            else:
-                self.sys_tracer = self._make_composed_tracer(self.existing_tracer)
+            self.sys_tracer = self._make_composed_tracer(self.existing_tracer)
             sys_settrace(self.sys_tracer)
         setattr(builtins, TRACING_ENABLED, True)
 
@@ -725,6 +744,12 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def _sys_tracer(self, frame: FrameType, evt: str, arg: Any, **__):
         if not self._file_passes_filter_impl(evt, frame.f_code.co_filename):
             return None
+        if evt == "call" and frame.f_code.co_filename == self.defined_file:
+            func_name = frame.f_code.co_name
+            if func_name == self.allow_reentrant_events.__name__:
+                return None
+            elif func_name in self._handler_names and not self.allow_reentrant_events():
+                return None
 
         if self._has_fancy_sys_tracing and evt == "call":
             if TraceEvent.line not in self.events_with_registered_handlers:

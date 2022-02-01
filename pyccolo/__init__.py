@@ -12,7 +12,7 @@ import types
 from contextlib import contextmanager
 from typing import Any, Dict, Union
 from pyccolo.ast_rewriter import AstRewriter
-from pyccolo.emit_event import _TRACER_STACK, allow_reentrant_event_handling
+from pyccolo.emit_event import _TRACER_STACK, allow_reentrant_event_handling, SkipAll
 from pyccolo.extra_builtins import make_guard_name
 from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import (
@@ -177,22 +177,23 @@ def instrumented(tracers):
 
 
 @contextmanager
-def tracing_context(tracers, *args, **kwargs):
+def tracing_context(tracers=None, *args, **kwargs):
+    tracers = _TRACER_STACK if tracers is None else tracers
     with multi_context([tracer.tracing_context(*args, **kwargs) for tracer in tracers]):
         yield
 
 
 @contextmanager
-def tracing_enabled(tracers, *args, **kwargs):
-    with multi_context([tracer.tracing_enabled(*args, **kwargs) for tracer in tracers]):
+def tracing_enabled(tracers=None, **kwargs):
+    tracers = _TRACER_STACK if tracers is None else tracers
+    with multi_context([tracer.tracing_enabled(**kwargs) for tracer in tracers]):
         yield
 
 
 @contextmanager
-def tracing_disabled(tracers, *args, **kwargs):
-    with multi_context(
-        [tracer.tracing_disabled(*args, **kwargs) for tracer in tracers]
-    ):
+def tracing_disabled(tracers=None, **kwargs):
+    tracers = _TRACER_STACK if tracers is None else tracers
+    with multi_context([tracer.tracing_disabled(**kwargs) for tracer in tracers]):
         yield
 
 
@@ -205,6 +206,7 @@ __all__ = [
     "Null",
     "Predicate",
     "Skip",
+    "SkipAll",
     "TraceStack",
     "allow_reentrant_event_handling",
     "event",

@@ -1,6 +1,13 @@
 History
 =======
 
+0.0.13 (2022-01-31)
+------------------
+* Default to all tracers in stack for package-level tracing enabled / disabled context managers;
+* Omit instrumentating the AST of statements underneath "with pyc.tracing_disabled()" bocks;
+* Add SkipAll return value;
+* Improve reentrancy for sys events;
+
 0.0.12 (2022-01-30)
 ------------------
 * Expose logic for resolving tracer class based on module path;

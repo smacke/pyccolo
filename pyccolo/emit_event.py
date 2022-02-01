@@ -37,6 +37,42 @@ def _make_ret(event, ret):
         return ret
 
 
+SkipAll = object()
+
+
+def _emit_tracer_loop(
+    event,
+    node_id,
+    frame,
+    kwargs,
+):
+    global _allow_reentrant_event_handling
+    global _allow_event_handling
+    orig_allow_reentrant_event_handling = _allow_reentrant_event_handling
+    is_reentrant = not _allow_event_handling
+    reentrant_handlers_only = is_reentrant and not _allow_reentrant_event_handling
+    _allow_event_handling = False
+    for tracer in _TRACER_STACK:
+        _allow_reentrant_event_handling = False
+        if not tracer._file_passes_filter_impl(
+            event, frame.f_code.co_filename, is_reentrant=is_reentrant
+        ):
+            continue
+        _allow_reentrant_event_handling = orig_allow_reentrant_event_handling
+        new_ret = tracer._emit_event(
+            event,
+            node_id,
+            frame,
+            reentrant_handlers_only=reentrant_handlers_only,
+            **kwargs,
+        )
+        if isinstance(new_ret, tuple) and len(new_ret) > 1 and new_ret[0] is SkipAll:
+            kwargs["ret"] = new_ret[1]
+            break
+        else:
+            kwargs["ret"] = new_ret
+
+
 def _emit_event(event, node_id, **kwargs):
     global _allow_event_handling
     global _allow_reentrant_event_handling
@@ -47,27 +83,12 @@ def _emit_event(event, node_id, **kwargs):
     orig_allow_event_handling = _allow_event_handling
     orig_allow_reentrant_event_handling = _allow_reentrant_event_handling
     try:
-        is_reentrant = not _allow_event_handling
-        reentrant_handlers_only = is_reentrant and not _allow_reentrant_event_handling
-        _allow_event_handling = False
-        _allow_reentrant_event_handling = False
-        for tracer in _TRACER_STACK:
-            if tracer._file_passes_filter_impl(
-                event, frame.f_code.co_filename, is_reentrant=is_reentrant
-            ):
-                try:
-                    _allow_reentrant_event_handling = (
-                        orig_allow_reentrant_event_handling
-                    )
-                    kwargs["ret"] = tracer._emit_event(
-                        event,
-                        node_id,
-                        frame,
-                        reentrant_handlers_only=reentrant_handlers_only,
-                        **kwargs,
-                    )
-                finally:
-                    _allow_reentrant_event_handling = False
+        _emit_tracer_loop(
+            event,
+            node_id,
+            frame,
+            kwargs,
+        )
     finally:
         _allow_event_handling = orig_allow_event_handling
         _allow_reentrant_event_handling = orig_allow_reentrant_event_handling

@@ -50,6 +50,24 @@ class EmitterMixin:
         self.handler_predicate_by_event = handler_predicate_by_event
         self.guards: Set[str] = guards
 
+    @staticmethod
+    def is_tracing_disabled_context(node: ast.AST):
+        if not isinstance(node, ast.With):
+            return False
+        if len(node.items) != 1:
+            return False
+        expr = node.items[0].context_expr
+        if not isinstance(expr, ast.Call):
+            return False
+        func = expr.func
+        if not isinstance(func, ast.Attribute):
+            return False
+        return (
+            isinstance(func.value, ast.Name)
+            and func.value.id == "pyc"
+            and func.attr == "tracing_disabled"
+        )
+
     def register_guard(self, guard: str) -> None:
         self.guards.add(guard)
         setattr(builtins, guard, True)

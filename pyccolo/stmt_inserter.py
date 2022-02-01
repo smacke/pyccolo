@@ -217,6 +217,8 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         )
         if self.handler_predicate_by_event[TraceEvent.before_stmt](stmt_copy):
             with fast.location_of(stmt_copy):
+                # TODO: save off the return value if the statement is an expression,
+                #   and add a new statement that just evaluates to that returned value
                 stmts_to_extend.append(
                     fast.If(
                         test=_get_parsed_insert_stmt(
@@ -245,6 +247,8 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         return stmts_to_extend
 
     def generic_visit(self, node):
+        if self.is_tracing_disabled_context(node):
+            return node
         for name, field in ast.iter_fields(node):
             if isinstance(field, ast.AST):
                 setattr(node, name, self.visit(field))
