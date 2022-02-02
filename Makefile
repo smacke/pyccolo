@@ -5,7 +5,7 @@ clean:
 	rm -rf __pycache__ build/ dist/ *.egg-info/ .coverage htmlcov
 
 build: clean
-	python setup.py sdist bdist_wheel --universal
+	python -m build
 
 bump:
 	./scripts/bump-version.py
@@ -47,6 +47,5 @@ deps:
 	pip install -r requirements.txt
 
 devdeps:
-	pip install -e .
-	pip install -r requirements-dev.txt
+	pip install -e .[dev]
 
