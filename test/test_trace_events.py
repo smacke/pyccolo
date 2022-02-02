@@ -311,27 +311,25 @@ def test_fancy_slices(events):
     assert _RECORDED_EVENTS == []
     pyc.BaseTracer().exec(
         """
-        import numpy as np
         class Foo:
             def __init__(self, x):
                 self.x = x
+            def __getitem__(self, x):
+                return self
         foo = Foo(1)
-        arr = np.zeros((3, 3, 3))
-        logging.debug(arr[foo.x:foo.x+1,...])
+        logging.debug(foo[foo.x:foo.x+1,...])
         """,
         filename=_FILENAME,
     )
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
             [
-                # import numpy as np
+                # class Foo: ...
                 pyc.init_module,
                 pyc.before_stmt,
-                pyc.after_stmt,
-                pyc.after_module_stmt,
-                # class Foo: ...
-                pyc.before_stmt,
                 pyc.call,
+                pyc.before_stmt,
+                pyc.after_stmt,
                 pyc.before_stmt,
                 pyc.after_stmt,
                 pyc.return_,
@@ -360,26 +358,7 @@ def test_fancy_slices(events):
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
-                # arr = np.zeros((3, 3, 3))
-                pyc.before_stmt,
-                pyc.before_assign_rhs,
-                pyc.before_load_complex_symbol,
-                pyc.load_name,
-                pyc.before_attribute_load,
-                pyc.after_attribute_load,
-                pyc.before_call,
-                pyc.before_tuple_literal,
-                pyc.tuple_elt,
-                pyc.tuple_elt,
-                pyc.tuple_elt,
-                pyc.after_tuple_literal,
-                pyc.argument,
-                pyc.after_call,
-                pyc.after_load_complex_symbol,
-                pyc.after_assign_rhs,
-                pyc.after_stmt,
-                pyc.after_module_stmt,
-                # logging.info(arr[foo.x:foo.x+1,...])
+                # logging.info(foo[foo.x:foo.x+1,...])
                 pyc.before_stmt,
                 pyc.before_load_complex_symbol,
                 pyc.load_name,
@@ -407,6 +386,14 @@ def test_fancy_slices(events):
                 pyc.after_subscript_slice,
                 pyc.before_subscript_load,
                 pyc._load_saved_slice,
+                pyc.call,
+                pyc.before_function_body,
+                pyc.before_stmt,
+                pyc.before_return,
+                pyc.load_name,
+                pyc.after_return,
+                pyc.after_function_execution,
+                pyc.return_,
                 pyc.after_subscript_load,
                 pyc.after_load_complex_symbol,
                 pyc.argument,
