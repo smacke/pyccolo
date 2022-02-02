@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 from runpy import run_module
+from typing import List, Type
 
 import pyccolo as pyc
 
@@ -45,7 +46,7 @@ def validate_args(args: argparse.Namespace) -> None:
 
 def run(args: argparse.Namespace) -> None:
     validate_args(args)
-    tracers = []
+    tracers: List[Type[pyc.BaseTracer]] = []
     for tracer_ref in args.tracer:
         tracers.append(pyc.resolve_tracer(tracer_ref))
     if args.module is not None:

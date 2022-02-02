@@ -22,3 +22,4 @@ nbsafety/resources/nbextension/index.js.map
 coverage.xml
 htmlcov/**
 .hypothesis
+.version

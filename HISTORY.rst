@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.14 (2022-02-01)
+------------------
+* Move configuration out of setup.py;
+
 0.0.13 (2022-01-31)
 ------------------
 * Default to all tracers in stack for package-level tracing enabled / disabled context managers;
