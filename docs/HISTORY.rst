@@ -1,9 +1,9 @@
 History
 =======
 
-0.0.16 (2022-02-03)
+0.0.17 (2022-02-03)
 ------------------
-* Fix a circular import;
+* Fix packaging issue after new configuration;
 
 0.0.14 (2022-02-02)
 ------------------
