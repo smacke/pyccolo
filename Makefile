@@ -2,7 +2,7 @@
 .PHONY: clean build bump deploy blackcheck lint typecheck check_no_typing check test tests coverage xmlcov check_ci deps devdeps
 
 clean:
-	rm -rf build/ dist/ *.egg-info/ .coverage htmlcov
+	rm -rf __pycache__ build/ dist/ *.egg-info/ .coverage htmlcov
 
 build: clean
 	python setup.py sdist bdist_wheel --universal
