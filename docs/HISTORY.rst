@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.15 (2022-02-03)
+------------------
+* Fix a circular import;
+
 0.0.14 (2022-02-02)
 ------------------
 * Move configuration out of setup.py;

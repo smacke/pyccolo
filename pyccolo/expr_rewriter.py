@@ -5,7 +5,7 @@ import sys
 from contextlib import contextmanager
 from typing import cast, Callable, DefaultDict, Dict, List, Optional, Set, Union
 
-from pyccolo import fast
+from . import fast
 from pyccolo.extra_builtins import TRACING_ENABLED, make_guard_name
 from pyccolo.fast import (
     EmitterMixin,

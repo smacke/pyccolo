@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Pyccolo: ergonomic, composable, portable instrumentation embedded directly in Python source.
+Pyccolo: declarative, composable, portable instrumentation embedded directly in Python source.
 
 Pyccolo brings metaprogramming to everybody via general event-emitting AST transformations.
 """
