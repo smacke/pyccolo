@@ -1,7 +1,7 @@
 History
 =======
 
-0.0.14 (2022-02-01)
+0.0.14 (2022-02-02)
 ------------------
 * Move configuration out of setup.py;
 
