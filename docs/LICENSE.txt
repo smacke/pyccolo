@@ -1,4 +1,4 @@
-Copyright 2020 Stephen Macke, Hongpu Gong
+Copyright 2021 Stephen Macke
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 
