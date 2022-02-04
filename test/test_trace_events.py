@@ -117,6 +117,7 @@ def test_recorded_events_simple(events):
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -159,6 +160,7 @@ def test_recorded_events_two_stmts(events):
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -198,6 +200,7 @@ def test_nested_chains_no_call(events):
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -225,6 +228,7 @@ def test_list_nested_in_dict(events):
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -274,6 +278,7 @@ def test_function_call(events):
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -299,6 +304,7 @@ def test_lambda_in_tuple(events):
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -402,6 +408,7 @@ def test_fancy_slices(events):
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -441,6 +448,7 @@ def test_for_loop(events):
             + [
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -494,6 +502,7 @@ def test_while_loop(events):
                 pyc.after_while_test,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -533,6 +542,7 @@ def test_loop_with_continue(events):
             + [
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -602,6 +612,7 @@ def test_for_loop_nested_in_while_loop(events):
                 pyc.after_while_test,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )
@@ -672,6 +683,7 @@ def test_lambda_wrapping_call(events):
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
                 pyc.after_module_stmt,
+                pyc.exit_module,
             ],
             events,
         )

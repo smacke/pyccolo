@@ -37,6 +37,7 @@ event = TraceEvent
 
 
 init_module = TraceEvent.init_module
+exit_module = TraceEvent.exit_module
 before_stmt = TraceEvent.before_stmt
 after_stmt = TraceEvent.after_stmt
 after_module_stmt = TraceEvent.after_module_stmt

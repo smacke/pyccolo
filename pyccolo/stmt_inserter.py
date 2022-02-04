@@ -66,7 +66,6 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         EmitterMixin.__init__(
             self, orig_to_copy_mapping, handler_predicate_by_event, guards
         )
-        self._init_stmt_inserted: bool = False
         self._global_nonlocal_stripper: StripGlobalAndNonlocalDeclarations = (
             StripGlobalAndNonlocalDeclarations()
         )
@@ -202,16 +201,6 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
     ) -> List[ast.stmt]:
         stmts_to_extend: List[ast.stmt] = []
         stmt_copy = cast(ast.stmt, self.orig_to_copy_mapping[id(inner_node)])
-        if not self._init_stmt_inserted and isinstance(node, ast.Module):
-            self._init_stmt_inserted = True
-            with fast.location_of(stmt_copy):
-                if self.handler_predicate_by_event[TraceEvent.init_module](node):
-                    stmts_to_extend.extend(
-                        fast.parse(
-                            f'{EMIT_EVENT}("{TraceEvent.init_module.name}", '
-                            + f"{id(node)})"
-                        ).body
-                    )
         main_and_maybe_after = self._make_main_and_after_stmt_stmts(
             node, field_name, inner_node, stmt_copy
         )
@@ -254,6 +243,15 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                 setattr(node, name, self.visit(field))
             elif isinstance(field, list):
                 new_field = []
+                if isinstance(node, ast.Module) and name == "body":
+                    if self.handler_predicate_by_event[TraceEvent.init_module](node):
+                        with fast.location_of(node):
+                            new_field.extend(
+                                fast.parse(
+                                    f'{EMIT_EVENT}("{TraceEvent.init_module.name}", '
+                                    + f"{id(node)})"
+                                ).body
+                            )
                 for inner_node in field:
                     if isinstance(inner_node, ast.stmt):
                         new_field.extend(self._handle_stmt(node, name, inner_node))
@@ -262,7 +260,19 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                     else:
                         new_field.append(inner_node)
                 if name == "body":
-                    if isinstance(node, (ast.For, ast.While)):
+                    if isinstance(node, ast.Module):
+                        # TODO: should this go in try / finally to ensure it always gets executed?
+                        if self.handler_predicate_by_event[TraceEvent.exit_module](
+                            node
+                        ):
+                            with fast.location_of(new_field[-1]):
+                                new_field.extend(
+                                    fast.parse(
+                                        f'{EMIT_EVENT}("{TraceEvent.exit_module.name}", '
+                                        + f"{id(node)})"
+                                    ).body
+                                )
+                    elif isinstance(node, (ast.For, ast.While)):
                         new_field = self._handle_loop_body(node, new_field)
                     elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         new_field = self._handle_function_body(node, new_field)
