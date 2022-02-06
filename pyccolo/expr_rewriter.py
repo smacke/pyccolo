@@ -380,8 +380,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         with fast.location_of(node.value):
             node.value = self.visit(node.value)
             if self.handler_predicate_by_event[before_evt](orig_value):
-                node.value = self.make_tuple_event_for(
-                    node.value, before_evt, orig_node_id=orig_value_id
+                node.value = self.emit(
+                    before_evt, orig_value_id, ret=self.make_lambda(body=node.value)
                 )
             if self.handler_predicate_by_event[after_evt](orig_value):
                 node.value = self.emit(after_evt, orig_value_id, ret=node.value)

@@ -125,6 +125,8 @@ SYS_TRACE_EVENTS = {
 BEFORE_EXPR_EVENTS = {
     TraceEvent.before_binop,
     TraceEvent.before_compare,
+    TraceEvent.before_assign_rhs,
+    TraceEvent.before_augassign_rhs,
     TraceEvent.before_subscript_slice,
 }
 

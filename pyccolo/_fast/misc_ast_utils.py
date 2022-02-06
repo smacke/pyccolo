@@ -110,6 +110,14 @@ class EmitterMixin:
     ) -> ast.Call:
         args = args or []
         before_expr_args = before_expr_args or []
+        if evt in BEFORE_EXPR_EVENTS and "ret" in kwargs:
+            kwargs_ret = kwargs["ret"]
+            if (
+                not isinstance(kwargs_ret, ast.Call)
+                or not isinstance(kwargs_ret.func, ast.Name)
+                or kwargs_ret.func.id != TRACE_LAMBDA
+            ):
+                kwargs["ret"] = self.make_lambda(kwargs_ret)
         ret = fast.Call(
             func=self.make_func_name(),
             args=[evt.to_ast(), self.get_copy_id_ast(node_or_id)] + args,
