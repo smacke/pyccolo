@@ -130,6 +130,7 @@ BEFORE_EXPR_EVENTS = {
     TraceEvent.before_dict_literal,
     TraceEvent.before_lambda,
     TraceEvent.before_list_literal,
+    TraceEvent.before_load_complex_symbol,
     TraceEvent.before_return,
     TraceEvent.before_set_literal,
     TraceEvent.before_subscript_slice,

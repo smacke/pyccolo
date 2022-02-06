@@ -126,17 +126,3 @@ class EmitterMixin:
         if evt in BEFORE_EXPR_EVENTS:
             ret = fast.Call(func=ret, args=before_expr_args)
         return ret
-
-    def make_tuple_event_for(
-        self, node: ast.AST, event: TraceEvent, orig_node_id=None, **kwargs
-    ):
-        if not self.handler_predicate_by_event[event](node):
-            return node
-        with fast.location_of(node):
-            tuple_node = fast.Tuple(
-                [self.emit(event, orig_node_id or node, **kwargs), node], ast.Load()
-            )
-            slc: Union[ast.Constant, ast.Num, ast.Index] = fast.Num(1)
-            if sys.version_info < (3, 9):
-                slc = fast.Index(slc)
-            return fast.Subscript(tuple_node, slc, ast.Load())

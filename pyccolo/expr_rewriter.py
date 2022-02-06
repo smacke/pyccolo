@@ -159,14 +159,11 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         node,
         call_context=False,
         orig_node_id=None,
-        begin_kwargs=None,
-        end_kwargs=None,
     ):
         if self._inside_attrsub_load_chain:
             return node
         orig_node = node
         orig_node_id = orig_node_id or id(orig_node)
-        end_kwargs = end_kwargs or {}
 
         ctx = getattr(orig_node, "ctx", ast.Load())
         is_load = isinstance(ctx, ast.Load)
@@ -174,22 +171,24 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             return node
 
         with fast.location_of(node):
-            end_kwargs["call_context"] = fast.NameConstant(call_context)
+            extra_kwargs = dict(call_context=fast.NameConstant(call_context))
             if self.handler_predicate_by_event[TraceEvent.before_load_complex_symbol](
                 orig_node
             ):
-                node = self.make_tuple_event_for(
-                    node,
+                node = self.emit(
                     TraceEvent.before_load_complex_symbol,
-                    orig_node_id=orig_node_id,
-                    **(begin_kwargs or {}),
+                    orig_node_id,
+                    ret=node,
+                    **extra_kwargs,
                 )
             if self.handler_predicate_by_event[TraceEvent.after_load_complex_symbol](
                 orig_node
             ):
-                end_kwargs["ret"] = node
                 node = self.emit(
-                    TraceEvent.after_load_complex_symbol, orig_node_id, **end_kwargs
+                    TraceEvent.after_load_complex_symbol,
+                    orig_node_id,
+                    ret=node,
+                    **extra_kwargs,
                 )
         # end location_of(node)
         return node
