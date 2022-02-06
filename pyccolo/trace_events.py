@@ -123,11 +123,17 @@ SYS_TRACE_EVENTS = {
 
 
 BEFORE_EXPR_EVENTS = {
-    TraceEvent.before_binop,
-    TraceEvent.before_compare,
     TraceEvent.before_assign_rhs,
     TraceEvent.before_augassign_rhs,
+    TraceEvent.before_binop,
+    TraceEvent.before_compare,
+    TraceEvent.before_dict_literal,
+    TraceEvent.before_lambda,
+    TraceEvent.before_list_literal,
+    TraceEvent.before_return,
+    TraceEvent.before_set_literal,
     TraceEvent.before_subscript_slice,
+    TraceEvent.before_tuple_literal,
 }
 
 
