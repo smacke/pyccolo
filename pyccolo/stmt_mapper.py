@@ -14,26 +14,12 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
 
 
-class ContainingStatementMapper(ast.NodeVisitor):
-    def __init__(
-        self, node_id_to_stmt_map: Dict[int, ast.stmt], containing_stmt: ast.stmt
-    ):
-        self.node_id_to_stmt_map: Dict[int, ast.stmt] = node_id_to_stmt_map
-        self.containing_stmt: ast.stmt = containing_stmt
-
-    def generic_visit(self, node: ast.AST):
-        self.node_id_to_stmt_map[id(node)] = self.containing_stmt
-        super().generic_visit(node)
-
-
 class StatementMapper(ast.NodeVisitor):
     def __init__(
         self,
-        line_to_stmt_map: Dict[int, ast.stmt],
         tracers: "List[BaseTracer]",
         augmented_positions_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]],
     ):
-        self.line_to_stmt_map: Dict[int, ast.stmt] = line_to_stmt_map
         self._tracers: "List[BaseTracer]" = tracers
         self.augmented_positions_by_spec = augmented_positions_by_spec
         self.traversal: List[ast.AST] = []
@@ -112,30 +98,6 @@ class StatementMapper(ast.NodeVisitor):
                     if spec in tracer.syntax_augmentation_specs:
                         tracer.augmented_node_ids_by_spec[spec].add(id(nc))
 
-    def _handle_stmt(self, nc: ast.stmt) -> None:
-        self.line_to_stmt_map[nc.lineno] = nc
-        ContainingStatementMapper(
-            self._tracers[-1].node_id_to_containing_stmt, nc
-        ).visit(nc)
-        # workaround for python >= 3.8 wherein function calls seem
-        # to yield trace frames that use the lineno of the first decorator
-        for decorator in getattr(nc, "decorator_list", []):
-            self.line_to_stmt_map[decorator.lineno] = nc
-        nc_body = getattr(nc, "body", [])
-        try:
-            for child in nc_body:
-                if isinstance(child, ast.AST):
-                    self._tracers[-1].parent_node_by_id[id(child)] = nc
-        except TypeError:
-            self._tracers[-1].parent_node_by_id[id(nc_body)] = nc
-        for name, field in ast.iter_fields(nc):
-            if name == "body":
-                continue
-            if isinstance(field, list):
-                for child in field:
-                    if isinstance(child, ast.AST):
-                        self._tracers[-1].parent_node_by_id[id(child)] = nc
-
     def __call__(
         self,
         node: Union[ast.Expression, ast.Module, ast.FunctionDef, ast.AsyncFunctionDef],
@@ -152,11 +114,8 @@ class StatementMapper(ast.NodeVisitor):
         orig_to_copy_mapping = {}
         for no, nc in zip(orig_traversal, copy_traversal):
             orig_to_copy_mapping[id(no)] = nc
-            self._tracers[-1].ast_node_by_id[id(nc)] = nc
             if hasattr(nc, "lineno"):
                 self._handle_augmentations(nc)
-            if isinstance(nc, ast.stmt):
-                self._handle_stmt(nc)
         return orig_to_copy_mapping
 
     def visit(self, node):

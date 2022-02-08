@@ -13,6 +13,7 @@ from typing import (
     Tuple,
 )
 
+from pyccolo.ast_bookkeeping import BookkeepingVisitor
 from pyccolo.expr_rewriter import ExprRewriter
 from pyccolo.predicate import CompositePredicate, Predicate
 from pyccolo.stmt_inserter import StatementInserter
@@ -64,9 +65,6 @@ class AstRewriter(ast.NodeTransformer):
             node, (ast.Expression, ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)
         )
         mapper = StatementMapper(
-            self._tracers[-1].line_to_stmt_by_module_id[
-                id(node) if self._module_id is None else self._module_id
-            ],
             self._tracers,
             fix_positions(
                 self._augmented_positions_by_spec,
@@ -74,6 +72,15 @@ class AstRewriter(ast.NodeTransformer):
             ),
         )
         orig_to_copy_mapping = mapper(node)
+        BookkeepingVisitor(
+            self._tracers[-1].ast_node_by_id,
+            self._tracers[-1].containing_ast_by_id,
+            self._tracers[-1].containing_stmt_by_id,
+            self._tracers[-1].parent_stmt_by_id,
+            self._tracers[-1].stmt_by_lineno_by_module_id[
+                id(node) if self._module_id is None else self._module_id
+            ],
+        ).visit(orig_to_copy_mapping[id(node)])
         self.orig_to_copy_mapping = orig_to_copy_mapping
         raw_handler_predicates_by_event: DefaultDict[
             TraceEvent, List[Predicate]

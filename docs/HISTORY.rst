@@ -1,6 +1,12 @@
 History
 =======
 
+0.0.18 (2022-02-xx)
+------------------
+* Add 'exit_module' event;
+* Use deferred evaluation variants for all 'before expr' events;
+* Improve AST bookkeeping;
+
 0.0.17 (2022-02-03)
 ------------------
 * Fix packaging issue after new configuration;

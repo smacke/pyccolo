@@ -110,11 +110,12 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
     guards: Set[str] = set()
 
-    # shared ast-related fields
+    # shared ast bookkeeping fields
     ast_node_by_id: Dict[int, ast.AST] = {}
-    parent_node_by_id: Dict[int, ast.AST] = {}
-    line_to_stmt_by_module_id: Dict[int, Dict[int, ast.stmt]] = defaultdict(dict)
-    node_id_to_containing_stmt: Dict[int, ast.stmt] = {}
+    containing_ast_by_id: Dict[int, ast.AST] = {}
+    containing_stmt_by_id: Dict[int, ast.stmt] = {}
+    parent_stmt_by_id: Dict[int, ast.stmt] = {}
+    stmt_by_lineno_by_module_id: Dict[int, Dict[int, ast.stmt]] = defaultdict(dict)
 
     def __init__(self, is_reset: bool = False):
         if is_reset:
