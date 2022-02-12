@@ -29,7 +29,7 @@ class FutureUnwrapper(ast.NodeTransformer):
         self._future_by_name_and_timestamp = future_by_name_and_timestamp
         self._deps: List[Future] = []
 
-    def __call__(self, node: ast.AST) -> Tuple[ast.AST, List[Future]]:
+    def __call__(self, node: ast.AST) -> Tuple[ast.Expression, List[Future]]:
         transformed_node = self.visit(copy.deepcopy(node))
         deps, self._deps = self._deps, []
         return ast.Expression(transformed_node), deps
