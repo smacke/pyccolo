@@ -41,13 +41,13 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         return ret
 
     def visit_Name(self, node: ast.Name):
-        if isinstance(node.ctx, ast.Load) and self.handler_predicate_by_event[
-            TraceEvent.load_name
-        ](node):
-            with fast.location_of(node):
-                return self.emit(TraceEvent.load_name, node, ret=node)
-        else:
+        if not isinstance(node.ctx, ast.Load):
             return node
+        orig_node = node
+        if self.handler_predicate_by_event[TraceEvent.load_name](orig_node):
+            with fast.location_of(orig_node):
+                node = self.emit(TraceEvent.load_name, orig_node, ret=node)  # type: ignore
+        return node
 
     @contextmanager
     def attrsub_context(self, top_level_node: Optional[ast.AST]):

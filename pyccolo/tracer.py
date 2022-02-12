@@ -351,19 +351,6 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
         return _composed_tracer
 
-    def _make_settrace_patch(self, orig_sys_settrace):
-        def _settrace_patch(trace_func):  # pragma: no cover
-            # called by third-party tracers
-            self.existing_tracer = trace_func
-            if self._is_tracing_enabled:
-                if trace_func is None:
-                    self._disable_tracing()
-                self._enable_tracing(check_disabled=False, existing_tracer=trace_func)
-            else:
-                orig_sys_settrace(trace_func)
-
-        return _settrace_patch
-
     def _enable_tracing(self, check_disabled=True, existing_tracer=None):
         if check_disabled:
             assert not self._is_tracing_enabled
@@ -387,12 +374,25 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
     @contextmanager
     def _patch_sys_settrace(self) -> Generator[None, None, None]:
-        original_settrace = sys.settrace
+        original_sys_settrace = sys.settrace
         try:
-            sys.settrace = self._make_settrace_patch(original_settrace)
+
+            def patched_sys_settrace(trace_func):  # pragma: no cover
+                # called by third-party tracers
+                self.existing_tracer = trace_func
+                if self._is_tracing_enabled:
+                    if trace_func is None:
+                        self._disable_tracing()
+                    self._enable_tracing(
+                        check_disabled=False, existing_tracer=trace_func
+                    )
+                else:
+                    original_sys_settrace(trace_func)
+
+            sys.settrace = patched_sys_settrace
             yield
         finally:
-            sys.settrace = original_settrace
+            sys.settrace = original_sys_settrace
 
     def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
         return True
@@ -496,24 +496,55 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def exit_tracing_hook(self) -> None:
         pass
 
-    @contextmanager
-    def tracing_context(
-        self, disabled: bool = False, tracing_enabled_file: Optional[str] = None
-    ) -> Generator[None, None, None]:
-        do_patch_meta_path = False
+    def _make_tracing_context_cleanup_callback(self):
         orig_num_sandbox_calls_seen = self._num_sandbox_calls_seen
         orig_hard_disabled = self._is_tracing_hard_disabled
         orig_exec_saved_thunk = getattr(builtins, EXEC_SAVED_THUNK, None)
         orig_sandbox_fname = self._current_sandbox_fname
         orig_tracing_enabled_files = self._tracing_enabled_files
+
+        def cleanup(should_push: bool, will_enable_tracing: bool) -> None:
+            self._tracing_enabled_files = orig_tracing_enabled_files
+            self._current_sandbox_fname = orig_sandbox_fname
+            self._is_tracing_hard_disabled = orig_hard_disabled
+            self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
+
+            if should_push:
+                del _TRACER_STACK[-1]
+            if will_enable_tracing:
+                self._disable_tracing(check_enabled=False)
+            if should_push:
+                self.exit_tracing_hook()
+
+            if len(_TRACER_STACK) == 0:
+                for extra_builtin in {
+                    EMIT_EVENT,
+                    EXEC_SAVED_THUNK,
+                    TRACE_LAMBDA,
+                    TRACING_ENABLED,
+                } | self.guards:
+                    if hasattr(builtins, extra_builtin):
+                        delattr(builtins, extra_builtin)
+            elif orig_exec_saved_thunk is not None:
+                setattr(builtins, EXEC_SAVED_THUNK, orig_exec_saved_thunk)
+
+        return cleanup
+
+    @contextmanager
+    def tracing_context(
+        self, disabled: bool = False, tracing_enabled_file: Optional[str] = None
+    ) -> Generator[None, None, None]:
+        # self.tracer_context_nesting[0] += 1
+        cleanup_callback = self._make_tracing_context_cleanup_callback()
+        do_patch_meta_path = False
+        should_push = self not in _TRACER_STACK
         self._is_tracing_hard_disabled = disabled
         will_enable_tracing = (
             not self._is_tracing_hard_disabled and not self._is_tracing_enabled
         )
-        should_push = self not in _TRACER_STACK
         if tracing_enabled_file is not None:
             self._current_sandbox_fname = tracing_enabled_file
-            self._tracing_enabled_files = orig_tracing_enabled_files | {
+            self._tracing_enabled_files = self._tracing_enabled_files | {
                 tracing_enabled_file
             }
         if getattr(builtins, EMIT_EVENT, None) is not _emit_event:
@@ -538,27 +569,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                         self.enter_tracing_hook()
                     yield
         finally:
-            self._tracing_enabled_files = orig_tracing_enabled_files
-            self._current_sandbox_fname = orig_sandbox_fname
-            self._is_tracing_hard_disabled = orig_hard_disabled
-            if should_push:
-                del _TRACER_STACK[-1]
-            if will_enable_tracing:
-                self._disable_tracing(check_enabled=False)
-            if should_push:
-                self.exit_tracing_hook()
-            self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
-            if len(_TRACER_STACK) == 0:
-                for extra_builtin in {
-                    EMIT_EVENT,
-                    EXEC_SAVED_THUNK,
-                    TRACE_LAMBDA,
-                    TRACING_ENABLED,
-                } | self.guards:
-                    if hasattr(builtins, extra_builtin):
-                        delattr(builtins, extra_builtin)
-            elif orig_exec_saved_thunk is not None:
-                setattr(builtins, EXEC_SAVED_THUNK, orig_exec_saved_thunk)
+            cleanup_callback(should_push, will_enable_tracing)
 
     def preprocess(self, code: str, rewriter: AstRewriter) -> str:
         for augmenter in self.make_syntax_augmenters(rewriter):
@@ -865,3 +876,13 @@ class BaseTracer(_InternalBaseTracer):
         ret = self._saved_slice
         self._saved_slice = None
         return ret
+
+    def is_outer_stmt(self, node_or_id):
+        node_id = node_or_id if isinstance(node_or_id, int) else id(node_or_id)
+        containing_stmt = self.containing_stmt_by_id.get(node_id, None)
+        parent_stmt = self.parent_stmt_by_id.get(id(containing_stmt), None)
+        while parent_stmt is not None and isinstance(
+            parent_stmt, (ast.If, ast.Try, ast.With, ast.AsyncWith)
+        ):
+            parent_stmt = self.parent_stmt_by_id.get(id(parent_stmt), None)
+        return parent_stmt is None or isinstance(parent_stmt, ast.Module)

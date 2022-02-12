@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import ast
-from typing import Dict
+from typing import Dict, Optional
 
 
 class BookkeepingVisitor(ast.NodeVisitor):
@@ -17,8 +17,11 @@ class BookkeepingVisitor(ast.NodeVisitor):
         self.containing_stmt_by_id = containing_stmt_by_id
         self.parent_stmt_by_id = parent_stmt_by_id
         self.stmt_by_lineno = stmt_by_lineno
+        self._current_containing_stmt: Optional[ast.stmt] = None
 
     def generic_visit(self, node: ast.AST):
+        if isinstance(node, ast.stmt):
+            self._current_containing_stmt = node
         self.ast_node_by_id[id(node)] = node
         if isinstance(node, ast.stmt):
             self.stmt_by_lineno[node.lineno] = node
@@ -29,12 +32,14 @@ class BookkeepingVisitor(ast.NodeVisitor):
         for name, field in ast.iter_fields(node):
             if isinstance(field, ast.AST):
                 self.containing_ast_by_id[id(field)] = node
+                if self._current_containing_stmt is not None:
+                    self.containing_stmt_by_id[
+                        id(field)
+                    ] = self._current_containing_stmt
             elif isinstance(field, list):
                 for subfield in field:
                     if isinstance(subfield, ast.AST):
                         self.containing_ast_by_id[id(subfield)] = node
                         if isinstance(node, ast.stmt):
-                            self.containing_stmt_by_id[id(subfield)] = node
-                            if isinstance(subfield, ast.stmt):
-                                self.parent_stmt_by_id[id(subfield)] = node
+                            self.parent_stmt_by_id[id(subfield)] = node
         super().generic_visit(node)
