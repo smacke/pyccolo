@@ -16,13 +16,17 @@ import pyccolo.fast as fast
 try:
     from IPython import get_ipython
 except ImportError:
-    get_ipython = (lambda *_: None)
+
+    def get_ipython(*_):
+        return None
 
 
 try:
     from nbsafety.singletons import nbs
 except ImportError:
-    nbs = (lambda *_: None)
+
+    def nbs(*_):
+        return None
 
 
 logger = logging.getLogger(__name__)
