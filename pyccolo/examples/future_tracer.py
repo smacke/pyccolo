@@ -3,8 +3,11 @@ import ast
 import builtins
 import copy
 import logging
+import threading
+import traceback
 from collections import Counter, defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
+from IPython import get_ipython
 from typing import Dict, List, Optional, Set, Tuple
 
 import pyccolo as pyc
@@ -59,12 +62,36 @@ class FutureUnwrapper(ast.NodeTransformer):
                 )
 
 
+def _jump_to_non_internal_frame(tb):
+    while tb is not None:
+        pyccolo_seen = "pyccolo" in tb.tb_frame.f_code.co_filename
+        concurrent_seen = "concurrent" in tb.tb_frame.f_code.co_filename
+        if pyccolo_seen or concurrent_seen:
+            tb = tb.tb_next
+        else:
+            break
+    return tb
+
+
+def _unwrap_exception(ex: Exception) -> Exception:
+    tb = _jump_to_non_internal_frame(ex.__traceback__)
+    if tb is None:
+        return ex
+    prev_tb_next = None
+    while tb is not None and tb.tb_next is not None and tb.tb_next is not prev_tb_next:
+        prev_tb_next = tb.tb_next
+        tb.tb_next = _jump_to_non_internal_frame(prev_tb_next)
+    return ex.with_traceback(tb)
+
+
 class FutureTracer(pyc.BaseTracer):
     _MAX_WORKERS = 10
     _executor: List[Optional[ThreadPoolExecutor]] = [None]
     _async_variable_version_by_name: Dict[str, int] = Counter()
     _future_by_name_and_timestamp: Dict[Tuple[str, int], Future] = {}
     _waiters_by_future_id: Dict[int, Set[Future]] = defaultdict(set)
+    _exec_counter_by_future_id: Dict[int, int] = {}
+    _version_lock = threading.Lock()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -94,7 +121,17 @@ class FutureTracer(pyc.BaseTracer):
     @pyc.load_name
     def handle_load_name(self, ret, node, *_, **__):
         if node.id in self._async_variable_version_by_name:
-            return self._unwrap_future(ret)
+            try:
+                return self._unwrap_future(ret)
+            except Exception as ex:
+                ex = _unwrap_exception(ex)
+                relevant_cell = self._exec_counter_by_future_id.get(id(ret), None)
+                if relevant_cell is not None:
+                    logger.error("Exception occurred in cell %d:", relevant_cell)
+                logger.error(
+                    "".join(traceback.format_exception(type(ex), ex, ex.__traceback__))
+                )
+                return ret
         else:
             return ret
 
@@ -104,9 +141,12 @@ class FutureTracer(pyc.BaseTracer):
         if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
             return ret
         unwrap_futures_expr, deps = self._future_unwrapper(node)
-        unwrap_futures_code = compile(unwrap_futures_expr, "<file>", mode="eval")
+        unwrap_futures_code = compile(
+            unwrap_futures_expr, "<pyccolo_file>", mode="eval"
+        )
         async_var = stmt.targets[0].id
-        self._async_variable_version_by_name[async_var] += 1
+        with self._version_lock:
+            self._async_variable_version_by_name[async_var] += 1
         current_version = self._async_variable_version_by_name[async_var]
 
         def work():
@@ -115,15 +155,30 @@ class FutureTracer(pyc.BaseTracer):
             )
             for waiter in self._waiters_by_future_id.get(id(old_fut), []):
                 # first, wait on everything that depends on the previous value to finish
-                self._unwrap_future(waiter)
+                try:
+                    self._unwrap_future(waiter)
+                except:  # noqa: E722
+                    pass
             # next, garbage collect the previous value
             self._waiters_by_future_id.pop(id(old_fut), None)
             self._future_by_name_and_timestamp.pop(
                 (async_var, current_version - 1), None
             )
-            return eval(unwrap_futures_code, frame.f_globals, frame.f_locals)
+            retval = eval(unwrap_futures_code, frame.f_globals, frame.f_locals)
+            with self._version_lock:
+                if self._async_variable_version_by_name[async_var] == current_version:
+                    # by using 'is_outer_stmt', we can be sure
+                    # that setting the global is the right thing
+                    frame.f_globals[async_var] = retval
+            return retval
+
+        ipy = get_ipython()
+        current_cell = None if ipy is None else ipy.execution_count
+        del ipy
 
         fut = self._executor[0].submit(work)
+        if current_cell is not None:
+            self._exec_counter_by_future_id[id(fut)] = current_cell
         for dep in deps:
             self._waiters_by_future_id[id(dep)].add(fut)
         self._future_by_name_and_timestamp[async_var, current_version] = fut

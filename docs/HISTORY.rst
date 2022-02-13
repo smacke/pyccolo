@@ -6,6 +6,7 @@ History
 * Add 'exit_module' event;
 * Use deferred evaluation variants for all 'before expr' events;
 * Improve AST bookkeeping;
+* Add FutureTracer under pyccolo.examples;
 
 0.0.17 (2022-02-03)
 ------------------
