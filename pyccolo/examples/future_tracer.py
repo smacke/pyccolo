@@ -19,6 +19,12 @@ except ImportError:
     get_ipython = (lambda *_: None)
 
 
+try:
+    from nbsafety.singletons import nbs
+except ImportError:
+    nbs = (lambda *_: None)
+
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
 
@@ -170,11 +176,16 @@ class FutureTracer(pyc.BaseTracer):
                 (async_var, current_version - 1), None
             )
             retval = eval(unwrap_futures_code, frame.f_globals, frame.f_locals)
+            flow = nbs()
             with self._version_lock:
                 if self._async_variable_version_by_name[async_var] == current_version:
                     # by using 'is_outer_stmt', we can be sure
                     # that setting the global is the right thing
                     frame.f_globals[async_var] = retval
+                if flow is not None:
+                    aliases = list(flow.aliases.get(id(fut), []))
+                    for alias in aliases:
+                        alias.update_obj_ref(retval)
             return retval
 
         ipy = get_ipython()
