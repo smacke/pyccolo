@@ -7,11 +7,16 @@ import threading
 import traceback
 from collections import Counter, defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
-from IPython import get_ipython
 from typing import Dict, List, Optional, Set, Tuple
 
 import pyccolo as pyc
 import pyccolo.fast as fast
+
+
+try:
+    from IPython import get_ipython
+except ImportError:
+    get_ipython = (lambda *_: None)
 
 
 logger = logging.getLogger(__name__)
