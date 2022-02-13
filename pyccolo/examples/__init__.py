@@ -7,8 +7,8 @@ from .quick_lambda import QuickLambdaTracer
 
 
 __all__ = [
-    "FutureTracer",
     "CoverageTracer",
+    "FutureTracer",
     "NullCoalescer",
     "Quasiquoter",
     "QuickLambdaTracer",
