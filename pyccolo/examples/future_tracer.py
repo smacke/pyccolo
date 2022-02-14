@@ -46,8 +46,12 @@ class FutureUnwrapper(ast.NodeTransformer):
         self._async_vars = async_vars
         self._future_by_name_and_timestamp = future_by_name_and_timestamp
         self._deps: List[Future] = []
+        self._async_var: Optional[str] = None
 
-    def __call__(self, node: ast.AST) -> Tuple[ast.Expression, List[Future]]:
+    def __call__(
+        self, node: ast.AST, async_var: str
+    ) -> Tuple[ast.Expression, List[Future]]:
+        self._async_var = async_var
         transformed_node = self.visit(copy.deepcopy(node))
         deps, self._deps = self._deps, []
         return ast.Expression(transformed_node), deps
@@ -58,9 +62,11 @@ class FutureUnwrapper(ast.NodeTransformer):
         if current_version is None:
             return node
         else:
-            self._deps.append(
-                self._future_by_name_and_timestamp[node.id, current_version]
-            )
+            if node.id != self._async_var:
+                # exclude usages of same var since we don't want to wait on self
+                self._deps.append(
+                    self._future_by_name_and_timestamp[node.id, current_version]
+                )
             with fast.location_of(node):
                 return fast.Call(
                     func=fast.Name(_UNWRAP_FUTURE_EXTRA_BUILTIN, ast.Load()),
@@ -101,31 +107,24 @@ def _unwrap_exception(ex: Exception) -> Exception:
 
 class FutureTracer(pyc.BaseTracer):
     _MAX_WORKERS = 10
-    _executor: List[Optional[ThreadPoolExecutor]] = [None]
-    _async_variable_version_by_name: Dict[str, int] = Counter()
-    _future_by_name_and_timestamp: Dict[Tuple[str, int], Future] = {}
-    _waiters_by_future_id: Dict[int, Set[Future]] = defaultdict(set)
-    _exec_counter_by_future_id: Dict[int, int] = {}
-    _version_lock = threading.Lock()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        with self.persistent_fields():
+            self._executor = ThreadPoolExecutor(max_workers=self._MAX_WORKERS)
+            self._async_variable_version_by_name: Dict[str, int] = Counter()
+            self._future_by_name_and_timestamp: Dict[Tuple[str, int], Future] = {}
+            self._waiters_by_future_id: Dict[int, Set[Future]] = defaultdict(set)
+            self._exec_counter_by_future_id: Dict[int, int] = {}
+            self._version_lock = threading.Lock()
+            self._future_unwrapper = FutureUnwrapper(
+                self._async_variable_version_by_name, self._future_by_name_and_timestamp
+            )
         setattr(builtins, _UNWRAP_FUTURE_EXTRA_BUILTIN, self._unwrap_future)
         setattr(builtins, _FUT_TAB_EXTRA_BUILTIN, self._future_by_name_and_timestamp)
-        self._future_unwrapper = FutureUnwrapper(
-            self._async_variable_version_by_name, self._future_by_name_and_timestamp
-        )
-        if self._executor[0] is None:
-            self._executor[0] = ThreadPoolExecutor(max_workers=self._MAX_WORKERS)
 
-    @classmethod
-    def clear_instance(cls):
-        # TODO: replace all created futures with their materialized
-        #  values in the stack frames that reference them
-        if cls._executor[0] is not None:
-            cls._executor[0].shutdown()
-            cls._executor[0] = None
-        super().clear_instance()
+    def __del__(self):
+        self._executor.shutdown()
 
     def _unwrap_future(self, fut):
         if isinstance(fut, Future):
@@ -133,8 +132,8 @@ class FutureTracer(pyc.BaseTracer):
         else:
             return fut
 
-    @pyc.load_name
-    def handle_load_name(self, ret, node, *_, **__):
+    @pyc.load_name(reentrant=True)
+    def handle_load_name(self, ret, node, frame, *_, **__):
         if node.id in self._async_variable_version_by_name:
             try:
                 return self._unwrap_future(ret)
@@ -155,14 +154,16 @@ class FutureTracer(pyc.BaseTracer):
         stmt = self.containing_stmt_by_id[id(node)]
         if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
             return ret
-        unwrap_futures_expr, deps = self._future_unwrapper(node)
+        async_var = stmt.targets[0].id
+        unwrap_futures_expr, deps = self._future_unwrapper(node, async_var)
         unwrap_futures_code = compile(
             unwrap_futures_expr, "<pyccolo_file>", mode="eval"
         )
-        async_var = stmt.targets[0].id
         with self._version_lock:
             self._async_variable_version_by_name[async_var] += 1
         current_version = self._async_variable_version_by_name[async_var]
+        fut_cv = threading.Condition()
+        fut = None
 
         def work():
             old_fut = self._future_by_name_and_timestamp.get(
@@ -174,19 +175,26 @@ class FutureTracer(pyc.BaseTracer):
                     self._unwrap_future(waiter)
                 except:  # noqa: E722
                     pass
+            retval = eval(unwrap_futures_code, frame.f_globals, frame.f_locals)
             # next, garbage collect the previous value
             self._waiters_by_future_id.pop(id(old_fut), None)
+            self._exec_counter_by_future_id.pop(id(old_fut), None)
             self._future_by_name_and_timestamp.pop(
                 (async_var, current_version - 1), None
             )
-            retval = eval(unwrap_futures_code, frame.f_globals, frame.f_locals)
-            flow = nbs()
+            try:
+                flow = nbs()
+            except:  # noqa: E722
+                flow = None
             with self._version_lock:
                 if self._async_variable_version_by_name[async_var] == current_version:
                     # by using 'is_outer_stmt', we can be sure
                     # that setting the global is the right thing
                     frame.f_globals[async_var] = retval
                 if flow is not None:
+                    with fut_cv:
+                        while fut is None:
+                            fut_cv.wait()
                     aliases = list(flow.aliases.get(id(fut), []))
                     for alias in aliases:
                         alias.update_obj_ref(retval)
@@ -196,10 +204,26 @@ class FutureTracer(pyc.BaseTracer):
         current_cell = None if ipy is None else ipy.execution_count
         del ipy
 
-        fut = self._executor[0].submit(work)
+        with fut_cv:
+            fut = self._executor.submit(work)
+            fut_cv.notify()
+        self._future_by_name_and_timestamp[async_var, current_version] = fut
         if current_cell is not None:
             self._exec_counter_by_future_id[id(fut)] = current_cell
         for dep in deps:
             self._waiters_by_future_id[id(dep)].add(fut)
-        self._future_by_name_and_timestamp[async_var, current_version] = fut
         return lambda: fut
+
+    @pyc.before_stmt(when=lambda node: isinstance(node, ast.AugAssign))
+    def handle_augassign(self, _ret, node, frame, *_, **__):
+        async_var = node.target.id
+        with self._version_lock:
+            version = self._async_variable_version_by_name.get(async_var, None)
+            if version is None:
+                return
+            else:
+                fut = self._future_by_name_and_timestamp[async_var, version]
+        try:
+            frame.f_globals[async_var] = self._unwrap_future(fut)
+        except:  # noqa: E722
+            pass
