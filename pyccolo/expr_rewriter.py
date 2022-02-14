@@ -534,7 +534,6 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         elt_trace_evt = self._ast_container_to_elt_trace_evt(node)
         for i, elt in enumerate(node.elts):
             if isinstance(elt, ast.Starred):
-                # TODO: trace starred elts too
                 saw_starred = True
                 traced_elts.append(self.visit(elt))
                 continue

@@ -1,12 +1,13 @@
 History
 =======
 
-0.0.18 (2022-02-xx)
+0.0.18 (2022-02-14)
 ------------------
 * Add 'exit_module' event;
 * Use deferred evaluation variants for all 'before expr' events;
 * Improve AST bookkeeping;
 * Add FutureTracer under pyccolo.examples;
+* Fix bug where starred expressions weren't traced if used as literal elements;
 
 0.0.17 (2022-02-03)
 ------------------
