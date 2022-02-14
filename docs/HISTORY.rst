@@ -1,7 +1,7 @@
 History
 =======
 
-0.0.18 (2022-02-14)
+0.0.19 (2022-02-14)
 ------------------
 * Add 'exit_module' event;
 * Use deferred evaluation variants for all 'before expr' events;

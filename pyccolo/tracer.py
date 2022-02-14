@@ -10,7 +10,7 @@ import textwrap
 import types
 from collections import defaultdict
 from contextlib import contextmanager, suppress
-from types import FrameType
+from types import CodeType, FrameType
 from typing import (
     cast,
     TYPE_CHECKING,
@@ -732,15 +732,31 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def trace_lambda(self, lam):
         # for now, this is primarily so that we can distinguish between
         # lambdas that we generate vs that user generates
-        code = lam.__code__
+        code: CodeType = lam.__code__
         assert code.co_name == "<lambda>"
         if sys.version_info >= (3, 8):
             lam.__code__ = code.replace(co_name="<traced_lambda>")
-            return lam
         else:
-            # workaround for older Python
-            # mainly we just want a lambda not created in the module we're instrumenting
-            return lambda *args: lam(*args)
+            # replace(...) not available for older python but CodeType
+            # constructor is stable at least
+            lam.__code__ = CodeType(
+                code.co_argcount,
+                code.co_kwonlyargcount,
+                code.co_nlocals,
+                code.co_stacksize,
+                code.co_flags,
+                code.co_code,
+                code.co_consts,
+                code.co_names,
+                code.co_varnames,
+                code.co_filename,
+                "<traced_lambda>",
+                code.co_firstlineno,
+                code.co_lnotab,
+                code.co_freevars,
+                code.co_cellvars,
+            )
+        return lam
 
     def exec_saved_thunk(self):
         assert self._saved_thunk is not None
