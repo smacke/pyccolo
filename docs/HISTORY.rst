@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.20 (2022-02-14)
+------------------
+* Provide non-context manager variants of tracing-related contexts;
+
 0.0.19 (2022-02-14)
 ------------------
 * Add 'exit_module' event;

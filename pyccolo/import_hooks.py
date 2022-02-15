@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from importlib.abc import MetaPathFinder
 from importlib.machinery import SourceFileLoader
 from importlib.util import spec_from_loader, decode_source
+from typing import Callable, Generator
 
 from pyccolo.trace_events import TraceEvent
 
@@ -136,18 +137,29 @@ class TraceFinder(MetaPathFinder):
         return spec
 
 
-@contextmanager
-def patch_meta_path(tracers):
+def patch_meta_path_non_context(tracers) -> Callable:
     orig_meta_path_entry = None
-    try:
-        if len(sys.meta_path) > 0 and isinstance(sys.meta_path[0], TraceFinder):
-            orig_meta_path_entry = sys.meta_path[0]
-            sys.meta_path[0] = TraceFinder(tracers)
-        else:
-            sys.meta_path.insert(0, TraceFinder(tracers))
-        yield
-    finally:
+
+    def cleanup_callback():
         if orig_meta_path_entry is None:
             del sys.meta_path[0]
         else:
             sys.meta_path[0] = orig_meta_path_entry
+
+    if len(sys.meta_path) > 0 and isinstance(sys.meta_path[0], TraceFinder):
+        orig_meta_path_entry = sys.meta_path[0]
+        sys.meta_path[0] = TraceFinder(tracers)
+    else:
+        sys.meta_path.insert(0, TraceFinder(tracers))
+    return cleanup_callback
+
+
+@contextmanager
+def patch_meta_path(tracers) -> Generator[None, None, None]:
+    cleanup_callback = None
+    try:
+        cleanup_callback = patch_meta_path_non_context(tracers)
+        yield
+    finally:
+        if cleanup_callback is not None:
+            cleanup_callback()

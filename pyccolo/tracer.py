@@ -42,7 +42,7 @@ from pyccolo.extra_builtins import (
     TRACING_ENABLED,
     make_guard_name,
 )
-from pyccolo.import_hooks import patch_meta_path
+from pyccolo.import_hooks import patch_meta_path_non_context
 from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
 from pyccolo.trace_events import AST_TO_EVENT_MAPPING, SYS_TRACE_EVENTS, TraceEvent
@@ -372,27 +372,34 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         if len(_TRACER_STACK) == 0:
             setattr(builtins, TRACING_ENABLED, False)
 
+    def _patch_sys_settrace_non_context(self) -> Callable:
+        original_sys_settrace = sys.settrace
+
+        def cleanup_callback():
+            sys.settrace = original_sys_settrace
+
+        def patched_sys_settrace(trace_func):  # pragma: no cover
+            # called by third-party tracers
+            self.existing_tracer = trace_func
+            if self._is_tracing_enabled:
+                if trace_func is None:
+                    self._disable_tracing()
+                self._enable_tracing(check_disabled=False, existing_tracer=trace_func)
+            else:
+                original_sys_settrace(trace_func)
+
+        sys.settrace = patched_sys_settrace
+        return cleanup_callback
+
     @contextmanager
     def _patch_sys_settrace(self) -> Generator[None, None, None]:
-        original_sys_settrace = sys.settrace
+        cleanup_callback = None
         try:
-
-            def patched_sys_settrace(trace_func):  # pragma: no cover
-                # called by third-party tracers
-                self.existing_tracer = trace_func
-                if self._is_tracing_enabled:
-                    if trace_func is None:
-                        self._disable_tracing()
-                    self._enable_tracing(
-                        check_disabled=False, existing_tracer=trace_func
-                    )
-                else:
-                    original_sys_settrace(trace_func)
-
-            sys.settrace = patched_sys_settrace
+            cleanup_callback = self._patch_sys_settrace_non_context()
             yield
         finally:
-            sys.settrace = original_sys_settrace
+            if cleanup_callback is not None:
+                cleanup_callback()
 
     def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
         return True
@@ -534,14 +541,36 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def tracing_context(
         self, disabled: bool = False, tracing_enabled_file: Optional[str] = None
     ) -> Generator[None, None, None]:
-        # self.tracer_context_nesting[0] += 1
-        cleanup_callback = self._make_tracing_context_cleanup_callback()
+        cleanup_callback = None
+        try:
+            cleanup_callback = self.tracing_non_context(
+                disabled=disabled, tracing_enabled_file=tracing_enabled_file
+            )
+            yield
+        finally:
+            if cleanup_callback is not None:
+                cleanup_callback()
+
+    def tracing_non_context(
+        self, disabled: bool = False, tracing_enabled_file: Optional[str] = None
+    ) -> Callable:
+        cleanup_callback_impl = self._make_tracing_context_cleanup_callback()
         do_patch_meta_path = False
         should_push = self not in _TRACER_STACK
         self._is_tracing_hard_disabled = disabled
         will_enable_tracing = (
             not self._is_tracing_hard_disabled and not self._is_tracing_enabled
         )
+
+        def first_cleanup_callback():
+            return cleanup_callback_impl(should_push, will_enable_tracing)
+
+        all_cleanup_callbacks = [first_cleanup_callback]
+
+        def cleanup_callback():
+            for cleanup in reversed(all_cleanup_callbacks):
+                cleanup()
+
         if tracing_enabled_file is not None:
             self._current_sandbox_fname = tracing_enabled_file
             self._tracing_enabled_files = self._tracing_enabled_files | {
@@ -560,16 +589,15 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         if should_push:
             _TRACER_STACK.append(self)  # type: ignore
         do_patch_sys_settrace = self.has_sys_trace_events and will_enable_tracing
-        try:
-            with patch_meta_path(_TRACER_STACK) if do_patch_meta_path else suppress():
-                with self._patch_sys_settrace() if do_patch_sys_settrace else suppress():
-                    if will_enable_tracing:
-                        self._enable_tracing()
-                    if should_push:
-                        self.enter_tracing_hook()
-                    yield
-        finally:
-            cleanup_callback(should_push, will_enable_tracing)
+        if do_patch_meta_path:
+            all_cleanup_callbacks.append(patch_meta_path_non_context(_TRACER_STACK))
+        if do_patch_sys_settrace:
+            all_cleanup_callbacks.append(self._patch_sys_settrace_non_context())
+        if will_enable_tracing:
+            self._enable_tracing()
+        if should_push:
+            self.enter_tracing_hook()
+        return cleanup_callback
 
     def preprocess(self, code: str, rewriter: AstRewriter) -> str:
         for augmenter in self.make_syntax_augmenters(rewriter):
