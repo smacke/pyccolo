@@ -8,7 +8,7 @@ import threading
 import traceback
 from collections import Counter, defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import pyccolo as pyc
 import pyccolo.fast as fast
@@ -69,7 +69,7 @@ class FutureUnwrapper(ast.NodeTransformer):
                     self._future_by_name_and_timestamp[node.id, current_version]
                 )
             with fast.location_of(node):
-                slc = fast.Tuple(
+                slc: Union[ast.Tuple, ast.Index] = fast.Tuple(
                     elts=[fast.Str(node.id), fast.Num(current_version)],
                     ctx=ast.Load(),
                 )
