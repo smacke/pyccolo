@@ -3,6 +3,7 @@ import ast
 import builtins
 import copy
 import logging
+import sys
 import threading
 import traceback
 from collections import Counter, defaultdict
@@ -68,15 +69,18 @@ class FutureUnwrapper(ast.NodeTransformer):
                     self._future_by_name_and_timestamp[node.id, current_version]
                 )
             with fast.location_of(node):
+                slc = fast.Tuple(
+                    elts=[fast.Str(node.id), fast.Num(current_version)],
+                    ctx=ast.Load(),
+                )
+                if sys.version_info < (3, 9):
+                    slc = fast.Index(slc, ctx=ast.Load())
                 return fast.Call(
                     func=fast.Name(_UNWRAP_FUTURE_EXTRA_BUILTIN, ast.Load()),
                     args=[
                         fast.Subscript(
                             value=fast.Name(_FUT_TAB_EXTRA_BUILTIN, ast.Load()),
-                            slice=fast.Tuple(
-                                elts=[fast.Str(node.id), fast.Num(current_version)],
-                                ctx=ast.Load(),
-                            ),
+                            slice=slc,
                             ctx=ast.Load(),
                         )
                     ],
@@ -128,6 +132,8 @@ class FutureTracer(pyc.BaseTracer):
 
     def _unwrap_future(self, fut):
         if isinstance(fut, Future):
+            # for waiter in self._waiters_by_future_id.get(id(fut), []):
+            #     self._unwrap_future(waiter)
             return fut.result()
         else:
             return fut
@@ -165,7 +171,7 @@ class FutureTracer(pyc.BaseTracer):
         fut_cv = threading.Condition()
         fut = None
 
-        def work():
+        def assign_rhs_job():
             old_fut = self._future_by_name_and_timestamp.get(
                 (async_var, current_version - 1), None
             )
@@ -205,7 +211,7 @@ class FutureTracer(pyc.BaseTracer):
         del ipy
 
         with fut_cv:
-            fut = self._executor.submit(work)
+            fut = self._executor.submit(assign_rhs_job)
             fut_cv.notify()
         self._future_by_name_and_timestamp[async_var, current_version] = fut
         if current_cell is not None:
