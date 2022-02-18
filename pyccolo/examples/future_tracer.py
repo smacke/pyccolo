@@ -112,6 +112,9 @@ def _unwrap_exception(ex: Exception) -> Exception:
 class FutureTracer(pyc.BaseTracer):
     _MAX_WORKERS = 10
 
+    def should_propagate_handler_exception(self, *_) -> bool:
+        return True
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         with self.persistent_fields():
@@ -132,8 +135,8 @@ class FutureTracer(pyc.BaseTracer):
 
     def _unwrap_future(self, fut):
         if isinstance(fut, Future):
-            # for waiter in self._waiters_by_future_id.get(id(fut), []):
-            #     self._unwrap_future(waiter)
+            for waiter in self._waiters_by_future_id.get(id(fut), []):
+                self._unwrap_future(waiter)
             return fut.result()
         else:
             return fut

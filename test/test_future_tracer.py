@@ -13,6 +13,7 @@ def test_simple():
             y = x + 1
             z = y + 2
             assert y == 1, "got %s" % y
+            assert z == 3, "got %s" % z
             """
         )
     FutureTracer.clear_instance()
