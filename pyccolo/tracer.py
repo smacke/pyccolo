@@ -421,8 +421,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         if is_reentrant and not self.allow_reentrant_events():
             return False
         if filename == self._current_sandbox_fname and self.has_sys_trace_events:
-            self._num_sandbox_calls_seen += evt == "call"
             ret = self._num_sandbox_calls_seen >= 2
+            self._num_sandbox_calls_seen += evt == "call"
             return ret
         return (
             evt == TraceEvent.init_module.value
