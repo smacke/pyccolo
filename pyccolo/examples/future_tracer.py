@@ -139,17 +139,18 @@ class FutureTracer(pyc.BaseTracer):
 
     def _unwrap_future(self, fut):
         if isinstance(fut, Future):
-            current_ts = self._timestamp_by_future_id.get(
-                id(self._threadlocal_state.current_fut), None
-            )
-            for waiter in self._waiters_by_future_id.get(id(fut), []):
-                if (
-                    current_ts is not None
-                    and current_ts >= self._timestamp_by_future_id[id(waiter)]
-                ):
-                    continue
-                else:
-                    self._unwrap_future(waiter)
+            if not fut.done():
+                current_ts = self._timestamp_by_future_id.get(
+                    id(self._threadlocal_state.current_fut), None
+                )
+                for waiter in self._waiters_by_future_id.get(id(fut), []):
+                    if (
+                        current_ts is not None
+                        and current_ts >= self._timestamp_by_future_id[id(waiter)]
+                    ):
+                        continue
+                    else:
+                        self._unwrap_future(waiter)
             return fut.result()
         else:
             return fut
