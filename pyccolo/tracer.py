@@ -921,12 +921,17 @@ class BaseTracer(_InternalBaseTracer):
         self._saved_slice = None
         return ret
 
-    def is_outer_stmt(self, node_or_id):
+    @classmethod
+    def is_outer_stmt(cls, node_or_id, exclude_outer_stmt_types=None):
         node_id = node_or_id if isinstance(node_or_id, int) else id(node_or_id)
-        containing_stmt = self.containing_stmt_by_id.get(node_id, None)
-        parent_stmt = self.parent_stmt_by_id.get(id(containing_stmt), None)
+        containing_stmt = cls.containing_stmt_by_id.get(node_id, None)
+        parent_stmt = cls.parent_stmt_by_id.get(id(containing_stmt), None)
+        outer_stmts_to_consider = tuple(
+            {ast.If, ast.Try, ast.With, ast.AsyncWith}
+            - (exclude_outer_stmt_types or set())
+        )
         while parent_stmt is not None and isinstance(
-            parent_stmt, (ast.If, ast.Try, ast.With, ast.AsyncWith)
+            parent_stmt, outer_stmts_to_consider
         ):
-            parent_stmt = self.parent_stmt_by_id.get(id(parent_stmt), None)
+            parent_stmt = cls.parent_stmt_by_id.get(id(parent_stmt), None)
         return parent_stmt is None or isinstance(parent_stmt, ast.Module)
