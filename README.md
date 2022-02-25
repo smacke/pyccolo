@@ -8,14 +8,15 @@ Pyccolo
 [![Python Versions](https://img.shields.io/pypi/pyversions/pyccolo.svg)](https://pypi.org/project/pyccolo)
 [![PyPI Version](https://img.shields.io/pypi/v/pyccolo.svg)](https://pypi.org/project/pyccolo)
 
-Pyccolo is a library for declarative instrumentation in Python; i.e., it lets
-you specify the *what* of the instrumentation you wish to perform, and takes
-care of the *how* for you.  It aims to be *ergonomic*, *composable*, and
-*portable*, by providing an intuitive interface, making it easy to layer
-multiple levels of instrumentation, and allowing the same code to work across
-multiple versions of Python (3.6 to 3.10), with few exceptions. Portability
-across versions is accomplished by embedding instrumentation at the level of
-source code (as opposed to bytecode-level instrumentation).
+Pyccolo (pronounced like the instrument "piccolo") is a library for declarative
+instrumentation in Python; i.e., it lets you specify the *what* of the
+instrumentation you wish to perform, and takes care of the *how* for you.  It
+aims to be *ergonomic*, *composable*, and *portable*, by providing an intuitive
+interface, making it easy to layer multiple levels of instrumentation, and
+allowing the same code to work across multiple versions of Python (3.6 to
+3.10), with few exceptions. Portability across versions is accomplished by
+embedding instrumentation at the level of source code (as opposed to
+bytecode-level instrumentation).
 
 Pyccolo can be used (and has been used) to implement various kinds of dynamic analysis
 tools and other instrumentation:
