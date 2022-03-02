@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.21 (2022-03-02)
+------------------
+* Bugfixes and improvements to FutureTracer example;
+
 0.0.20 (2022-02-14)
 ------------------
 * Provide non-context manager variants of tracing-related contexts;
