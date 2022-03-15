@@ -108,6 +108,12 @@ class AstRewriter(ast.NodeTransformer):
             handler_predicate_by_event[evt] = self._make_node_copy_flyweight(
                 CompositePredicate.any(raw_predicates)
             )
+        if isinstance(node, ast.Module):
+            for tracer in self._tracers:
+                tracer.static_init_module(node)
+            # weird hack to make sure the init_module predicate runs first,
+            # in case we use it to gather additional bookkeeping
+            handler_predicate_by_event[TraceEvent.init_module](node)
         # very important that the eavesdropper does not create new ast nodes for ast.stmt (but just
         # modifies existing ones), since StatementInserter relies on being able to map these
         expr_rewriter = ExprRewriter(

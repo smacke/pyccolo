@@ -313,6 +313,66 @@ def test_lambda_in_tuple(events):
 
 @given(events=subsets(set(pyc.TraceEvent)))
 @patch_events_and_emitter
+def test_fundef_defaults(events):
+    assert _RECORDED_EVENTS == []
+    pyc.BaseTracer().exec(
+        "def foo(bar=baz, *, bat=bam): pass",
+        global_env={"baz": 42, "bam": 43},
+        filename=_FILENAME,
+    )
+    throw_and_print_diff_if_recorded_not_equal_to(
+        filter_events_to_subset(
+            [
+                pyc.init_module,
+                pyc.before_stmt,
+                pyc.load_name,
+                pyc.load_name,
+                pyc.after_stmt,
+                pyc.after_module_stmt,
+                pyc.exit_module,
+            ],
+            events,
+        )
+    )
+
+
+@given(events=subsets(set(pyc.TraceEvent)))
+@patch_events_and_emitter
+def test_classdef(events):
+    assert _RECORDED_EVENTS == []
+    pyc.BaseTracer().exec(
+        """
+        class Foo:
+            pass
+        class Bar(Foo):
+            pass
+        """,
+        filename=_FILENAME,
+    )
+    throw_and_print_diff_if_recorded_not_equal_to(
+        filter_events_to_subset(
+            [
+                pyc.init_module,
+                pyc.before_stmt,
+                pyc.before_stmt,
+                pyc.after_stmt,
+                pyc.after_stmt,
+                pyc.after_module_stmt,
+                pyc.before_stmt,
+                pyc.load_name,
+                pyc.before_stmt,
+                pyc.after_stmt,
+                pyc.after_stmt,
+                pyc.after_module_stmt,
+                pyc.exit_module,
+            ],
+            events,
+        )
+    )
+
+
+@given(events=subsets(set(pyc.TraceEvent)))
+@patch_events_and_emitter
 def test_fancy_slices(events):
     assert _RECORDED_EVENTS == []
     pyc.BaseTracer().exec(

@@ -131,8 +131,16 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         fundef_copy = self._global_nonlocal_stripper.visit(fundef_copy)
         function_guard = make_guard_name(fundef_copy)
         self.register_guard(function_guard)
+        docstring = []
+        if (
+            len(orig_body) > 0
+            and isinstance(orig_body[0], ast.Expr)
+            and isinstance(orig_body[0].value, ast.Str)
+        ):
+            docstring = [orig_body.pop(0)]
+            fundef_copy.body.pop(0)
         with fast.location_of(fundef_copy):
-            return [
+            return docstring + [
                 fast.If(
                     test=make_composite_condition(
                         [
@@ -170,6 +178,21 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                     orelse=fundef_copy.body,
                 ),
             ]
+
+    def _handle_module_body(
+        self, node: ast.Module, orig_body: List[ast.stmt]
+    ) -> List[ast.stmt]:
+        # TODO: should this go in try / finally to ensure it always gets executed?
+        if self.handler_predicate_by_event[TraceEvent.exit_module](node):
+            with fast.location_of(orig_body[-1] if len(orig_body) > 0 else node):
+                return (
+                    orig_body
+                    + fast.parse(
+                        f'{EMIT_EVENT}("{TraceEvent.exit_module.name}", '
+                        + f"{id(node)})"
+                    ).body
+                )
+        return list(orig_body)
 
     def _make_main_and_after_stmt_stmts(
         self,
@@ -243,6 +266,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                 setattr(node, name, self.visit(field))
             elif isinstance(field, list):
                 new_field = []
+                future_imports = []
                 if isinstance(node, ast.Module) and name == "body":
                     if self.handler_predicate_by_event[TraceEvent.init_module](node):
                         with fast.location_of(node):
@@ -254,24 +278,21 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                             )
                 for inner_node in field:
                     if isinstance(inner_node, ast.stmt):
-                        new_field.extend(self._handle_stmt(node, name, inner_node))
+                        if (
+                            isinstance(inner_node, ast.ImportFrom)
+                            and inner_node.module == "__future__"
+                        ):
+                            future_imports.append(inner_node)
+                        else:
+                            new_field.extend(self._handle_stmt(node, name, inner_node))
                     elif isinstance(inner_node, ast.AST):
                         new_field.append(self.visit(inner_node))
                     else:
                         new_field.append(inner_node)
+                new_field = future_imports + new_field
                 if name == "body":
                     if isinstance(node, ast.Module):
-                        # TODO: should this go in try / finally to ensure it always gets executed?
-                        if self.handler_predicate_by_event[TraceEvent.exit_module](
-                            node
-                        ):
-                            with fast.location_of(new_field[-1]):
-                                new_field.extend(
-                                    fast.parse(
-                                        f'{EMIT_EVENT}("{TraceEvent.exit_module.name}", '
-                                        + f"{id(node)})"
-                                    ).body
-                                )
+                        new_field = self._handle_module_body(node, new_field)
                     elif isinstance(node, (ast.For, ast.While)):
                         new_field = self._handle_loop_body(node, new_field)
                     elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

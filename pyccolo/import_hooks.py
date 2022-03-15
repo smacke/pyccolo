@@ -78,6 +78,7 @@ class TraceLoader(SourceFileLoader):
                 optimize=_optimize,
             )
         except Exception:
+            logger.exception("exception during source to code")
             return super().source_to_code(data, path, _optimize=_optimize)
 
 
@@ -128,11 +129,10 @@ class TraceFinder(MetaPathFinder):
                 source_path
             ) or tracer._file_passes_filter_impl(import_, source_path):
                 tracers_to_use.append(tracer)
-        for tracer in tracers_to_use:
-            tracer._emit_event(import_, None, None)
-
         if len(tracers_to_use) == 0:
             return None
+        for tracer in tracers_to_use:
+            tracer._emit_event(import_, None, None)
         spec.loader = TraceLoader(tracers_to_use, spec.loader.name, spec.loader.path)
         return spec
 

@@ -16,6 +16,17 @@ def test_sandbox():
     assert len(env) == 1, "got %s" % env
 
 
+def test_docstring_preserved():
+    env = pyc.exec(
+        """
+        def foo():
+            '''bar'''
+            pass
+        """
+    )
+    assert env["foo"].__doc__ == "bar"
+
+
 def test_instrumented_sandbox():
     class IncrementsAssignValue(pyc.BaseTracer):
         @pyc.after_assign_rhs

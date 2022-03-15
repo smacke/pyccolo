@@ -58,6 +58,7 @@ internal_directories = (
     os.path.dirname(os.path.dirname((lambda: 0).__code__.co_filename)),
 )
 Null = object()
+Pass = object()
 Skip = object()
 SANDBOX_FNAME = "<sandbox>"
 
@@ -503,6 +504,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def exit_tracing_hook(self) -> None:
         pass
 
+    def static_init_module(self, node: ast.Module) -> None:
+        pass
+
     def _make_tracing_context_cleanup_callback(self):
         orig_num_sandbox_calls_seen = self._num_sandbox_calls_seen
         orig_hard_disabled = self._is_tracing_hard_disabled
@@ -789,7 +793,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def exec_saved_thunk(self):
         assert self._saved_thunk is not None
         thunk, self._saved_thunk = self._saved_thunk, None
-        return self.exec(thunk, instrument=False, num_extra_lookback_frames=1)
+        if thunk is not Pass:
+            return self.exec(thunk, instrument=False, num_extra_lookback_frames=1)
 
     def execute(self, *args, **kwargs):
         return self.exec(*args, **kwargs)

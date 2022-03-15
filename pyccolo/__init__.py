@@ -24,6 +24,7 @@ from pyccolo.trace_stack import TraceStack
 from pyccolo.tracer import (
     BaseTracer,
     Null,
+    Pass,
     Skip,
     register_handler,
     register_raw_handler,
@@ -201,6 +202,7 @@ __all__ = [
     "AugmentationType",
     "BaseTracer",
     "Null",
+    "Pass",
     "Predicate",
     "Skip",
     "SkipAll",

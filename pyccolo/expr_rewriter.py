@@ -117,6 +117,12 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 keywords=[],
             )
         elif isinstance(subscript, (ast.ExtSlice, ast.Tuple)):
+            if isinstance(subscript, ast.Tuple):
+                elts = subscript.elts
+            else:
+                elts = subscript.dims  # type: ignore
+            elts = [self._maybe_convert_ast_subscript(elt) for elt in elts]
+            subscript = fast.Tuple(elts, ast.Load())
             return cast(ast.expr, subscript)
         else:
             return self.visit(subscript)
@@ -128,10 +134,6 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 node.slice if hasattr(node.slice, "lineno") else node.value
             ):
                 slc = self._maybe_convert_ast_subscript(node.slice)
-                if isinstance(slc, (ast.ExtSlice, ast.Tuple)):
-                    elts = slc.elts if isinstance(slc, ast.Tuple) else slc.dims  # type: ignore
-                    elts = [self._maybe_convert_ast_subscript(elt) for elt in elts]  # type: ignore
-                    slc = fast.Tuple(elts, ast.Load())
                 if self.handler_predicate_by_event[TraceEvent.before_subscript_slice](
                     node
                 ):
