@@ -138,7 +138,8 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             and isinstance(orig_body[0].value, ast.Str)
         ):
             docstring = [orig_body.pop(0)]
-            fundef_copy.body.pop(0)
+        if len(orig_body) == 0:
+            return docstring
         with fast.location_of(fundef_copy):
             return docstring + [
                 fast.If(
@@ -175,7 +176,9 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                         TraceEvent.after_function_execution
                     ](fundef_copy)
                     else orig_body,
-                    orelse=fundef_copy.body,
+                    orelse=fundef_copy.body
+                    if len(docstring) == 0
+                    else fundef_copy.body[len(docstring) :],
                 ),
             ]
 

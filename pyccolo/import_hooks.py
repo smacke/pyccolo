@@ -78,7 +78,7 @@ class TraceLoader(SourceFileLoader):
                 optimize=_optimize,
             )
         except Exception:
-            logger.exception("exception during source to code")
+            logger.exception("exception during source to code for path %s", path)
             return super().source_to_code(data, path, _optimize=_optimize)
 
 
