@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import pyccolo as pyc
 from pyccolo.examples import LazyImportTracer
 
 
@@ -10,7 +9,7 @@ class TestTracer(LazyImportTracer):
 
 def test_simple():
     with TestTracer.instance():
-        import lazy_import_test_module
+        import lazy_import_test_module  # noqa: F401
 
 
 if __name__ == "__main__":

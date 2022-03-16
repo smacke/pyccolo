@@ -178,7 +178,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                     else orig_body,
                     orelse=fundef_copy.body
                     if len(docstring) == 0
-                    else fundef_copy.body[len(docstring) :],
+                    else fundef_copy.body[len(docstring) :],  # noqa: E203
                 ),
             ]
 

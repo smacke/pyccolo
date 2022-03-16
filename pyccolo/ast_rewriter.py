@@ -15,6 +15,7 @@ from typing import (
 
 from pyccolo.ast_bookkeeping import BookkeepingVisitor
 from pyccolo.expr_rewriter import ExprRewriter
+from pyccolo.handler import HandlerSpec
 from pyccolo.predicate import CompositePredicate, Predicate
 from pyccolo.stmt_inserter import StatementInserter
 from pyccolo.stmt_mapper import StatementMapper
@@ -95,10 +96,10 @@ class AstRewriter(ast.NodeTransformer):
                 # this is to deal with the tests in test_trace_events.py,
                 # which patch events_with_registered_handlers but not _event_handlers
                 handler_data = tracer._event_handlers.get(
-                    evt, [(None, False, False, Predicate(lambda *_: True))]  # type: ignore
+                    evt, [HandlerSpec.empty()]  # type: ignore
                 )
-                for _, use_raw_node_id, __, predicate in handler_data:
-                    raw_handler_predicates_by_event[evt].append(predicate)
+                for handler_spec in handler_data:
+                    raw_handler_predicates_by_event[evt].append(handler_spec.predicate)
         handler_predicate_by_event: DefaultDict[
             TraceEvent, Callable[..., bool]
         ] = defaultdict(

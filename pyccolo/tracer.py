@@ -42,6 +42,7 @@ from pyccolo.extra_builtins import (
     TRACING_ENABLED,
     make_guard_name,
 )
+from pyccolo.handler import HandlerSpec
 from pyccolo.import_hooks import patch_meta_path_non_context
 from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
@@ -90,20 +91,17 @@ class MetaTracerStateMachine(MetaHasTraits):
         return obj
 
 
-_HANDLER_DATA_T = Tuple[Callable[..., Any], bool, bool, Predicate]
-
-
 class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     ast_rewriter_cls = AstRewriter
     defined_file = ""
 
     _MANAGER_CLASS_REGISTERED = False
     EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[
-        TraceEvent, List[_HANDLER_DATA_T]
+        TraceEvent, List[HandlerSpec]
     ] = defaultdict(list)
     EVENT_HANDLERS_BY_CLASS: Dict[
         "Type[BaseTracer]",
-        DefaultDict[TraceEvent, List[_HANDLER_DATA_T]],
+        DefaultDict[TraceEvent, List[HandlerSpec]],
     ] = {}
 
     EVENT_LOGGER = logging.getLogger("events")
@@ -128,14 +126,15 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             )
         super().__init__()
         self._has_fancy_sys_tracing = sys.version_info >= (3, 7)
-        self._event_handlers: DefaultDict[
-            TraceEvent, List[_HANDLER_DATA_T]
-        ] = defaultdict(list)
+        self._event_handlers: DefaultDict[TraceEvent, List[HandlerSpec]] = defaultdict(
+            list
+        )
         self._handler_names: Set[str] = set()
         events_with_registered_handlers = set()
         for clazz in reversed(self.__class__.mro()):
             for evt, handlers in self.EVENT_HANDLERS_BY_CLASS.get(clazz, {}).items():
-                for *_, predicate in handlers:
+                for handler_spec in handlers:
+                    predicate = handler_spec.predicate
                     if hasattr(predicate, "condition"):
                         condition: Optional[Callable[..., bool]] = getattr(
                             self,
@@ -278,27 +277,22 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             if self._is_tracing_hard_disabled:
                 return kwargs.get("ret", None)
             event = evt if isinstance(evt, TraceEvent) else TraceEvent(evt)
-            for (
-                handler,
-                use_raw_node_id,
-                reentrant,
-                predicate,
-            ) in self._event_handlers.get(event, []):
-                if reentrant_handlers_only and not reentrant:
+            for spec in self._event_handlers.get(event, []):
+                if reentrant_handlers_only and not spec.reentrant:
                     continue
                 old_ret = kwargs.pop("ret", None)
                 try:
                     node_id_or_node = (
                         node_id
-                        if use_raw_node_id
+                        if spec.use_raw_node_id
                         else self.ast_node_by_id.get(node_id, None)
                     )
                     if (
-                        predicate is Predicate.TRUE
-                        or predicate.static
-                        or predicate.dynamic_call(node_id_or_node)
+                        spec.predicate is Predicate.TRUE
+                        or spec.predicate.static
+                        or spec.predicate.dynamic_call(node_id_or_node)
                     ):
-                        new_ret = handler(
+                        new_ret = spec.handler(
                             self, old_ret, node_id_or_node, frame, event, **kwargs
                         )
                     else:
@@ -857,7 +851,7 @@ def register_handler(
                 AST_TO_EVENT_MAPPING[evt]
                 if type(evt) is type and issubclass(evt, ast.AST)
                 else evt
-            ].append((handler, use_raw_node_id, reentrant, pred))
+            ].append(HandlerSpec(handler, use_raw_node_id, reentrant, pred, None))
         return handler
 
     return _inner_registrar

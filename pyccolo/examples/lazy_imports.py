@@ -4,9 +4,8 @@ import copy
 import importlib
 import logging
 import sys
-from contextlib import nullcontext
 from types import FrameType
-from typing import Any, Optional, Set, Union
+from typing import Any, List, Optional, Set, Union
 
 import pyccolo as pyc
 
@@ -18,8 +17,8 @@ _unresolved = object()
 
 
 class _LazySymbol:
-    non_modules = set()
-    blocklist_packages = set()
+    non_modules: Set[str] = set()
+    blocklist_packages: Set[str] = set()
 
     def __init__(self, spec: Union[ast.Import, ast.ImportFrom]):
         self.spec = spec
@@ -116,7 +115,7 @@ class LazyImportTracer(pyc.BaseTracer):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.cur_module_lazy_names: Set[str] = set()
-        self.saved_attributes = []
+        self.saved_attributes: List[str] = []
 
     def _is_name_lazy_load(self, node: Union[ast.Attribute, ast.Name]) -> bool:
         if self.cur_module_lazy_names is None:
@@ -124,7 +123,7 @@ class LazyImportTracer(pyc.BaseTracer):
         elif isinstance(node, ast.Name):
             return node.id in self.cur_module_lazy_names
         elif isinstance(node, ast.Attribute):
-            return self._is_name_lazy_load(node.value)
+            return self._is_name_lazy_load(node.value)  # type: ignore
         elif isinstance(node, ast.Call):
             return self._is_name_lazy_load(node.func)
         else:
@@ -157,7 +156,7 @@ class LazyImportTracer(pyc.BaseTracer):
         frame: FrameType,
         *_,
         **__,
-    ) -> Optional[str]:
+    ) -> Any:
         # print("before stmt:", ast.unparse(node))
         is_import = isinstance(node, ast.Import)
         for alias in node.names:
@@ -170,7 +169,7 @@ class LazyImportTracer(pyc.BaseTracer):
         if is_import:
             module = None
         else:
-            module = node.module
+            module = node.module  # type: ignore
             if level > 0:
                 module = self._convert_relative_to_absolute(package, module, level)
         # print("before_stmt:", ast.unparse(node))
@@ -178,8 +177,8 @@ class LazyImportTracer(pyc.BaseTracer):
             node_cpy = copy.deepcopy(node)
             node_cpy.names = [alias]
             if module is not None:
-                node_cpy.module = module
-                node_cpy.level = 0
+                node_cpy.module = module  # type: ignore
+                node_cpy.level = 0  # type: ignore
             frame.f_globals[alias.asname or alias.name] = _LazySymbol(spec=node_cpy)
         return pyc.Pass
 
