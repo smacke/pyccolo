@@ -108,6 +108,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     EVENT_LOGGER.setLevel(logging.WARNING)
 
     guards: Set[str] = set()
+    local_guards_by_module_id: Dict[int, Set[str]] = defaultdict(set)
 
     # shared ast bookkeeping fields
     ast_node_by_id: Dict[int, ast.AST] = {}
@@ -115,6 +116,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     containing_stmt_by_id: Dict[int, ast.stmt] = {}
     parent_stmt_by_id: Dict[int, ast.stmt] = {}
     stmt_by_lineno_by_module_id: Dict[int, Dict[int, ast.stmt]] = defaultdict(dict)
+    current_module: Optional[ast.Module] = None
 
     def __init__(self, is_reset: bool = False):
         if is_reset:
@@ -242,6 +244,11 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     @classmethod
     def deactivate_guard(cls, guard: Union[str, int, ast.AST]) -> None:
         setattr(builtins, cls._make_guard_name(guard), True)
+
+    @classmethod
+    def register_local_guard(cls, guard: str) -> None:
+        assert cls.current_module is not None
+        cls.local_guards_by_module_id[id(cls.current_module)].add(guard)
 
     def should_propagate_handler_exception(
         self, evt: TraceEvent, exc: Exception
@@ -497,6 +504,10 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
     def exit_tracing_hook(self) -> None:
         pass
+
+    def _static_init_module_impl(self, node: ast.Module) -> None:
+        self.current_module = node
+        self.static_init_module(node)
 
     def static_init_module(self, node: ast.Module) -> None:
         pass

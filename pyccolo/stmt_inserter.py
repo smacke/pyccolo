@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 import logging
-from typing import cast, Callable, DefaultDict, Dict, List, Set, Union
+from typing import cast, TYPE_CHECKING, Callable, DefaultDict, Dict, List, Union
 
 from pyccolo import fast
 from pyccolo.extra_builtins import (
@@ -12,6 +12,9 @@ from pyccolo.extra_builtins import (
 )
 from pyccolo.trace_events import TraceEvent
 from pyccolo.fast import EmitterMixin, make_test, make_composite_condition
+
+if TYPE_CHECKING:
+    from pyccolo.tracer import BaseTracer
 
 
 logger = logging.getLogger(__name__)
@@ -59,19 +62,19 @@ class StripGlobalAndNonlocalDeclarations(ast.NodeTransformer):
 class StatementInserter(ast.NodeTransformer, EmitterMixin):
     def __init__(
         self,
+        tracers: "List[BaseTracer]",
         orig_to_copy_mapping: Dict[int, ast.AST],
         handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
         handler_guards_by_event: DefaultDict[
             TraceEvent, List[Callable[[ast.AST], str]]
         ],
-        guards: Set[str],
     ):
         EmitterMixin.__init__(
             self,
+            tracers,
             orig_to_copy_mapping,
             handler_predicate_by_event,
             handler_guards_by_event,
-            guards,
         )
         self._global_nonlocal_stripper: StripGlobalAndNonlocalDeclarations = (
             StripGlobalAndNonlocalDeclarations()

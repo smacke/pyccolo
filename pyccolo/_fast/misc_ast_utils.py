@@ -3,11 +3,23 @@ import ast
 import builtins
 import sys
 import typing
-from typing import Callable, DefaultDict, Dict, List, Optional, Set, Union
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    DefaultDict,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Union,
+)
 
 from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT, TRACE_LAMBDA
 from pyccolo.trace_events import BEFORE_EXPR_EVENTS, TraceEvent
+
+if TYPE_CHECKING:
+    from pyccolo.tracer import BaseTracer
 
 if sys.version_info < (3, 8):
     NumConst = ast.Num
@@ -42,17 +54,18 @@ def subscript_to_slice(node: ast.Subscript) -> ast.expr:
 class EmitterMixin:
     def __init__(
         self,
+        tracers: "List[BaseTracer]",
         orig_to_copy_mapping: Dict[int, ast.AST],
         handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
         handler_guards_by_event: DefaultDict[
             TraceEvent, List[Callable[[ast.AST], str]]
         ],
-        guards: Set[str],
     ):
+        self.tracers = tracers
         self.orig_to_copy_mapping = orig_to_copy_mapping
         self.handler_predicate_by_event = handler_predicate_by_event
         self.handler_guards_by_event = handler_guards_by_event
-        self.guards: Set[str] = guards
+        self.guards: Set[str] = tracers[-1].guards
 
     @staticmethod
     def is_tracing_disabled_context(node: ast.AST):

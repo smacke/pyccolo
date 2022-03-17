@@ -3,7 +3,16 @@ import ast
 import logging
 import sys
 from contextlib import contextmanager
-from typing import cast, Callable, DefaultDict, Dict, List, Optional, Set, Union
+from typing import (
+    cast,
+    TYPE_CHECKING,
+    Callable,
+    DefaultDict,
+    Dict,
+    List,
+    Optional,
+    Union,
+)
 
 from pyccolo import fast
 from pyccolo.extra_builtins import TRACING_ENABLED, make_guard_name
@@ -15,6 +24,9 @@ from pyccolo.fast import (
 )
 from pyccolo.trace_events import TraceEvent
 
+if TYPE_CHECKING:
+    from pyccolo.tracer import BaseTracer
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
@@ -23,19 +35,19 @@ logger.setLevel(logging.WARNING)
 class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def __init__(
         self,
+        tracers: "List[BaseTracer]",
         orig_to_copy_mapping: Dict[int, ast.AST],
         handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
         handler_guards_by_event: DefaultDict[
             TraceEvent, List[Callable[[ast.AST], str]]
         ],
-        guards: Set[str],
     ):
         EmitterMixin.__init__(
             self,
+            tracers,
             orig_to_copy_mapping,
             handler_predicate_by_event,
             handler_guards_by_event,
-            guards,
         )
         self._top_level_node_for_symbol: Optional[ast.AST] = None
 
