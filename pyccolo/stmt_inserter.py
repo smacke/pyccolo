@@ -61,10 +61,17 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         self,
         orig_to_copy_mapping: Dict[int, ast.AST],
         handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
+        handler_guards_by_event: DefaultDict[
+            TraceEvent, List[Callable[[ast.AST], str]]
+        ],
         guards: Set[str],
     ):
         EmitterMixin.__init__(
-            self, orig_to_copy_mapping, handler_predicate_by_event, guards
+            self,
+            orig_to_copy_mapping,
+            handler_predicate_by_event,
+            handler_guards_by_event,
+            guards,
         )
         self._global_nonlocal_stripper: StripGlobalAndNonlocalDeclarations = (
             StripGlobalAndNonlocalDeclarations()

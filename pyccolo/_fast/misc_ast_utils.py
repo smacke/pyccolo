@@ -44,10 +44,14 @@ class EmitterMixin:
         self,
         orig_to_copy_mapping: Dict[int, ast.AST],
         handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
+        handler_guards_by_event: DefaultDict[
+            TraceEvent, List[Callable[[ast.AST], str]]
+        ],
         guards: Set[str],
     ):
         self.orig_to_copy_mapping = orig_to_copy_mapping
         self.handler_predicate_by_event = handler_predicate_by_event
+        self.handler_guards_by_event = handler_guards_by_event
         self.guards: Set[str] = guards
 
     @staticmethod

@@ -10,7 +10,7 @@ class HandlerSpec(NamedTuple):
     use_raw_node_id: bool
     reentrant: bool
     predicate: Predicate
-    guard: Optional[Callable[[ast.AST], bool]]
+    guard: Optional[Callable[[ast.AST], str]]
 
     @classmethod
     def empty(cls):

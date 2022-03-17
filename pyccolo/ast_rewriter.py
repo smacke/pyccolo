@@ -11,6 +11,7 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    TypeVar,
 )
 
 from pyccolo.ast_bookkeeping import BookkeepingVisitor
@@ -28,6 +29,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
+
+
+_T = TypeVar("_T")
 
 
 class AstRewriter(ast.NodeTransformer):
@@ -58,7 +62,9 @@ class AstRewriter(ast.NodeTransformer):
     ) -> None:
         self._augmented_positions_by_spec[aug_spec].add((lineno, col_offset))
 
-    def _make_node_copy_flyweight(self, predicate: Predicate) -> Callable[..., bool]:
+    def _make_node_copy_flyweight(
+        self, predicate: Callable[..., _T]
+    ) -> Callable[..., _T]:
         return lambda node: predicate(self.orig_to_copy_mapping.get(id(node), node))
 
     def visit(self, node: ast.AST):
@@ -109,6 +115,14 @@ class AstRewriter(ast.NodeTransformer):
             handler_predicate_by_event[evt] = self._make_node_copy_flyweight(
                 CompositePredicate.any(raw_predicates)
             )
+        handler_guards_by_event: DefaultDict[
+            TraceEvent, List[Callable[[ast.AST], str]]
+        ] = defaultdict(list)
+        for tracer in self._tracers:
+            for evt, handler_specs in tracer._event_handlers.items():
+                handler_guards_by_event[evt].extend(
+                    self._make_node_copy_flyweight(spec.guard) for spec in handler_specs
+                )
         if isinstance(node, ast.Module):
             for tracer in self._tracers:
                 tracer.static_init_module(node)
@@ -118,7 +132,10 @@ class AstRewriter(ast.NodeTransformer):
         # very important that the eavesdropper does not create new ast nodes for ast.stmt (but just
         # modifies existing ones), since StatementInserter relies on being able to map these
         expr_rewriter = ExprRewriter(
-            orig_to_copy_mapping, handler_predicate_by_event, self._tracers[-1].guards
+            orig_to_copy_mapping,
+            handler_predicate_by_event,
+            handler_guards_by_event,
+            self._tracers[-1].guards,
         )
         if isinstance(node, ast.Expression):
             node = expr_rewriter.visit(node)
@@ -128,6 +145,7 @@ class AstRewriter(ast.NodeTransformer):
             node = StatementInserter(
                 orig_to_copy_mapping,
                 handler_predicate_by_event,
+                handler_guards_by_event,
                 self._tracers[-1].guards,
             ).visit(node)
         return node
