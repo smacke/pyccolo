@@ -50,7 +50,7 @@ class _LazySymbol:
                 cls.non_modules.add(module)
                 exc = e
             except Exception:
-                print("fatal error trying to import", module)
+                # print("fatal error trying to import", module)
                 raise
         module_symbol = module.rsplit(".", 1)
         if len(module_symbol) != 2:
