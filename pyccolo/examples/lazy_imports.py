@@ -142,6 +142,14 @@ class LazyImportTracer(pyc.BaseTracer):
         else:
             return f"{prefix}.{module}"
 
+    @pyc.init_module
+    def init_module(
+        self, _ret: None, node: ast.Module, frame: FrameType, *_, **__
+    ) -> None:
+        assert node is not None
+        for guard in self.local_guards_by_module_id.get(id(node), []):
+            frame.f_globals[guard] = False
+
     @pyc.before_stmt(
         when=pyc.Predicate(
             lambda node: isinstance(node, (ast.Import, ast.ImportFrom))
@@ -195,9 +203,15 @@ class LazyImportTracer(pyc.BaseTracer):
             setattr(saved_attr_obj, node.attr, ret)
         return pyc.Null if ret is None else ret
 
-    @pyc.load_name(when=pyc.Predicate(_is_name_lazy_load, static=True))
-    def load_name(self, ret: Any, node: ast.Name, frame: FrameType, *_, **__) -> Any:
+    @pyc.load_name(
+        when=pyc.Predicate(_is_name_lazy_load, static=True),
+        guard=lambda node: f"_Xix_{node.id}_guard",
+    )
+    def load_name(
+        self, ret: Any, node: ast.Name, frame: FrameType, _evt, guard, *_, **__
+    ) -> Any:
         if isinstance(ret, _LazySymbol):
             ret = ret.unwrap()
             frame.f_globals[node.id] = ret
+            frame.f_globals[guard] = True
         return pyc.Null if ret is None else ret

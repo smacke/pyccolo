@@ -14,6 +14,7 @@ from pyccolo.trace_events import TraceEvent
 from pyccolo.fast import EmitterMixin, make_test, make_composite_condition
 
 if TYPE_CHECKING:
+    from pyccolo.ast_rewriter import GUARD_DATA_T
     from pyccolo.tracer import BaseTracer
 
 
@@ -65,9 +66,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         tracers: "List[BaseTracer]",
         orig_to_copy_mapping: Dict[int, ast.AST],
         handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
-        handler_guards_by_event: DefaultDict[
-            TraceEvent, List[Callable[[ast.AST], str]]
-        ],
+        handler_guards_by_event: DefaultDict[TraceEvent, List["GUARD_DATA_T"]],
     ):
         EmitterMixin.__init__(
             self,
@@ -196,13 +195,14 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         self, node: ast.Module, orig_body: List[ast.stmt]
     ) -> List[ast.stmt]:
         # TODO: should this go in try / finally to ensure it always gets executed?
-        if self.handler_predicate_by_event[TraceEvent.exit_module](node):
+        node_copy = self.get_copy_node(node)
+        if self.handler_predicate_by_event[TraceEvent.exit_module](node_copy):
             with fast.location_of(orig_body[-1] if len(orig_body) > 0 else node):
                 return (
                     orig_body
                     + fast.parse(
                         f'{EMIT_EVENT}("{TraceEvent.exit_module.name}", '
-                        + f"{id(node)})"
+                        + f"{id(node_copy)})"
                     ).body
                 )
         return list(orig_body)
@@ -281,12 +281,15 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                 new_field = []
                 future_imports = []
                 if isinstance(node, ast.Module) and name == "body":
-                    if self.handler_predicate_by_event[TraceEvent.init_module](node):
+                    node_copy = self.get_copy_node(node)
+                    if self.handler_predicate_by_event[TraceEvent.init_module](
+                        node_copy
+                    ):
                         with fast.location_of(node):
                             new_field.extend(
                                 fast.parse(
                                     f'{EMIT_EVENT}("{TraceEvent.init_module.name}", '
-                                    + f"{id(node)})"
+                                    + f"{id(node_copy)})"
                                 ).body
                             )
                 for inner_node in field:

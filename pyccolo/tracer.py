@@ -109,6 +109,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
     guards: Set[str] = set()
     local_guards_by_module_id: Dict[int, Set[str]] = defaultdict(set)
+    handler_spec_by_id: Dict[int, HandlerSpec] = {}
 
     # shared ast bookkeeping fields
     ast_node_by_id: Dict[int, ast.AST] = {}
@@ -116,7 +117,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     containing_stmt_by_id: Dict[int, ast.stmt] = {}
     parent_stmt_by_id: Dict[int, ast.stmt] = {}
     stmt_by_lineno_by_module_id: Dict[int, Dict[int, ast.stmt]] = defaultdict(dict)
-    current_module: Optional[ast.Module] = None
+    current_module: List[Optional[ast.Module]] = [None]
 
     def __init__(self, is_reset: bool = False):
         if is_reset:
@@ -247,8 +248,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
 
     @classmethod
     def register_local_guard(cls, guard: str) -> None:
-        assert cls.current_module is not None
-        cls.local_guards_by_module_id[id(cls.current_module)].add(guard)
+        assert cls.current_module[0] is not None
+        cls.local_guards_by_module_id[id(cls.current_module[0])].add(guard)
 
     def should_propagate_handler_exception(
         self, evt: TraceEvent, exc: Exception
@@ -284,9 +285,15 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             if self._is_tracing_hard_disabled:
                 return kwargs.get("ret", None)
             event = evt if isinstance(evt, TraceEvent) else TraceEvent(evt)
+            guards_by_spec_id = kwargs.get("guards_by_handler_spec_id", None)
             for spec in self._event_handlers.get(event, []):
                 if reentrant_handlers_only and not spec.reentrant:
                     continue
+                guard_for_spec = (
+                    None
+                    if guards_by_spec_id is None
+                    else guards_by_spec_id.get(id(spec), None)
+                )
                 old_ret = kwargs.pop("ret", None)
                 try:
                     node_id_or_node = (
@@ -300,7 +307,13 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                         or spec.predicate.dynamic_call(node_id_or_node)
                     ):
                         new_ret = spec.handler(
-                            self, old_ret, node_id_or_node, frame, event, **kwargs
+                            self,
+                            old_ret,
+                            node_id_or_node,
+                            frame,
+                            event,
+                            guard_for_spec,
+                            **kwargs,
                         )
                     else:
                         new_ret = None
@@ -506,7 +519,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         pass
 
     def _static_init_module_impl(self, node: ast.Module) -> None:
-        self.current_module = node
+        self.current_module[0] = node
         self.static_init_module(node)
 
     def static_init_module(self, node: ast.Module) -> None:
@@ -844,6 +857,7 @@ def register_handler(
     when: Optional[Union[Callable[..., bool], Predicate]] = None,
     reentrant: bool = False,
     use_raw_node_id: bool = False,
+    guard: Optional[Callable[[ast.AST], str]] = None,
 ):
     events = event if isinstance(event, tuple) else (event,)
     when = Predicate.TRUE if when is None else when
@@ -858,11 +872,13 @@ def register_handler(
 
     def _inner_registrar(handler):
         for evt in events:
+            handler_spec = HandlerSpec(handler, use_raw_node_id, reentrant, pred, guard)
             _InternalBaseTracer.EVENT_HANDLERS_PENDING_REGISTRATION[
                 AST_TO_EVENT_MAPPING[evt]
                 if type(evt) is type and issubclass(evt, ast.AST)
                 else evt
-            ].append(HandlerSpec(handler, use_raw_node_id, reentrant, pred, None))
+            ].append(handler_spec)
+            _InternalBaseTracer.handler_spec_by_id[id(handler_spec)] = handler_spec
         return handler
 
     return _inner_registrar

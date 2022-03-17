@@ -12,6 +12,7 @@ from typing import (
     Set,
     Tuple,
     TypeVar,
+    Union,
 )
 
 from pyccolo.ast_bookkeeping import BookkeepingVisitor
@@ -32,6 +33,7 @@ logger.setLevel(logging.WARNING)
 
 
 _T = TypeVar("_T")
+GUARD_DATA_T = Tuple[HandlerSpec, Callable[[Union[int, ast.AST]], str]]
 
 
 class AstRewriter(ast.NodeTransformer):
@@ -65,7 +67,12 @@ class AstRewriter(ast.NodeTransformer):
     def _make_node_copy_flyweight(
         self, predicate: Callable[..., _T]
     ) -> Callable[..., _T]:
-        return lambda node: predicate(self.orig_to_copy_mapping.get(id(node), node))
+        return lambda node_or_id: predicate(
+            self.orig_to_copy_mapping.get(
+                node_or_id if isinstance(node_or_id, int) else id(node_or_id),
+                node_or_id,
+            )
+        )
 
     def visit(self, node: ast.AST):
         assert isinstance(
@@ -116,16 +123,20 @@ class AstRewriter(ast.NodeTransformer):
                 CompositePredicate.any(raw_predicates)
             )
         handler_guards_by_event: DefaultDict[
-            TraceEvent, List[Callable[[ast.AST], str]]
+            TraceEvent, List[GUARD_DATA_T]
         ] = defaultdict(list)
         for tracer in self._tracers:
             for evt, handler_specs in tracer._event_handlers.items():
                 handler_guards_by_event[evt].extend(
-                    self._make_node_copy_flyweight(spec.guard) for spec in handler_specs
+                    (spec, self._make_node_copy_flyweight(spec.guard))
+                    for spec in handler_specs
+                    if spec.guard is not None
                 )
         if isinstance(node, ast.Module):
             for tracer in self._tracers:
-                tracer._static_init_module_impl(node)
+                tracer._static_init_module_impl(
+                    orig_to_copy_mapping.get(id(node), node)  # type: ignore
+                )
         # very important that the eavesdropper does not create new ast nodes for ast.stmt (but just
         # modifies existing ones), since StatementInserter relies on being able to map these
         expr_rewriter = ExprRewriter(

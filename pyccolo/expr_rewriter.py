@@ -25,6 +25,7 @@ from pyccolo.fast import (
 from pyccolo.trace_events import TraceEvent
 
 if TYPE_CHECKING:
+    from pyccolo.ast_rewriter import GUARD_DATA_T
     from pyccolo.tracer import BaseTracer
 
 
@@ -38,9 +39,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         tracers: "List[BaseTracer]",
         orig_to_copy_mapping: Dict[int, ast.AST],
         handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
-        handler_guards_by_event: DefaultDict[
-            TraceEvent, List[Callable[[ast.AST], str]]
-        ],
+        handler_guards_by_event: DefaultDict[TraceEvent, List["GUARD_DATA_T"]],
     ):
         EmitterMixin.__init__(
             self,
@@ -308,22 +307,27 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         return replacement_args
 
     def visit_Call(self, node: ast.Call):
-        orig_node = node
-        orig_node_id = id(orig_node)
+        ret_as_call: ast.Call = node
+        ret: Union[ast.Call, ast.IfExp] = node
+        orig_node_id = id(node)
 
-        with self.attrsub_context(node):
-            if isinstance(node.func, ast.Attribute):
-                node.func = self.visit_Attribute(node.func, call_context=True)
-            elif isinstance(node.func, ast.Subscript):
-                node.func = self.visit_Subscript(node.func, call_context=True)
+        with self.attrsub_context(ret_as_call):
+            if isinstance(ret_as_call.func, ast.Attribute):
+                ret_as_call.func = self.visit_Attribute(
+                    ret_as_call.func, call_context=True
+                )
+            elif isinstance(ret_as_call.func, ast.Subscript):
+                ret_as_call.func = self.visit_Subscript(
+                    ret_as_call.func, call_context=True
+                )
             else:
-                node.func = self.visit(node.func)
+                ret_as_call.func = self.visit(ret_as_call.func)
 
         # TODO: need a way to rewrite ast of subscript args,
         #  and to process these separately from outer rewrite
 
-        node.args = self._get_replacement_args(node.args, False)
-        node.keywords = self._get_replacement_args(node.keywords, True)
+        ret_as_call.args = self._get_replacement_args(ret_as_call.args, False)
+        ret_as_call.keywords = self._get_replacement_args(ret_as_call.keywords, True)
 
         # in order to ensure that the args are processed with appropriate active scope,
         # we need to make sure not to use the active namespace scope on args (in the case
@@ -335,27 +339,28 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         #
         # This effectively rewrites function calls as follows:
         # f(a, b, ..., c) -> trace(f, 'enter argument list')(a, b, ..., c)
-        if self.handler_predicate_by_event[TraceEvent.before_call](orig_node):
-            with fast.location_of(node.func):
-                node.func = self.emit(
+        if self.handler_predicate_by_event[TraceEvent.before_call](node):
+            with fast.location_of(ret_as_call.func):
+                ret_as_call.func = self.emit(
                     TraceEvent.before_call,
                     orig_node_id,
-                    ret=node.func,
+                    ret=ret_as_call.func,
                     call_node_id=self.get_copy_id_ast(orig_node_id),
                 )
 
         # f(a, b, ..., c) -> trace(f(a, b, ..., c), 'exit argument list')
-        if self.handler_predicate_by_event[TraceEvent.after_call](orig_node):
-            with fast.location_of(node):
-                node = self.emit(
+        if self.handler_predicate_by_event[TraceEvent.after_call](node):
+            with fast.location_of(ret):
+                ret = self.emit(
                     TraceEvent.after_call,
                     orig_node_id,
-                    ret=node,
+                    ret=ret,
                     call_node_id=self.get_copy_id_ast(orig_node_id),
                 )
+                del ret_as_call
 
         return self._maybe_wrap_symbol_in_before_after_tracing(
-            node, call_context=True, orig_node_id=orig_node_id
+            ret, call_context=True, orig_node_id=orig_node_id
         )
 
     def visit_Expr(self, node: ast.Expr) -> ast.Expr:
@@ -640,7 +645,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             target.ctx = ast.Del()  # type: ignore
         return ret
 
-    def visit_BinOp(self, node: ast.BinOp) -> Union[ast.BinOp, ast.Call]:
+    def visit_BinOp(self, node: ast.BinOp) -> Union[ast.BinOp, ast.Call, ast.IfExp]:
         untraced_node = self.orig_to_copy_mapping[id(node)]
         op = node.op
 
@@ -661,7 +666,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             else:
                 setattr(node, attr, self.visit(operand_node))
 
-        ret: Union[ast.BinOp, ast.Call] = node
+        ret: Union[ast.BinOp, ast.Call, ast.IfExp] = node
         if self.handler_predicate_by_event[TraceEvent.before_binop](untraced_node):
             with fast.location_of(node):
                 ret = self.emit(
@@ -682,7 +687,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 ret = self.emit(TraceEvent.after_binop, node, ret=ret)
         return ret
 
-    def visit_Compare(self, node: ast.Compare) -> Union[ast.Compare, ast.Call]:
+    def visit_Compare(
+        self, node: ast.Compare
+    ) -> Union[ast.Compare, ast.Call, ast.IfExp]:
         # TODO: this is pretty similar to BinOp above; maybe can dedup some code
         untraced_node = self.orig_to_copy_mapping[id(node)]
 
@@ -703,7 +710,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             else:
                 node.comparators[idx] = self.visit(comparator)
 
-        ret: Union[ast.Compare, ast.Call] = node
+        ret: Union[ast.Compare, ast.Call, ast.IfExp] = node
         if self.handler_predicate_by_event[TraceEvent.before_compare](untraced_node):
             with fast.location_of(node):
                 ret = self.emit(
