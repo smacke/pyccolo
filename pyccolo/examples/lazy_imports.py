@@ -138,10 +138,10 @@ def _make_subscript_guard_helper(node: ast.Subscript) -> Optional[str]:
     if isinstance(slice_val, (ast.Constant, ast.Str, ast.Num, ast.Name)):
         if isinstance(slice_val, ast.Name):
             subscript = slice_val.id
-        elif getattr(slice_val, "s", None) is not None:
-            subscript = f"_{slice_val.s}_"
-        elif getattr(slice_val, "n", None) is not None:
-            subscript = f"_{slice_val.n}_"
+        elif hasattr(slice_val, "s"):
+            subscript = f"_{slice_val.s}_"  # type: ignore
+        elif hasattr(slice_val, "n"):
+            subscript = f"_{slice_val.n}_"  # type: ignore
         else:
             return None
     else:
