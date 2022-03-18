@@ -143,15 +143,17 @@ class EmitterMixin:
             ):
                 kwargs["ret"] = self.make_lambda(kwargs_ret)
         local_guard_makers = self.handler_guards_by_event.get(evt, None)
-        if local_guard_makers is None:
-            local_guards = {}
+        local_guards = {}
+        if local_guard_makers is not None:
+            for spec, maker in local_guard_makers:
+                guardval = maker(node_or_id)
+                if guardval is not None:
+                    local_guards[id(spec)] = guardval
+        if len(local_guards) == 0:
             kwargs["guards_by_handler_spec_id"] = fast.NameConstant(None)
         else:
-            local_guards = {
-                id(spec): maker(node_or_id) for spec, maker in local_guard_makers
-            }
             kwargs["guards_by_handler_spec_id"] = fast.Dict(
-                keys=[fast.Num(id(k)) for k in local_guards.keys()],
+                keys=[fast.Num(k) for k in local_guards.keys()],
                 values=[fast.Str(v) for v in local_guards.values()],
             )
         ret: Union[ast.Call, ast.IfExp] = fast.Call(

@@ -50,7 +50,7 @@ class _LazySymbol:
                 cls.non_modules.add(module)
                 exc = e
             except Exception:
-                # print("fatal error trying to import", module)
+                logger.error("fatal error trying to import module %s", module)
                 raise
         module_symbol = module.rsplit(".", 1)
         if len(module_symbol) != 2:
@@ -72,13 +72,13 @@ class _LazySymbol:
         self.value = ret
         return ret
 
-    # def __call__(self, *args, **kwargs):
-    #     print("attempt to call", ast.unparse(self.spec))
-    #     raise TypeError("cant call _LazyName")
-    #
-    # def __getattr__(self, item):
-    #     print("atempt to get item", item, ast.unparse(self.spec))
-    #     raise TypeError("cant __getattr__ on _LazyName")
+    def __call__(self, *args, **kwargs):
+        raise TypeError("cant call _LazyName for spec %s" % ast.unparse(self.spec))
+
+    def __getattr__(self, item):
+        raise TypeError(
+            "cant __getattr__ on _LazyName for spec %s" % ast.unparse(self.spec)
+        )
 
 
 class _GetLazyNames(ast.NodeVisitor):
@@ -109,6 +109,27 @@ class _GetLazyNames(ast.NodeVisitor):
         inst = cls()
         inst.visit(node)
         return inst.lazy_names
+
+
+def _make_attr_guard_helper(node: ast.Attribute) -> Optional[str]:
+    if isinstance(node.value, ast.Name):
+        return f"{node.value.id}_O_{node.attr}"
+    elif isinstance(node.value, ast.Attribute):
+        prefix = _make_attr_guard_helper(node.value)
+        if prefix is None:
+            return None
+        else:
+            return f"{prefix}_O_{node.attr}"
+    else:
+        return None
+
+
+def _make_attr_guard(node: ast.Attribute) -> Optional[str]:
+    suffix = _make_attr_guard_helper(node)
+    if suffix is None:
+        return None
+    else:
+        return f"_Xix_{suffix}"
 
 
 class LazyImportTracer(pyc.BaseTracer):
@@ -165,7 +186,6 @@ class LazyImportTracer(pyc.BaseTracer):
         *_,
         **__,
     ) -> Any:
-        # print("before stmt:", ast.unparse(node))
         is_import = isinstance(node, ast.Import)
         for alias in node.names:
             if alias.name == "*":
@@ -180,7 +200,6 @@ class LazyImportTracer(pyc.BaseTracer):
             module = node.module  # type: ignore
             if level > 0:
                 module = self._convert_relative_to_absolute(package, module, level)
-        # print("before_stmt:", ast.unparse(node))
         for alias in node.names:
             node_cpy = copy.deepcopy(node)
             node_cpy.names = [alias]
@@ -190,13 +209,21 @@ class LazyImportTracer(pyc.BaseTracer):
             frame.f_globals[alias.asname or alias.name] = _LazySymbol(spec=node_cpy)
         return pyc.Pass
 
-    @pyc.before_attribute_load(when=pyc.Predicate(_is_name_lazy_load, static=True))
+    @pyc.before_attribute_load(
+        when=pyc.Predicate(_is_name_lazy_load, static=True), guard=_make_attr_guard
+    )
     def before_attr_load(self, ret: Any, *_, **__) -> Any:
         self.saved_attributes.append(ret)
         return ret
 
-    @pyc.after_attribute_load(when=pyc.Predicate(_is_name_lazy_load, static=True))
-    def after_attr_load(self, ret: Any, node: ast.Attribute, *_, **__) -> Any:
+    @pyc.after_attribute_load(
+        when=pyc.Predicate(_is_name_lazy_load, static=True), guard=_make_attr_guard
+    )
+    def after_attr_load(
+        self, ret: Any, node: ast.Attribute, frame: FrameType, _evt, guard, *_, **__
+    ) -> Any:
+        if guard is not None:
+            frame.f_globals[guard] = True
         saved_attr_obj = self.saved_attributes.pop()
         if isinstance(ret, _LazySymbol):
             ret = ret.unwrap()
@@ -210,8 +237,9 @@ class LazyImportTracer(pyc.BaseTracer):
     def load_name(
         self, ret: Any, node: ast.Name, frame: FrameType, _evt, guard, *_, **__
     ) -> Any:
+        if guard is not None:
+            frame.f_globals[guard] = True
         if isinstance(ret, _LazySymbol):
             ret = ret.unwrap()
             frame.f_globals[node.id] = ret
-            frame.f_globals[guard] = True
         return pyc.Null if ret is None else ret
