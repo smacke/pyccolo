@@ -197,6 +197,10 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         return True
 
     @property
+    def global_guards_enabled(self) -> bool:
+        return True
+
+    @property
     def is_tracing_enabled(self) -> bool:
         return self._is_tracing_enabled
 

@@ -133,6 +133,10 @@ def test_sys_tracing_call():
             super().__init__()
             self.num_calls_seen = 0
 
+        @property
+        def global_guards_enabled(self) -> bool:
+            return False
+
         @pyc.register_handler(pyc.call)
         def handle_call(self, _ret, _node, frame: FrameType, *_, **__):
             if frame.f_code.co_name in ("foo", "bar"):

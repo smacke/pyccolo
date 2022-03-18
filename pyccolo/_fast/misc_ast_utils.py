@@ -70,6 +70,9 @@ class EmitterMixin:
         self.handler_predicate_by_event = handler_predicate_by_event
         self.handler_guards_by_event = handler_guards_by_event
         self.guards: Set[str] = tracers[-1].guards
+        self.global_guards_enabled = any(
+            tracer.global_guards_enabled for tracer in tracers
+        )
 
     @staticmethod
     def is_tracing_disabled_context(node: ast.AST):

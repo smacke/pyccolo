@@ -454,8 +454,6 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         for name, field in ast.iter_fields(node):
             if name == "test":
                 loop_node_copy = cast(ast.While, self.orig_to_copy_mapping[id(node)])
-                loop_guard = make_guard_name(loop_node_copy)
-                self.register_guard(loop_guard)
                 with fast.location_of(node):
                     visited_test = self.visit(field)
                     if self.handler_predicate_by_event[TraceEvent.after_while_test](
@@ -464,16 +462,21 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                         visited_test = self.emit(
                             TraceEvent.after_while_test, node, ret=visited_test
                         )
-                    node.test = fast.IfExp(
-                        test=make_composite_condition(
-                            [
-                                make_test(TRACING_ENABLED),
-                                make_test(loop_guard),
-                            ]
-                        ),
-                        body=visited_test,
-                        orelse=loop_node_copy.test,
-                    )
+                    if self.global_guards_enabled:
+                        loop_guard = make_guard_name(loop_node_copy)
+                        self.register_guard(loop_guard)
+                        node.test = fast.IfExp(
+                            test=make_composite_condition(
+                                [
+                                    make_test(TRACING_ENABLED),
+                                    make_test(loop_guard),
+                                ]
+                            ),
+                            body=visited_test,
+                            orelse=loop_node_copy.test,
+                        )
+                    else:
+                        node.test = visited_test
             elif isinstance(field, list):
                 setattr(node, name, [self.visit(elt) for elt in field])
             else:

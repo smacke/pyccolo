@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.23 (2022-03-18)
+------------------
+* Support configuring whether global guards enabled;
+* Lazy importer: support unwrapping lazy symbols that result from subscripts;
+
 0.0.22 (2022-03-17)
 ------------------
 * Preserve docstring in function definitions;

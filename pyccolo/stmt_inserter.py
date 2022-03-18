@@ -85,9 +85,12 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         loop_node_copy = cast(
             Union[ast.For, ast.While], self.orig_to_copy_mapping[id(node)]
         )
-        loop_node_copy = self._global_nonlocal_stripper.visit(loop_node_copy)
-        loop_guard = make_guard_name(loop_node_copy)
-        self.register_guard(loop_guard)
+        if self.global_guards_enabled:
+            loop_node_copy = self._global_nonlocal_stripper.visit(loop_node_copy)
+            loop_guard = make_guard_name(loop_node_copy)
+            self.register_guard(loop_guard)
+        else:
+            loop_guard = None
         with fast.location_of(loop_node_copy):
             if isinstance(node, ast.For):
                 before_loop_evt = TraceEvent.before_for_loop_body
@@ -95,38 +98,44 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             else:
                 before_loop_evt = TraceEvent.before_while_loop_body
                 after_loop_evt = TraceEvent.after_while_loop_iter
-            return [
-                fast.If(
-                    test=make_composite_condition(
-                        [
-                            make_test(TRACING_ENABLED),
-                            make_test(loop_guard),
-                            self.emit(
-                                before_loop_evt, node, ret=fast.NameConstant(True)
-                            )
-                            if self.handler_predicate_by_event[before_loop_evt](node)
-                            else None,
-                        ]
+            if self.handler_predicate_by_event[after_loop_evt](node):
+                ret: List[ast.AST] = [
+                    fast.Try(
+                        body=orig_body,
+                        handlers=[],
+                        orelse=[],
+                        finalbody=[
+                            _get_parsed_append_stmt(
+                                cast(ast.stmt, loop_node_copy),
+                                evt=after_loop_evt,
+                                guard=fast.Str(loop_guard),
+                            ),
+                        ],
                     ),
-                    body=[
-                        fast.Try(
-                            body=orig_body,
-                            handlers=[],
-                            orelse=[],
-                            finalbody=[
-                                _get_parsed_append_stmt(
-                                    cast(ast.stmt, loop_node_copy),
-                                    evt=after_loop_evt,
-                                    guard=fast.Str(loop_guard),
-                                ),
-                            ],
+                ]
+            else:
+                ret = orig_body
+            if self.global_guards_enabled:
+                ret = [
+                    fast.If(
+                        test=make_composite_condition(
+                            [
+                                make_test(TRACING_ENABLED),
+                                make_test(loop_guard),
+                                self.emit(
+                                    before_loop_evt, node, ret=fast.NameConstant(True)
+                                )
+                                if self.handler_predicate_by_event[before_loop_evt](
+                                    node
+                                )
+                                else None,
+                            ]
                         ),
-                    ]
-                    if self.handler_predicate_by_event[after_loop_evt](node)
-                    else orig_body,
-                    orelse=loop_node_copy.body,
-                ),
-            ]
+                        body=ret,
+                        orelse=loop_node_copy.body,
+                    )
+                ]
+            return ret
 
     def _handle_function_body(
         self,
@@ -137,9 +146,12 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             Union[ast.FunctionDef, ast.AsyncFunctionDef],
             self.orig_to_copy_mapping[id(node)],
         )
-        fundef_copy = self._global_nonlocal_stripper.visit(fundef_copy)
-        function_guard = make_guard_name(fundef_copy)
-        self.register_guard(function_guard)
+        if self.global_guards_enabled:
+            fundef_copy = self._global_nonlocal_stripper.visit(fundef_copy)
+            function_guard = make_guard_name(fundef_copy)
+            self.register_guard(function_guard)
+        else:
+            function_guard = None
         docstring = []
         if (
             len(orig_body) > 0
@@ -150,46 +162,56 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         if len(orig_body) == 0:
             return docstring
         with fast.location_of(fundef_copy):
-            return docstring + [
-                fast.If(
-                    test=make_composite_condition(
-                        [
-                            make_test(TRACING_ENABLED),
-                            make_test(function_guard),
-                            self.emit(
-                                TraceEvent.before_function_body,
-                                node,
-                                ret=fast.NameConstant(True),
-                            )
-                            if self.handler_predicate_by_event[
-                                TraceEvent.before_function_body
-                            ](fundef_copy)
-                            else None,
-                        ]
+            if self.handler_predicate_by_event[TraceEvent.after_function_execution](
+                fundef_copy
+            ):
+                ret: List[ast.AST] = [
+                    fast.Try(
+                        body=orig_body,
+                        handlers=[],
+                        orelse=[],
+                        finalbody=[
+                            _get_parsed_append_stmt(
+                                cast(ast.stmt, fundef_copy),
+                                evt=TraceEvent.after_function_execution,
+                                guard=fast.Str(function_guard)
+                                if self.global_guards_enabled
+                                else fast.NameConstant(None),
+                            ),
+                        ],
                     ),
-                    body=[
-                        fast.Try(
-                            body=orig_body,
-                            handlers=[],
-                            orelse=[],
-                            finalbody=[
-                                _get_parsed_append_stmt(
-                                    cast(ast.stmt, fundef_copy),
-                                    evt=TraceEvent.after_function_execution,
-                                    guard=fast.Str(function_guard),
-                                ),
-                            ],
+                ]
+            else:
+                ret = orig_body
+            if self.global_guards_enabled:
+                ret = [
+                    fast.If(
+                        test=make_composite_condition(
+                            [
+                                make_test(TRACING_ENABLED),
+                                make_test(function_guard),
+                                self.emit(
+                                    TraceEvent.before_function_body,
+                                    node,
+                                    ret=fast.NameConstant(True),
+                                )
+                                if self.handler_predicate_by_event[
+                                    TraceEvent.before_function_body
+                                ](fundef_copy)
+                                else None,
+                            ]
                         ),
-                    ]
-                    if self.handler_predicate_by_event[
-                        TraceEvent.after_function_execution
-                    ](fundef_copy)
-                    else orig_body,
-                    orelse=fundef_copy.body
-                    if len(docstring) == 0
-                    else fundef_copy.body[len(docstring) :],  # noqa: E203
-                ),
-            ]
+                        body=ret
+                        if self.handler_predicate_by_event[
+                            TraceEvent.after_function_execution
+                        ](fundef_copy)
+                        else orig_body,
+                        orelse=fundef_copy.body
+                        if len(docstring) == 0
+                        else fundef_copy.body[len(docstring) :],  # noqa: E203
+                    ),
+                ]
+            return docstring + ret
 
     def _handle_module_body(
         self, node: ast.Module, orig_body: List[ast.stmt]
