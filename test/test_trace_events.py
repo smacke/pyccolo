@@ -313,6 +313,92 @@ def test_lambda_in_tuple(events):
 
 @given(events=subsets(set(pyc.TraceEvent)))
 @patch_events_and_emitter
+def test_decorator(events):
+    assert _RECORDED_EVENTS == []
+    pyc.BaseTracer().exec(
+        """
+        def bar(name):
+            def decorator(func):
+                func.__name__ = name
+                return func
+            return decorator
+        name = "bar"
+        @bar(name)
+        def foo():
+            return 42
+        assert foo() == 42
+        """,
+        filename=_FILENAME,
+    )
+    throw_and_print_diff_if_recorded_not_equal_to(
+        filter_events_to_subset(
+            [
+                pyc.init_module,
+                pyc.before_stmt,
+                pyc.after_stmt,
+                pyc.after_module_stmt,
+                pyc.before_stmt,
+                pyc.before_assign_rhs,
+                pyc.after_assign_rhs,
+                pyc.after_stmt,
+                pyc.after_module_stmt,
+                pyc.before_stmt,
+                pyc.before_load_complex_symbol,
+                pyc.load_name,
+                pyc.before_call,
+                pyc.load_name,
+                pyc.argument,
+                pyc.before_function_body,
+                pyc.before_stmt,
+                pyc.after_stmt,
+                pyc.before_stmt,
+                pyc.before_return,
+                pyc.load_name,
+                pyc.after_return,
+                pyc.after_function_execution,
+                pyc.after_call,
+                pyc.after_load_complex_symbol,
+                pyc.before_function_body,
+                pyc.before_stmt,
+                pyc.before_assign_rhs,
+                pyc.load_name,
+                pyc.after_assign_rhs,
+                pyc.load_name,
+                pyc.before_attribute_store,
+                pyc.after_stmt,
+                pyc.before_stmt,
+                pyc.before_return,
+                pyc.load_name,
+                pyc.after_return,
+                pyc.after_function_execution,
+                pyc.after_stmt,
+                pyc.after_module_stmt,
+                pyc.before_stmt,
+                pyc.before_compare,
+                pyc.before_load_complex_symbol,
+                pyc.load_name,
+                pyc.before_call,
+                pyc.before_function_body,
+                pyc.before_stmt,
+                pyc.before_return,
+                pyc.after_return,
+                pyc.after_function_execution,
+                pyc.after_call,
+                pyc.after_load_complex_symbol,
+                pyc.left_compare_arg,
+                pyc.compare_arg,
+                pyc.after_compare,
+                pyc.after_stmt,
+                pyc.after_module_stmt,
+                pyc.exit_module,
+            ],
+            events,
+        )
+    )
+
+
+@given(events=subsets(set(pyc.TraceEvent)))
+@patch_events_and_emitter
 def test_fundef_defaults(events):
     assert _RECORDED_EVENTS == []
     pyc.BaseTracer().exec(
