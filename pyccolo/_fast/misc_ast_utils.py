@@ -40,7 +40,7 @@ def make_composite_condition(
     op: Optional[ast.AST] = None,
 ) -> ast.expr:
     conditions = [
-        fast.Name(cond, ctx=ast.Load()) if isinstance(cond, str) else cond
+        fast.Name(cond, ast.Load()) if isinstance(cond, str) else cond
         for cond in nullable_conditions
         if cond is not None
     ]

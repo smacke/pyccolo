@@ -675,8 +675,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     ret=self.make_lambda(
                         body=fast.BinOp(
                             op=op,
-                            left=fast.Name(id="x", ctx=ast.Load()),
-                            right=fast.Name(id="y", ctx=ast.Load()),
+                            left=fast.Name("x", ast.Load()),
+                            right=fast.Name("y", ast.Load()),
                         ),
                         args=[fast.arg("x", None), fast.arg("y", None)],
                     ),
@@ -719,9 +719,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     ret=self.make_lambda(
                         body=fast.Compare(
                             ops=node.ops,
-                            left=fast.Name(id="x", ctx=ast.Load()),
+                            left=fast.Name("x", ast.Load()),
                             comparators=[
-                                fast.Name(id=f"y_{i}", ctx=ast.Load())
+                                fast.Name(f"y_{i}", ast.Load())
                                 for i in range(len(node.comparators))
                             ],
                         ),
