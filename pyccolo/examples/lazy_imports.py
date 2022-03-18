@@ -8,6 +8,7 @@ from types import FrameType
 from typing import Any, List, Optional, Set, Union
 
 import pyccolo as pyc
+from pyccolo._fast.misc_ast_utils import subscript_to_slice
 
 
 logger = logging.getLogger(__name__)
@@ -132,18 +133,53 @@ def _make_attr_guard(node: ast.Attribute) -> Optional[str]:
         return f"_Xix_{suffix}"
 
 
+def _make_subscript_guard_helper(node: ast.Subscript) -> Optional[str]:
+    slice_val = subscript_to_slice(node)
+    if isinstance(slice_val, (ast.Constant, ast.Str, ast.Num, ast.Name)):
+        if isinstance(slice_val, ast.Name):
+            subscript = slice_val.id
+        elif getattr(slice_val, "s", None) is not None:
+            subscript = f"_{slice_val.s}_"
+        elif getattr(slice_val, "n", None) is not None:
+            subscript = f"_{slice_val.n}_"
+        else:
+            return None
+    else:
+        return None
+    if isinstance(node.value, ast.Name):
+        return f"{node.value.id}_S_{subscript}"
+    elif isinstance(node.value, ast.Subscript):
+        prefix = _make_subscript_guard_helper(node.value)
+        if prefix is None:
+            return None
+        else:
+            return f"{prefix}_S_{subscript}"
+    else:
+        return None
+
+
+def _make_subscript_guard(node: ast.Subscript) -> Optional[str]:
+    suffix = _make_subscript_guard_helper(node)
+    if suffix is None:
+        return None
+    else:
+        return f"_Xix_{suffix}"
+
+
 class LazyImportTracer(pyc.BaseTracer):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.cur_module_lazy_names: Set[str] = set()
-        self.saved_attributes: List[str] = []
+        self.saved_attributes: List[Any] = []
+        self.saved_subscripts: List[Any] = []
+        self.saved_slices: List[Any] = []
 
     def _is_name_lazy_load(self, node: Union[ast.Attribute, ast.Name]) -> bool:
         if self.cur_module_lazy_names is None:
             return True
         elif isinstance(node, ast.Name):
             return node.id in self.cur_module_lazy_names
-        elif isinstance(node, ast.Attribute):
+        elif isinstance(node, (ast.Attribute, ast.Subscript)):
             return self._is_name_lazy_load(node.value)  # type: ignore
         elif isinstance(node, ast.Call):
             return self._is_name_lazy_load(node.func)
@@ -228,6 +264,29 @@ class LazyImportTracer(pyc.BaseTracer):
         if isinstance(ret, _LazySymbol):
             ret = ret.unwrap()
             setattr(saved_attr_obj, node.attr, ret)
+        return pyc.Null if ret is None else ret
+
+    @pyc.before_subscript_load(
+        when=pyc.Predicate(_is_name_lazy_load, static=True), guard=_make_subscript_guard
+    )
+    def before_subscript_load(self, ret: Any, *_, attr_or_subscript: Any, **__) -> Any:
+        self.saved_subscripts.append(ret)
+        self.saved_slices.append(attr_or_subscript)
+        return ret
+
+    @pyc.after_subscript_load(
+        when=pyc.Predicate(_is_name_lazy_load, static=True), guard=_make_subscript_guard
+    )
+    def after_subscript_load(
+        self, ret: Any, _node, frame: FrameType, _evt, guard, *_, **__
+    ) -> Any:
+        if guard is not None:
+            frame.f_globals[guard] = True
+        saved_subscript_obj = self.saved_subscripts.pop()
+        saved_slice_obj = self.saved_slices.pop()
+        if isinstance(ret, _LazySymbol):
+            ret = ret.unwrap()
+            saved_subscript_obj[saved_slice_obj] = ret
         return pyc.Null if ret is None else ret
 
     @pyc.load_name(
