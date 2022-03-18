@@ -24,7 +24,7 @@ tools and other instrumentation:
 - Syntactic macros such as quasiquotes (like [MacroPy's](https://macropy3.readthedocs.io/en/latest/reference.html#quasiquote)) or quick lambdas; see [pyccolo/examples/quasiquote.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/quasiquote.py) and [pyccolo/examples/quick_lambda.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/quick_lambda.py)
 - Syntax-augmented Python (3.8 and up, see [pyccolo/examples/null_coalesce.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/null_coalesce.py))
 - Dynamic dataflow analysis performed by [nbsafety](https://github.com/nbsafety-project/nbsafety)
-- Tools to find unused imports at runtime (candidates for lazy importing)
+- Tools to perform (most) imports lazily (see [pyccolo/examples/lazy_imports.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/lazy_imports.py))
 - Tools to uncover [semantic memory leaks](http://ithare.com/java-vs-c-trading-ub-for-semantic-memory-leaks-same-problem-different-punishment-for-failure/)
 - \<Your tool here!>
 

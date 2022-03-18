@@ -1,6 +1,13 @@
 History
 =======
 
+0.0.22 (2022-03-17)
+------------------
+* Preserve docstring in function definitions;
+* Perform __future__ imports first;
+* Add local guard functionality;
+* Add lazy import example;
+
 0.0.21 (2022-03-02)
 ------------------
 * Bugfixes and improvements to FutureTracer example;
