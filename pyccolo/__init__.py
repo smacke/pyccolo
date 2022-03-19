@@ -37,6 +37,9 @@ from pyccolo.version import __version__
 event = TraceEvent
 
 
+call = TraceEvent.call
+return_ = TraceEvent.return_
+exception = TraceEvent.exception
 init_module = TraceEvent.init_module
 exit_module = TraceEvent.exit_module
 before_stmt = TraceEvent.before_stmt
