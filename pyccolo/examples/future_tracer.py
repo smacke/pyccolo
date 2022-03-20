@@ -173,9 +173,7 @@ class FutureTracer(pyc.BaseTracer):
             return ret
 
     @pyc.before_assign_rhs(
-        when=lambda node: FutureTracer.is_outer_stmt(
-            node, exclude_outer_stmt_types={ast.Try}
-        )
+        when=lambda node: pyc.is_outer_stmt(node, exclude_outer_stmt_types={ast.Try})
     )
     def handle_assign_rhs(self, ret, node, frame, *_, **__):
         stmt = self.containing_stmt_by_id[id(node)]

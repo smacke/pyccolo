@@ -198,6 +198,9 @@ def tracing_disabled(tracers=None, **kwargs):
         yield
 
 
+is_outer_stmt = BaseTracer.is_outer_stmt
+
+
 __all__ = [
     "__version__",
     "AstRewriter",
@@ -216,6 +219,7 @@ __all__ = [
     "execute",
     "instance",
     "instrumented",
+    "is_outer_stmt",
     "make_guard_name",
     "multi_context",
     "parse",

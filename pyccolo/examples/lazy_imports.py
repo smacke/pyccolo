@@ -210,7 +210,7 @@ class LazyImportTracer(pyc.BaseTracer):
     @pyc.before_stmt(
         when=pyc.Predicate(
             lambda node: isinstance(node, (ast.Import, ast.ImportFrom))
-            and pyc.BaseTracer.is_outer_stmt(node),
+            and pyc.is_outer_stmt(node),
             static=True,
         )
     )
