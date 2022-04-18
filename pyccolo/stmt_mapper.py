@@ -39,6 +39,11 @@ class StatementMapper(ast.NodeVisitor):
         elif isinstance(node, ast.AsyncFunctionDef):
             # TODO: can be different if more spaces between 'async', 'def', and function name
             return node.col_offset + 10
+        elif isinstance(node, ast.Import) and len(node.names) == 1:
+            name = node.names[0]
+            return (
+                node.col_offset + 7 + (0 if name.asname is None else len(name.name) + 1)
+            )
         else:
             return None
 
@@ -57,6 +62,14 @@ class StatementMapper(ast.NodeVisitor):
         elif isinstance(node, ast.AsyncFunctionDef):
             # TODO: can be different if more spaces between 'async', 'def', and function name
             return node.col_offset + 10 + len(node.name)
+        elif isinstance(node, ast.Import) and len(node.names) == 1:
+            name = node.names[0]
+            col_offset = node.col_offset + 7
+            if name.asname is None:
+                col_offset += len(name.name)
+            else:
+                col_offset += len(name.name) + 1 + len(name.asname)
+            return col_offset
         else:
             return None
 

@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.24 (2022-04-18)
+------------------
+* Allow prefix / suffix augmentations for import statements;
+
 0.0.23 (2022-03-18)
 ------------------
 * Support configuring whether global guards enabled;
