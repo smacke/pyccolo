@@ -39,10 +39,14 @@ class StatementMapper(ast.NodeVisitor):
         elif isinstance(node, ast.AsyncFunctionDef):
             # TODO: can be different if more spaces between 'async', 'def', and function name
             return node.col_offset + 10
-        elif isinstance(node, ast.Import) and len(node.names) == 1:
+        elif isinstance(node, (ast.Import, ast.ImportFrom)) and len(node.names) == 1:
+            # "import " vs "from <base_module> import "
+            base_offset = 7 if isinstance(node, ast.Import) else 13 + len(node.module)
             name = node.names[0]
             return (
-                node.col_offset + 7 + (0 if name.asname is None else len(name.name) + 1)
+                node.col_offset
+                + base_offset
+                + (0 if name.asname is None else len(name.name) + 1)
             )
         else:
             return None
@@ -62,9 +66,11 @@ class StatementMapper(ast.NodeVisitor):
         elif isinstance(node, ast.AsyncFunctionDef):
             # TODO: can be different if more spaces between 'async', 'def', and function name
             return node.col_offset + 10 + len(node.name)
-        elif isinstance(node, ast.Import) and len(node.names) == 1:
+        elif isinstance(node, (ast.Import, ast.ImportFrom)) and len(node.names) == 1:
             name = node.names[0]
-            col_offset = node.col_offset + 7
+            # "import " vs "from <base_module> import "
+            base_offset = 7 if isinstance(node, ast.Import) else 13 + len(node.module)
+            col_offset = node.col_offset + base_offset
             if name.asname is None:
                 col_offset += len(name.name)
             else:

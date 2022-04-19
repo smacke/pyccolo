@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.25 (2022-04-18)
+------------------
+* Allow prefix / suffix augmentations for importfrom statements;
+
 0.0.24 (2022-04-18)
 ------------------
 * Allow prefix / suffix augmentations for import statements;
