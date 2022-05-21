@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.26 (2022-05-21)
+------------------
+* Get rid of phantom dependency on pytest;
+
 0.0.25 (2022-04-18)
 ------------------
 * Allow prefix / suffix augmentations for importfrom statements;
