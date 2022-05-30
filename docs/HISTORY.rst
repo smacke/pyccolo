@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.27 (2022-05-30)
+------------------
+* OptionalChainer -> NullCoalescer;
+
 0.0.26 (2022-05-21)
 ------------------
 * Get rid of phantom dependency on pytest;

@@ -120,6 +120,7 @@ def remove_pyccolo_modules():
 
 if __name__ == "__main__":
     import pytest
+
     sys.path.insert(0, ".")
     # now clear pyccolo modules so that they get reimported, and instrumented
     # can be omitted for non-pyccolo projects

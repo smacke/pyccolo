@@ -9,7 +9,7 @@ if sys.version_info >= (3, 8):  # noqa
         # just make sure it doesn't raise
         run(
             make_parser().parse_args(
-                "./test/uses_null_coalesce.py -t pyccolo.examples.NullCoalescer".split()
+                "./test/uses_optional_chaining.py -t pyccolo.examples.OptionalChainer".split()
             )
         )
 
@@ -17,6 +17,6 @@ if sys.version_info >= (3, 8):  # noqa
         # just make sure it doesn't raise
         run(
             make_parser().parse_args(
-                "-m test.uses_null_coalesce -t pyccolo.examples.NullCoalescer".split()
+                "-m test.uses_optional_chaining -t pyccolo.examples.OptionalChainer".split()
             )
         )

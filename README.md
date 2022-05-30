@@ -22,7 +22,7 @@ Pyccolo can be used (and has been used) to implement various kinds of dynamic an
 tools and other instrumentation:
 - Code coverage (see [pyccolo/examples/coverage.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/coverage.py))
 - Syntactic macros such as quasiquotes (like [MacroPy's](https://macropy3.readthedocs.io/en/latest/reference.html#quasiquote)) or quick lambdas; see [pyccolo/examples/quasiquote.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/quasiquote.py) and [pyccolo/examples/quick_lambda.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/quick_lambda.py)
-- Syntax-augmented Python (3.8 and up, see [pyccolo/examples/null_coalesce.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/null_coalesce.py))
+- Syntax-augmented Python (3.8 and up, see [pyccolo/examples/optional_chaining.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/optional_chaining.py))
 - Dynamic dataflow analysis performed by [nbsafety](https://github.com/nbsafety-project/nbsafety)
 - Tools to perform (most) imports lazily (see [pyccolo/examples/lazy_imports.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/lazy_imports.py))
 - Tools to uncover [semantic memory leaks](http://ithare.com/java-vs-c-trading-ub-for-semantic-memory-leaks-same-problem-different-punishment-for-failure/)
@@ -162,7 +162,7 @@ later when instrumentation is not desired).
 ## Command Line Interface
 
 You can execute arbitrary scripts with instrumentation enabled with the `pyc` command line tool.
-For example, to use the `NullCoalescer` tracer defined in [pyccolo/examples/null_coalesce.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/null_coalesce.py),
+For example, to use the `OptionalChainer` tracer defined in [pyccolo/examples/optional_chaining.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/optional_chaining.py),
 you can call `pyc` as follows, given some example script `bar.py`:
 
 ```python
@@ -173,13 +173,13 @@ print(bar?.foo)
 ```
 
 ```bash
-> pyc bar.py -t pyccolo.examples.NullCoalescer
+> pyc bar.py -t pyccolo.examples.OptionalChainer
 ```
 
 You can also run `bar` as a module (indeed, `pyc` performs this internally when provided a file):
 
 ```bash
-> pyc -m bar -t pyccolo.examples.NullCoalescer
+> pyc -m bar -t pyccolo.examples.OptionalChainer
 ```
 
 Note that you can specify multiple tracer classes after the `-t` argument;

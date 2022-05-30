@@ -12,7 +12,7 @@ null_coalesce_spec = pyc.AugmentationSpec(
 )
 
 
-class NullCoalescer(pyc.BaseTracer):
+class OptionalChainer(pyc.BaseTracer):
     class DotIsAlwaysNone:
         def __getattr__(self, _item):
             return None

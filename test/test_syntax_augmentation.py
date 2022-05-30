@@ -35,9 +35,9 @@ if sys.version_info >= (3, 8):  # noqa
     )
 
     def test_coalescing_dot():
-        from pyccolo.examples import NullCoalescer
+        from pyccolo.examples import OptionalChainer
 
-        NullCoalescer.instance().exec(
+        OptionalChainer.instance().exec(
             """
             class Foo:
                 def __init__(self, x):

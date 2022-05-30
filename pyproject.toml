@@ -12,7 +12,7 @@ enabled = true
 [tool.black]
 line-length = 88
 target-version = ['py39']
-extend-exclude = '(^/versioneer|_version|.*uses_null_coalesce)\.py'
+extend-exclude = '(^/versioneer|_version|.*uses_optional_chaining)\.py'
 
 [tool.pytest.ini_options]
 markers = ['integration: mark a test as an integration test.']
