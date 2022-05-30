@@ -287,18 +287,19 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             with fast.location_of(maybe_kwarg):
                 with self.attrsub_context(None):
                     new_arg_value = self.visit(maybe_kwarg)
-                if self.handler_predicate_by_event[TraceEvent.argument](maybe_kwarg):
-                    with self.attrsub_context(None):
-                        new_arg_value = cast(
-                            ast.expr,
-                            self.emit(
-                                TraceEvent.argument,
-                                maybe_kwarg,
-                                ret=new_arg_value,
-                                is_starred=fast.NameConstant(is_starred),
-                                is_kwstarred=fast.NameConstant(is_kwstarred),
-                            ),
-                        )
+                for arg_evt in (TraceEvent.before_argument, TraceEvent.after_argument):
+                    if self.handler_predicate_by_event[arg_evt](maybe_kwarg):
+                        with self.attrsub_context(None):
+                            new_arg_value = cast(
+                                ast.expr,
+                                self.emit(
+                                    arg_evt,
+                                    maybe_kwarg,
+                                    ret=new_arg_value,
+                                    is_starred=fast.NameConstant(is_starred),
+                                    is_kwstarred=fast.NameConstant(is_kwstarred),
+                                ),
+                            )
                 if keywords or is_starred:
                     setattr(arg, "value", new_arg_value)
                 else:

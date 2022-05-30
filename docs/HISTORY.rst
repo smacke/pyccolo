@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.28 (2022-05-30)
+------------------
+* Add 'before_argument' event;
+* OptionalChainer improvements;
+
 0.0.27 (2022-05-30)
 ------------------
 * OptionalChainer -> NullCoalescer;

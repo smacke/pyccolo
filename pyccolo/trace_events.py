@@ -46,7 +46,8 @@ class TraceEvent(Enum):
 
     before_call = "before_call"
     after_call = "after_call"
-    argument = "argument"
+    before_argument = "before_argument"
+    after_argument = "after_argument"
     before_return = "before_return"
     after_return = "after_return"
 
@@ -123,6 +124,7 @@ SYS_TRACE_EVENTS = {
 
 
 BEFORE_EXPR_EVENTS = {
+    TraceEvent.before_argument,
     TraceEvent.before_assign_rhs,
     TraceEvent.before_augassign_rhs,
     TraceEvent.before_binop,

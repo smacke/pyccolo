@@ -34,7 +34,7 @@ if sys.version_info >= (3, 8):  # noqa
         aug_type=pyc.AugmentationType.dot, token="?.", replacement="."
     )
 
-    def test_coalescing_dot():
+    def test_optional_chaining():
         from pyccolo.examples import OptionalChainer
 
         OptionalChainer.instance().exec(
@@ -50,6 +50,7 @@ if sys.version_info >= (3, 8):  # noqa
             else:
                 assert False
             assert foo.x.x.x?.x is None
+            assert foo.x.x.x?.x() is None
             assert foo.x.x.x?.x?.whatever is None
             assert isinstance(foo?.x?.x, Foo)
             assert isinstance(foo.x?.x, Foo)
