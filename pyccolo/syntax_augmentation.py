@@ -43,6 +43,32 @@ class AugmentationSpec(NamedTuple):
         return re.escape(self.token)
 
 
+# TODO: figure out how to use rulex template
+# https://rulex-rs.github.io/playground/
+
+# let any = [s S];
+# let v = "'";
+# let w = '"';
+# let vvv = "'''";
+# let www = '"""';
+# <%
+# (
+#   (
+#     (!>>v)
+#     (!>>w)
+#     (!>>vvv)
+#     (!>>www)
+#     any
+#   )
+#   | v   ( (!>>v)   any)* v
+#   | w   ( (!>>w)   any)* w
+#   | vvv ( (!>>vvv) any)* vvv
+#   | www ( (!>>www) any)* www
+# )* lazy
+# ('{token}')
+# %>
+
+
 AUGMENTED_SYNTAX_REGEX_TEMPLATE = "".join(
     r"^(?:"
     r"   (?:"
