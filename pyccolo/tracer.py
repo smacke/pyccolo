@@ -971,3 +971,19 @@ class BaseTracer(_InternalBaseTracer):
         ):
             parent_stmt = cls.parent_stmt_by_id.get(id(parent_stmt), None)
         return parent_stmt is None or isinstance(parent_stmt, ast.Module)
+
+
+class NoopTracer(BaseTracer):
+    @property
+    def should_patch_meta_path(self) -> bool:
+        return False
+
+    @property
+    def global_guards_enabled(self) -> bool:
+        return False
+
+    def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
+        return False
+
+    def should_instrument_file(self, filename: str) -> bool:
+        return False

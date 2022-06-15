@@ -15,6 +15,10 @@ def test_sandbox():
     assert env["x"] == 43
     assert len(env) == 1, "got %s" % env
 
+    f = pyc.exec("def f(): return 42", local_env={})["f"]
+    assert f() == 42
+    assert len(env) == 1, "got %s" % env
+
 
 def test_docstring_preserved():
     env = pyc.exec(

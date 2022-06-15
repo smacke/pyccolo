@@ -23,6 +23,7 @@ from pyccolo.trace_events import TraceEvent
 from pyccolo.trace_stack import TraceStack
 from pyccolo.tracer import (
     BaseTracer,
+    NoopTracer,
     Null,
     Pass,
     Skip,
@@ -115,7 +116,7 @@ def tracer() -> BaseTracer:
     if len(_TRACER_STACK) > 0:
         return _TRACER_STACK[-1]
     else:
-        return BaseTracer()
+        return NoopTracer.instance()
 
 
 def instance() -> BaseTracer:
@@ -188,13 +189,18 @@ def tracing_context(tracers=None, *args, **kwargs):
 @contextmanager
 def tracing_enabled(tracers=None, **kwargs):
     tracers = _TRACER_STACK if tracers is None else tracers
+    if len(tracers) == 0:
+        raise ValueError("Expected at least one tracer to enable")
     with multi_context([tracer.tracing_enabled(**kwargs) for tracer in tracers]):
         yield
 
 
 @contextmanager
 def tracing_disabled(tracers=None, **kwargs):
-    tracers = _TRACER_STACK if tracers is None else tracers
+    if tracers is None:
+        tracers = _TRACER_STACK
+        if len(tracers) == 0:
+            tracers = [NoopTracer.instance()]
     with multi_context([tracer.tracing_disabled(**kwargs) for tracer in tracers]):
         yield
 
@@ -208,6 +214,7 @@ __all__ = [
     "AugmentationSpec",
     "AugmentationType",
     "BaseTracer",
+    "NoopTracer",
     "Null",
     "Pass",
     "Predicate",
