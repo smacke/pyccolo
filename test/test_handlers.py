@@ -621,7 +621,7 @@ def test_quasiquotes():
 
 
 def test_quick_lambda():
-    from pyccolo.examples import QuickLambdaTracer, Quasiquoter
+    from pyccolo.examples import Quasiquoter, QuickLambdaTracer
 
     Quasiquoter.clear_instance()
     with QuickLambdaTracer.instance():

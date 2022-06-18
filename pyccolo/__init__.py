@@ -11,14 +11,12 @@ import textwrap
 import types
 from contextlib import contextmanager
 from typing import Any, Dict, Union
+
 from pyccolo.ast_rewriter import AstRewriter
-from pyccolo.emit_event import _TRACER_STACK, allow_reentrant_event_handling, SkipAll
+from pyccolo.emit_event import _TRACER_STACK, SkipAll, allow_reentrant_event_handling
 from pyccolo.extra_builtins import make_guard_name
 from pyccolo.predicate import Predicate
-from pyccolo.syntax_augmentation import (
-    AugmentationSpec,
-    AugmentationType,
-)
+from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
 from pyccolo.trace_events import TraceEvent
 from pyccolo.trace_stack import TraceStack
 from pyccolo.tracer import (
@@ -33,7 +31,6 @@ from pyccolo.tracer import (
 )
 from pyccolo.utils import multi_context, resolve_tracer
 from pyccolo.version import __version__
-
 
 event = TraceEvent
 

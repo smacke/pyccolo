@@ -2,7 +2,6 @@
 import ast
 from typing import Union
 
-
 EMIT_EVENT = "_X5ix_PYCCOLO_EVT_EMIT"
 TRACE_LAMBDA = "X5ix_PYCCOLO_TRACE_LAM"
 EXEC_SAVED_THUNK = "_X5ix_PYCCOLO_EXEC_SAVED_THUNK"

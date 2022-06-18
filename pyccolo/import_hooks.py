@@ -5,11 +5,10 @@ import sys
 from contextlib import contextmanager
 from importlib.abc import MetaPathFinder
 from importlib.machinery import SourceFileLoader
-from importlib.util import spec_from_loader, decode_source
+from importlib.util import decode_source, spec_from_loader
 from typing import Callable, Generator
 
 from pyccolo.trace_events import TraceEvent
-
 
 logger = logging.getLogger(__name__)
 

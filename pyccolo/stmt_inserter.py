@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 import logging
-from typing import cast, TYPE_CHECKING, Callable, DefaultDict, Dict, List, Union
+from typing import TYPE_CHECKING, Callable, DefaultDict, Dict, List, Union, cast
 
 from pyccolo import fast
 from pyccolo.extra_builtins import (
@@ -10,8 +10,8 @@ from pyccolo.extra_builtins import (
     TRACING_ENABLED,
     make_guard_name,
 )
+from pyccolo.fast import EmitterMixin, make_composite_condition, make_test
 from pyccolo.trace_events import TraceEvent
-from pyccolo.fast import EmitterMixin, make_test, make_composite_condition
 
 if TYPE_CHECKING:
     from pyccolo.ast_rewriter import GUARD_DATA_T

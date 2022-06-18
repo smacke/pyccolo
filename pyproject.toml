@@ -14,6 +14,14 @@ line-length = 88
 target-version = ['py39']
 extend-exclude = '(^/versioneer|_version|.*uses_optional_chaining)\.py'
 
+[tool.isort]
+profile = 'black'
+extend_skip_glob = [
+    '**/versioneer.py',
+    '**/_version.py',
+    '**/setup.py',
+]
+
 [tool.pytest.ini_options]
 markers = ['integration: mark a test as an integration test.']
 filterwarnings = [

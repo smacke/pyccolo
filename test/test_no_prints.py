@@ -8,7 +8,6 @@ import os
 
 import pyccolo
 
-
 join = os.path.join
 root = join(os.curdir, pyccolo.__name__)
 

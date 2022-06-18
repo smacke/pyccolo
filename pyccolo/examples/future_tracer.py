@@ -13,7 +13,6 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 import pyccolo as pyc
 import pyccolo.fast as fast
 
-
 try:
     from IPython import get_ipython
 except ImportError:

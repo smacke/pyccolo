@@ -14,9 +14,11 @@ deploy: build
 	./scripts/deploy.sh
 
 black:
+	isort .
 	./scripts/blacken.sh
 
 blackcheck:
+	isort . --check-only
 	./scripts/blacken.sh --check
 
 lint:

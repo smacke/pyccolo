@@ -12,7 +12,6 @@ from collections import defaultdict
 from contextlib import contextmanager, suppress
 from types import CodeType, FrameType
 from typing import (
-    cast,
     TYPE_CHECKING,
     Any,
     Callable,
@@ -26,15 +25,16 @@ from typing import (
     Set,
     Tuple,
     Type,
-    Union,
     TypeVar,
+    Union,
+    cast,
 )
 
 from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
 
 from pyccolo.ast_rewriter import AstRewriter
-from pyccolo.emit_event import _emit_event, _TRACER_STACK, SkipAll
+from pyccolo.emit_event import _TRACER_STACK, SkipAll, _emit_event
 from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
@@ -48,7 +48,6 @@ from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
 from pyccolo.trace_events import AST_TO_EVENT_MAPPING, SYS_TRACE_EVENTS, TraceEvent
 from pyccolo.trace_stack import TraceStack
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)

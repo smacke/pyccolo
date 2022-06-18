@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import ast
+
 from .._fast import (
     EmitterMixin,
     FastAst,
@@ -7,7 +8,6 @@ from .._fast import (
     make_test,
     subscript_to_slice,
 )
-
 
 location_of = FastAst.location_of
 kw = FastAst.kw

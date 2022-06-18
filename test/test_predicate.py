@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import random
+
 from pyccolo.predicate import CompositePredicate, Predicate
 
 

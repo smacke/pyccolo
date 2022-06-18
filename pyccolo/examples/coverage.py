@@ -13,7 +13,6 @@ from collections import Counter
 import pyccolo as pyc
 from pyccolo.import_hooks import patch_meta_path
 
-
 logger = logging.getLogger(__name__)
 
 

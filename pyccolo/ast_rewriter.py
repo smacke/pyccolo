@@ -21,8 +21,8 @@ from pyccolo.handler import HandlerSpec
 from pyccolo.predicate import CompositePredicate, Predicate
 from pyccolo.stmt_inserter import StatementInserter
 from pyccolo.stmt_mapper import StatementMapper
-from pyccolo.trace_events import TraceEvent
 from pyccolo.syntax_augmentation import AugmentationSpec, fix_positions
+from pyccolo.trace_events import TraceEvent
 
 if TYPE_CHECKING:
     from pyccolo.tracer import BaseTracer

@@ -10,7 +10,6 @@ from typing import Any, List, Optional, Set, Union
 import pyccolo as pyc
 from pyccolo._fast.misc_ast_utils import subscript_to_slice
 
-
 logger = logging.getLogger(__name__)
 
 

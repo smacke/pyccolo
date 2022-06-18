@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
-from typing import overload, Callable, Optional, Sequence, Union
+from typing import Callable, Optional, Sequence, Union, overload
+
 from typing_extensions import Literal
 
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys
-from pyccolo.__main__ import make_parser, run
 
+from pyccolo.__main__ import make_parser, run
 
 if sys.version_info >= (3, 8):  # noqa
 

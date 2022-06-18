@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import ast
 import sys
-import pyccolo as pyc
 
+import pyccolo as pyc
 
 if sys.version_info >= (3, 8):  # noqa
 

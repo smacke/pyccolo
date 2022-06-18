@@ -7,7 +7,6 @@ from .misc_ast_utils import (
     subscript_to_slice,
 )
 
-
 __all__ = [
     "EmitterMixin",
     "FastAst",
