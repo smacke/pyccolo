@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-.PHONY: clean build bump deploy blackcheck lint typecheck check_no_typing check test tests coverage xmlcov check_ci deps devdeps
+.PHONY: clean build bump deploy black blackcheck imports lint typecheck check_no_typing check test tests coverage xmlcov check_ci deps devdeps
 
 clean:
 	rm -rf __pycache__ build/ dist/ *.egg-info/ .coverage htmlcov
@@ -20,6 +20,10 @@ black:
 blackcheck:
 	isort . --check-only
 	./scripts/blacken.sh --check
+
+imports:
+	pycln .
+	isort .
 
 lint:
 	flake8
