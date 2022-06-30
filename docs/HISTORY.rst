@@ -8,7 +8,7 @@ History
 
 0.0.27 (2022-05-30)
 ------------------
-* OptionalChainer -> NullCoalescer;
+* NullCoalescer -> OptionalChainer;
 
 0.0.26 (2022-05-21)
 ------------------
