@@ -1,7 +1,7 @@
 History
 =======
 
-0.0.29 (2022-07-02)
+0.0.30 (2022-07-02)
 ------------------
 * Better version handling;
 * Add NoopTracer just for use with exec / eval;
