@@ -12,11 +12,12 @@ enabled = true
 [tool.black]
 line-length = 88
 target-version = ['py39']
-extend-exclude = '(^/versioneer|_version|.*uses_optional_chaining)\.py'
+extend-exclude = '(^/pyccolo/__init__|^/versioneer|_version|.*uses_optional_chaining)\.py'
 
 [tool.isort]
 profile = 'black'
 extend_skip_glob = [
+    '**/pyccolo/__init__.py',
     '**/versioneer.py',
     '**/_version.py',
     '**/setup.py',

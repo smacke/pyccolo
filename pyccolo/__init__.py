@@ -30,7 +30,6 @@ from pyccolo.tracer import (
     skip_when_tracing_disabled,
 )
 from pyccolo.utils import multi_context, resolve_tracer
-from pyccolo.version import __version__
 
 event = TraceEvent
 
@@ -241,3 +240,6 @@ __all__ = [
 
 # all the events now
 __all__.extend(evt.name for evt in TraceEvent)
+
+from . import _version
+__version__ = _version.get_versions()['version']

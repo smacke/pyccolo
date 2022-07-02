@@ -1,2 +1,4 @@
 include README.md docs/HISTORY.rst
 recursive-exclude test *
+include versioneer.py
+include pyccolo/_version.py

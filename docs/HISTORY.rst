@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.29 (2022-07-02)
+------------------
+* Better version handling;
+* Add NoopTracer just for use with exec / eval;
+
 0.0.28 (2022-05-30)
 ------------------
 * Add 'before_argument' event;
