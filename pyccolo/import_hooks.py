@@ -39,8 +39,9 @@ class TraceLoader(SourceFileLoader):
             self._augmentation_context = orig_aug_context
 
     def get_data(self, path) -> bytes:
+        path_str = str(path)
         if self._augmentation_context or not any(
-            tracer._should_instrument_file_impl(path) for tracer in self._tracers
+            tracer._should_instrument_file_impl(path_str) for tracer in self._tracers
         ):
             return super().get_data(path)
         with self.syntax_augmentation_context():
@@ -68,8 +69,9 @@ class TraceLoader(SourceFileLoader):
             # way I can think of to ensure that source transformations
             # happen in the correct order.
             source = str(source_bytes, encoding="utf-8")
+        source_path_str = str(source_path)
         for tracer, augmenters in self._syntax_augmenters:
-            if not tracer._should_instrument_file_impl(source_path):
+            if not tracer._should_instrument_file_impl(source_path_str):
                 continue
             for augmenter in augmenters:
                 source = augmenter(source)
@@ -78,9 +80,11 @@ class TraceLoader(SourceFileLoader):
         return source
 
     def source_to_code(self, data, path, *, _optimize=-1):
+        path_str = str(path)
         try:
             if any(
-                tracer._should_instrument_file_impl(path) for tracer in self._tracers
+                tracer._should_instrument_file_impl(path_str)
+                for tracer in self._tracers
             ):
                 return compile(
                     self._ast_rewriter.visit(ast.parse(data)),
@@ -96,13 +100,25 @@ class TraceLoader(SourceFileLoader):
             return super().source_to_code(data, path, _optimize=_optimize)
 
     def exec_module(self, module: ModuleType) -> None:
-        for tracer in self._tracers:
+        source_path = str(self.get_filename(module.__name__))
+        should_reenable_saved_state = []
+        for tracer in reversed(self._tracers):
             tracer._emit_event(
                 TraceEvent.before_import.value, None, None, module=module
             )
+            should_disable = (
+                tracer._is_tracing_enabled
+                and not tracer._should_instrument_file_impl(source_path)
+            )
+            should_reenable_saved_state.append(should_disable)
+            if should_disable:
+                tracer._disable_tracing()
+        should_reenable_saved_state.reverse()
         super().exec_module(module)
-        for tracer in reversed(self._tracers):
+        for tracer, should_reenable in zip(self._tracers, should_reenable_saved_state):
             tracer._emit_event(TraceEvent.after_import.value, None, None, module=module)
+            if should_reenable:
+                tracer._enable_tracing()
 
 
 # this is based on the birdseye finder (which uses import hooks based on MacroPy's):
@@ -164,7 +180,6 @@ class TraceFinder(MetaPathFinder):
 
 
 def patch_meta_path_non_context(tracers: List["BaseTracer"]) -> Callable:
-    tracers = [tracer for tracer in tracers if tracer.should_patch_meta_path]
     orig_meta_path_entry = None
 
     def cleanup_callback():

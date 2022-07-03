@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.32 (2022-07-02)
+------------------
+* Disable tracing in import_hooks where applicable;
+
 0.0.31 (2022-07-02)
 ------------------
 * Support for before / after import events;
