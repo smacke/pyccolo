@@ -447,12 +447,14 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             self._num_sandbox_calls_seen += evt == "call"
             return ret
         return (
-            evt == TraceEvent.init_module.value
+            evt
+            in (
+                TraceEvent.before_import.value,
+                TraceEvent.init_module.value,
+                TraceEvent.after_import.value,
+            )
             or self._should_instrument_file_impl(filename)
-        ) and (
-            evt == TraceEvent.import_.value
-            or self.file_passes_filter_for_event(evt, filename)
-        )
+        ) and self.file_passes_filter_for_event(evt, filename)
 
     def make_ast_rewriter(self, **kwargs) -> AstRewriter:
         return self.ast_rewriter_cls(_TRACER_STACK, **kwargs)
@@ -581,10 +583,12 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 cleanup_callback()
 
     def tracing_non_context(
-        self, disabled: bool = False, tracing_enabled_file: Optional[str] = None
+        self,
+        disabled: bool = False,
+        tracing_enabled_file: Optional[str] = None,
+        do_patch_meta_path: Optional[bool] = None,
     ) -> Callable:
         cleanup_callback_impl = self._make_tracing_context_cleanup_callback()
-        do_patch_meta_path = False
         should_push = self not in _TRACER_STACK
         self._is_tracing_hard_disabled = disabled
         will_enable_tracing = (
@@ -613,8 +617,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             setattr(builtins, TRACING_ENABLED, False)
         setattr(builtins, EXEC_SAVED_THUNK, self.exec_saved_thunk)
         setattr(builtins, TRACE_LAMBDA, self.trace_lambda)
-        if len(_TRACER_STACK) == 0:
-            do_patch_meta_path = True
+        if do_patch_meta_path is None:
+            do_patch_meta_path = self.should_patch_meta_path and len(_TRACER_STACK) == 0
         if should_push:
             _TRACER_STACK.append(self)  # type: ignore
         do_patch_sys_settrace = self.has_sys_trace_events and will_enable_tracing

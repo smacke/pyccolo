@@ -37,8 +37,10 @@ event = TraceEvent
 call = TraceEvent.call
 return_ = TraceEvent.return_
 exception = TraceEvent.exception
+before_import = TraceEvent.before_import
 init_module = TraceEvent.init_module
 exit_module = TraceEvent.exit_module
+after_import = TraceEvent.after_import
 before_stmt = TraceEvent.before_stmt
 after_stmt = TraceEvent.after_stmt
 after_module_stmt = TraceEvent.after_module_stmt
@@ -241,5 +243,5 @@ __all__ = [
 # all the events now
 __all__.extend(evt.name for evt in TraceEvent)
 
-from . import _version
+from . import _version  # noqa: E402
 __version__ = _version.get_versions()['version']

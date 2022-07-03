@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.31 (2022-07-02)
+------------------
+* Support for before / after import events;
+
 0.0.30 (2022-07-02)
 ------------------
 * Better version handling;

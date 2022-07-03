@@ -6,9 +6,13 @@ from contextlib import contextmanager
 from importlib.abc import MetaPathFinder
 from importlib.machinery import SourceFileLoader
 from importlib.util import decode_source, spec_from_loader
-from typing import Callable, Generator
+from types import ModuleType
+from typing import TYPE_CHECKING, Callable, Generator, List, Tuple
 
 from pyccolo.trace_events import TraceEvent
+
+if TYPE_CHECKING:
+    from pyccolo.tracer import BaseTracer
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +20,12 @@ logger = logging.getLogger(__name__)
 class TraceLoader(SourceFileLoader):
     def __init__(self, tracers, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._tracers: List["BaseTracer"] = tracers
         self._ast_rewriter = tracers[-1].make_ast_rewriter()
-        self._syntax_augmenters = []
+        self._syntax_augmenters: List[Tuple["BaseTracer", List[Callable]]] = []
         for tracer in tracers:
-            self._syntax_augmenters.extend(
-                tracer.make_syntax_augmenters(self._ast_rewriter)
+            self._syntax_augmenters.append(
+                (tracer, tracer.make_syntax_augmenters(self._ast_rewriter))
             )
         self._augmentation_context: bool = False
 
@@ -34,7 +39,9 @@ class TraceLoader(SourceFileLoader):
             self._augmentation_context = orig_aug_context
 
     def get_data(self, path) -> bytes:
-        if self._augmentation_context:
+        if self._augmentation_context or not any(
+            tracer._should_instrument_file_impl(path) for tracer in self._tracers
+        ):
             return super().get_data(path)
         with self.syntax_augmentation_context():
             source = self.get_augmented_source(path)
@@ -61,24 +68,41 @@ class TraceLoader(SourceFileLoader):
             # way I can think of to ensure that source transformations
             # happen in the correct order.
             source = str(source_bytes, encoding="utf-8")
-        for augmenter in self._syntax_augmenters:
-            source = augmenter(source)
+        for tracer, augmenters in self._syntax_augmenters:
+            if not tracer._should_instrument_file_impl(source_path):
+                continue
+            for augmenter in augmenters:
+                source = augmenter(source)
         if still_needs_decode:
             source = decode_source(bytes(source, encoding="utf-8"))
         return source
 
     def source_to_code(self, data, path, *, _optimize=-1):
         try:
-            return compile(
-                self._ast_rewriter.visit(ast.parse(data)),
-                path,
-                "exec",
-                dont_inherit=True,
-                optimize=_optimize,
-            )
+            if any(
+                tracer._should_instrument_file_impl(path) for tracer in self._tracers
+            ):
+                return compile(
+                    self._ast_rewriter.visit(ast.parse(data)),
+                    path,
+                    "exec",
+                    dont_inherit=True,
+                    optimize=_optimize,
+                )
+            else:
+                return super().source_to_code(data, path, _optimize=_optimize)
         except Exception:
             logger.exception("exception during source to code for path %s", path)
             return super().source_to_code(data, path, _optimize=_optimize)
+
+    def exec_module(self, module: ModuleType) -> None:
+        for tracer in self._tracers:
+            tracer._emit_event(
+                TraceEvent.before_import.value, None, None, module=module
+            )
+        super().exec_module(module)
+        for tracer in reversed(self._tracers):
+            tracer._emit_event(TraceEvent.after_import.value, None, None, module=module)
 
 
 # this is based on the birdseye finder (which uses import hooks based on MacroPy's):
@@ -122,21 +146,25 @@ class TraceFinder(MetaPathFinder):
             return None
         source_path = spec.loader.get_filename(fullname)
         tracers_to_use = []
-        import_ = TraceEvent.import_.value
         for tracer in self.tracers:
-            if tracer._should_instrument_file_impl(
-                source_path
-            ) or tracer._file_passes_filter_impl(import_, source_path):
+            if (
+                tracer._should_instrument_file_impl(source_path)
+                or tracer._file_passes_filter_impl(
+                    TraceEvent.before_import.value, source_path
+                )
+                or tracer._file_passes_filter_impl(
+                    TraceEvent.after_import.value, source_path
+                )
+            ):
                 tracers_to_use.append(tracer)
         if len(tracers_to_use) == 0:
             return None
-        for tracer in tracers_to_use:
-            tracer._emit_event(import_, None, None)
         spec.loader = TraceLoader(tracers_to_use, spec.loader.name, spec.loader.path)
         return spec
 
 
-def patch_meta_path_non_context(tracers) -> Callable:
+def patch_meta_path_non_context(tracers: List["BaseTracer"]) -> Callable:
+    tracers = [tracer for tracer in tracers if tracer.should_patch_meta_path]
     orig_meta_path_entry = None
 
     def cleanup_callback():
@@ -154,7 +182,7 @@ def patch_meta_path_non_context(tracers) -> Callable:
 
 
 @contextmanager
-def patch_meta_path(tracers) -> Generator[None, None, None]:
+def patch_meta_path(tracers: List["BaseTracer"]) -> Generator[None, None, None]:
     cleanup_callback = None
     try:
         cleanup_callback = patch_meta_path_non_context(tracers)

@@ -6,9 +6,10 @@ from pyccolo import fast
 
 
 class TraceEvent(Enum):
+    before_import = "before_import"
     init_module = "init_module"
     exit_module = "exit_module"
-    import_ = "import"
+    after_import = "after_import"
 
     before_stmt = "before_stmt"
     after_stmt = "after_stmt"
