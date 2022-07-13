@@ -50,7 +50,7 @@ class HelloTracer(pyc.BaseTracer):
 
 
 if __name__ == "__main__":
-    with HelloTracer():
+    with HelloTracer:
         # prints "Hello, world!" 11 times
         pyc.exec("for _ in range(10): pass")
 ```
@@ -114,7 +114,7 @@ class SysTracer(pyc.BaseTracer):
 
 
 if __name__ == "__main__":
-    with SysTracer():
+    with SysTracer:
         def f():
             def g():
                 return 42
@@ -149,7 +149,7 @@ class MyTracer(pyc.BaseTracer):
     # handlers, etc. defined below
     ...
 
-with MyTracer():
+with MyTracer:
     import foo  # contents of `foo` module get instrumented
     import bar  # contents of `bar` module do not get instrumented
 ```
