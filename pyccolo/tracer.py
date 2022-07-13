@@ -89,6 +89,12 @@ class MetaTracerStateMachine(MetaHasTraits):
         obj._post_init_hook_end()
         return obj
 
+    def __enter__(cls) -> ContextManager:
+        return cls.instance().__enter__()
+
+    def __exit__(cls, exc_type, exc_val, exc_tb):
+        return cls.instance().__exit__(exc_type, exc_val, exc_tb)
+
 
 class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     ast_rewriter_cls = AstRewriter

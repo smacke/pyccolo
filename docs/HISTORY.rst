@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.33 (2022-07-12)
+------------------
+* Allow before_import handler to overwrite source_path;
+* Allow tracer classes to themselves be used as context managers;
+
 0.0.32 (2022-07-02)
 ------------------
 * Disable tracing in import_hooks where applicable;
