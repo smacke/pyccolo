@@ -50,6 +50,14 @@ class TraceLoader(SourceFileLoader):
 
     def get_code(self, fullname):
         source_path = self.get_filename(fullname)
+        for tracer in reversed(self._tracers):
+            source_path = tracer._emit_event(
+                TraceEvent.before_import.value,
+                None,
+                None,
+                ret=source_path,
+                fullname=fullname,
+            )
         source_bytes = self.get_data(source_path)
         return self.source_to_code(source_bytes, source_path)
 
@@ -103,9 +111,6 @@ class TraceLoader(SourceFileLoader):
         source_path = str(self.get_filename(module.__name__))
         should_reenable_saved_state = []
         for tracer in reversed(self._tracers):
-            tracer._emit_event(
-                TraceEvent.before_import.value, None, None, module=module
-            )
             should_disable = (
                 tracer._is_tracing_enabled
                 and not tracer._should_instrument_file_impl(source_path)
