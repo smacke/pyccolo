@@ -90,10 +90,10 @@ class MetaTracerStateMachine(MetaHasTraits):
         return obj
 
     def __enter__(cls) -> ContextManager:
-        return cls.instance().__enter__()
+        return cls.instance().__enter__()  # type: ignore
 
     def __exit__(cls, exc_type, exc_val, exc_tb):
-        return cls.instance().__exit__(exc_type, exc_val, exc_tb)
+        return cls.instance().__exit__(exc_type, exc_val, exc_tb)  # type: ignore
 
 
 class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
