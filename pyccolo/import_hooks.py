@@ -56,7 +56,7 @@ class TraceLoader(SourceFileLoader):
                 None,
                 None,
                 ret=source_path,
-                fullname=fullname,
+                qualified_module_name=fullname,
             )
         source_bytes = self.get_data(source_path)
         return self.source_to_code(source_bytes, source_path)

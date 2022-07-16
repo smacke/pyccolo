@@ -284,6 +284,10 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 maybe_kwarg = getattr(arg, "value")
             else:
                 maybe_kwarg = arg
+            if keywords and not is_kwstarred:
+                key = getattr(arg, "arg")
+            else:
+                key = None
             with fast.location_of(maybe_kwarg):
                 with self.attrsub_context(None):
                     new_arg_value = self.visit(maybe_kwarg)
@@ -298,6 +302,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                                     ret=new_arg_value,
                                     is_starred=fast.NameConstant(is_starred),
                                     is_kwstarred=fast.NameConstant(is_kwstarred),
+                                    key=fast.NameConstant(key)
+                                    if key is None
+                                    else fast.Str(key),
                                 ),
                             )
                 if keywords or is_starred:
