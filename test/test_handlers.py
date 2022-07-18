@@ -230,7 +230,9 @@ def test_composed_sys_tracing_calls():
 
     with TracesCalls1.instance().tracing_context():
         with TracesCalls2.instance().tracing_context():
-            with TracesCalls3.instance().tracing_context():
+            # just make sure the enable / disable code path has coverage
+            TracesCalls3.enable()
+            try:
                 env = pyc.exec(
                     """
                     def foo():
@@ -239,6 +241,8 @@ def test_composed_sys_tracing_calls():
                     """,
                     local_env={},
                 )
+            finally:
+                TracesCalls3.disable()
     assert sys.gettrace() is original_tracer
     assert len(env) == 1
     assert "foo" in env

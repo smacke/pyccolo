@@ -89,6 +89,12 @@ class MetaTracerStateMachine(MetaHasTraits):
         obj._post_init_hook_end()
         return obj
 
+    def enable(cls, **kwargs) -> None:
+        cls.instance().enable_tracing(**kwargs)  # type: ignore
+
+    def disable(cls) -> None:
+        cls.instance().disable_tracing()  # type: ignore
+
     def __enter__(cls) -> ContextManager:
         return cls.instance().__enter__()  # type: ignore
 
@@ -476,9 +482,15 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         with self.tracing_context(disabled=False, **kwargs):
             yield
 
-    def __enter__(self) -> ContextManager:
+    def enable_tracing(self, **kwargs) -> None:
+        self.__enter__(**kwargs)
+
+    def disable_tracing(self) -> None:
+        self.__exit__(None, None, None)
+
+    def __enter__(self, **kwargs) -> ContextManager:
         assert self._ctx is None
-        self._ctx = self.tracing_enabled()
+        self._ctx = self.tracing_enabled(**kwargs)
         return self._ctx.__enter__()
 
     def __exit__(self, exc_type, exc_val, exc_tb):

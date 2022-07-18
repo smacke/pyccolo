@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.34 (2022-07-18)
+------------------
+* Add enable / disable non-context convenience classmethods;
+
 0.0.33 (2022-07-12)
 ------------------
 * Allow before_import handler to overwrite source_path;
