@@ -624,6 +624,25 @@ def test_quasiquotes():
         assert ast.dump(elt) == ast.dump(expected)
 
 
+def test_last_argument():
+    recorded = []
+
+    class ArgTracer(pyc.BaseTracer):
+        @pyc.after_argument
+        def arg(self, should_be_last: bool, *_, is_last: bool, **__) -> None:
+            recorded.append(should_be_last == is_last)
+
+    with ArgTracer:
+        pyc.exec(
+            """
+            def f(a, b, c):
+                pass
+            f(False, False, True)
+        """
+        )
+    assert all(recorded)
+
+
 def test_quick_lambda():
     from pyccolo.examples import Quasiquoter, QuickLambdaTracer
 

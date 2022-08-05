@@ -275,9 +275,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             node, orig_node_id=orig_node_id
         )
 
-    def _get_replacement_args(self, args, keywords: bool):
+    def _get_replacement_args(self, args, keywords: bool, compute_is_last: bool):
         replacement_args = []
-        for arg in args:
+        for arg_idx, arg in enumerate(args):
             is_starred = isinstance(arg, ast.Starred)
             is_kwstarred = keywords and arg.arg is None
             if keywords or is_starred:
@@ -305,6 +305,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                                     key=fast.NameConstant(key)
                                     if key is None
                                     else fast.Str(key),
+                                    is_last=fast.NameConstant(
+                                        compute_is_last and arg_idx == len(args) - 1
+                                    ),
                                 ),
                             )
                 if keywords or is_starred:
@@ -334,8 +337,12 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         # TODO: need a way to rewrite ast of subscript args,
         #  and to process these separately from outer rewrite
 
-        ret_as_call.args = self._get_replacement_args(ret_as_call.args, False)
-        ret_as_call.keywords = self._get_replacement_args(ret_as_call.keywords, True)
+        ret_as_call.args = self._get_replacement_args(
+            ret_as_call.args, False, compute_is_last=len(ret_as_call.keywords) == 0
+        )
+        ret_as_call.keywords = self._get_replacement_args(
+            ret_as_call.keywords, True, compute_is_last=True
+        )
 
         # in order to ensure that the args are processed with appropriate active scope,
         # we need to make sure not to use the active namespace scope on args (in the case
