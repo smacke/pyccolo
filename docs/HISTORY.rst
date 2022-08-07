@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.35 (2022-08-06)
+------------------
+* Record when passed argument is the last one
+
 0.0.34 (2022-07-18)
 ------------------
 * Add enable / disable non-context convenience classmethods;
