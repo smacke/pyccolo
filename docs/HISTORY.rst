@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.36 (2022-10-24)
+------------------
+* Preserve global / nonlocal declarations in copy source;
+
 0.0.35 (2022-08-06)
 ------------------
 * Record when passed argument is the last one

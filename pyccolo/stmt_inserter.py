@@ -1,7 +1,17 @@
 # -*- coding: utf-8 -*-
 import ast
+import copy
 import logging
-from typing import TYPE_CHECKING, Callable, DefaultDict, Dict, List, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    DefaultDict,
+    Dict,
+    List,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from pyccolo import fast
 from pyccolo.extra_builtins import (
@@ -22,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 _INSERT_STMT_TEMPLATE = '{}("{{evt}}", {{stmt_id}})'.format(EMIT_EVENT)
+_T = TypeVar("_T", bound=ast.AST)
 
 
 def _get_parsed_insert_stmt(stmt: ast.stmt, evt: TraceEvent) -> ast.Expr:
@@ -58,6 +69,12 @@ class StripGlobalAndNonlocalDeclarations(ast.NodeTransformer):
     def visit_Nonlocal(self, node: ast.Nonlocal) -> ast.Pass:
         with fast.location_of(node):
             return fast.Pass()
+
+    def __call__(self, node: _T) -> _T:
+        return super().visit(copy.deepcopy(node))
+
+    def visit(self, node: _T) -> _T:
+        return super().visit(copy.deepcopy(node))
 
 
 class StatementInserter(ast.NodeTransformer, EmitterMixin):
