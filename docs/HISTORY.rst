@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.37 (2022-10-26)
+------------------
+* Bugfix for 3.11;
+
 0.0.36 (2022-10-24)
 ------------------
 * Preserve global / nonlocal declarations in copy source;
