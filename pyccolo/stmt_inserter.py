@@ -57,7 +57,9 @@ def _get_parsed_append_stmt(
             kwargs["ret"] = ret_expr
         ret_value = cast(ast.Call, ret.value)
         ret_value.keywords = fast.kwargs(**kwargs)
-    ret.lineno = ret.end_lineno = getattr(stmt, "end_lineno", ret.lineno)
+    ret.lineno = getattr(stmt, "end_lineno", ret.lineno)
+    if hasattr(ret, "end_lineno"):
+        ret.end_lineno = ret.lineno  # type: ignore
     return ret
 
 
