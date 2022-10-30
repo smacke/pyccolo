@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.38 (2022-10-30)
+------------------
+* Better meta_path fallback behavior;
+
 0.0.37 (2022-10-26)
 ------------------
 * Bugfix for 3.11;

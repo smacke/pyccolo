@@ -5,7 +5,7 @@ import sys
 from contextlib import contextmanager
 from importlib.abc import MetaPathFinder
 from importlib.machinery import SourceFileLoader
-from importlib.util import decode_source, spec_from_loader
+from importlib.util import decode_source, find_spec, spec_from_loader
 from types import ModuleType
 from typing import TYPE_CHECKING, Callable, Generator, List, Tuple
 
@@ -132,16 +132,32 @@ class TraceFinder(MetaPathFinder):
     def __init__(self, tracers) -> None:
         self.tracers = tracers
 
+    @contextmanager
+    def _clear_preceding_finders(self) -> Generator[None, None, None]:
+        """
+        Clear all preceding finders from sys.meta_path, and restore them afterwards.
+        """
+        orig_finders = sys.meta_path
+        try:
+            sys.meta_path = sys.meta_path[sys.meta_path.index(self) + 1 :]  # noqa: E203
+            yield
+        finally:
+            sys.meta_path = orig_finders
+
     def _find_plain_spec(self, fullname, path, target):
         """Try to find the original module using all the
         remaining meta_path finders."""
         spec = None
+        self_seen = False
         for finder in sys.meta_path:
-            # when testing with pytest, it installs a finder that for
-            # some yet unknown reasons makes birdseye
-            # fail. For now it will just avoid using it and pass to
-            # the next one
-            if finder is self or "pytest" in finder.__module__:
+            if finder is self:
+                self_seen = True
+                continue
+            elif not self_seen or "pytest" in finder.__module__:
+                # when testing with pytest, it installs a finder that for
+                # some yet unknown reasons makes birdseye
+                # fail. For now it will just avoid using it and pass to
+                # the next one
                 continue
             if hasattr(finder, "find_spec"):
                 spec = finder.find_spec(fullname, path, target=target)
@@ -152,7 +168,11 @@ class TraceFinder(MetaPathFinder):
                 return spec
 
     def find_spec(self, fullname, path=None, target=None):
-        spec = self._find_plain_spec(fullname, path, target)
+        if target is None:
+            with self._clear_preceding_finders():
+                spec = find_spec(fullname, path)
+        else:
+            spec = self._find_plain_spec(fullname, path, target)
         if spec is None or not (
             hasattr(spec.loader, "get_source") and callable(spec.loader.get_source)
         ):  # noqa: E128
