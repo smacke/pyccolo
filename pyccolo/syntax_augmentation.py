@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # flake8: noqa
+import ast
 import re
 import sys
 from collections import Counter, defaultdict
@@ -152,7 +153,7 @@ def make_syntax_augmenter(
         if isinstance(lines, list):
             code_lines: List[str] = lines
         else:
-            code_lines = lines.splitlines()
+            code_lines = lines.splitlines(keepends=True)
         transformed_lines = []
         for idx, line in enumerate(code_lines):
             line, positions = replace_tokens_and_get_augmented_positions(
@@ -164,6 +165,6 @@ def make_syntax_augmenter(
         if isinstance(lines, list):
             return transformed_lines
         else:
-            return "\n".join(transformed_lines)
+            return "".join(transformed_lines)
 
     return _input_transformer
