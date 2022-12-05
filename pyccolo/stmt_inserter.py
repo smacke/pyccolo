@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import ast
-import copy
 import logging
 from typing import (
     TYPE_CHECKING,
@@ -73,10 +72,10 @@ class StripGlobalAndNonlocalDeclarations(ast.NodeTransformer):
             return fast.Pass()
 
     def __call__(self, node: _T) -> _T:
-        return super().visit(copy.deepcopy(node))
+        return super().visit(fast.copy_ast(node))
 
     def visit(self, node: _T) -> _T:
-        return super().visit(copy.deepcopy(node))
+        return super().visit(fast.copy_ast(node))
 
 
 class StatementInserter(ast.NodeTransformer, EmitterMixin):

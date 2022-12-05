@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 import ast
-import copy
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
+from pyccolo import fast
 from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
 
 if TYPE_CHECKING:
@@ -128,7 +128,7 @@ class StatementMapper(ast.NodeVisitor):
         self.visit(node)
         orig_traversal = self.traversal
         self.traversal = []
-        self.visit(copy.deepcopy(node))
+        self.visit(fast.copy_ast(node))
         copy_traversal = self.traversal
         orig_to_copy_mapping = {}
         for no, nc in zip(orig_traversal, copy_traversal):

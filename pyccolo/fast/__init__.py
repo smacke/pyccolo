@@ -4,6 +4,7 @@ import ast
 from .._fast import (
     EmitterMixin,
     FastAst,
+    copy_ast,
     make_composite_condition,
     make_test,
     subscript_to_slice,
@@ -18,6 +19,7 @@ for name in dir(FastAst):
 
 
 __all__ = [
+    "copy_ast",
     "EmitterMixin",
     "FastAst",
     "make_composite_condition",

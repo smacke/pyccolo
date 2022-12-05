@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 import ast
 import builtins
+import copy
 import sys
+from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
     Callable,
     DefaultDict,
     Dict,
+    Generator,
     Iterable,
     List,
     Optional,
@@ -26,6 +29,35 @@ if sys.version_info < (3, 8):
     NumConst = ast.Num
 else:
     NumConst = ast.Constant
+
+
+class _SaveParentsVisitor(ast.NodeVisitor):
+    has_parent = "has_parent_Xix54321"
+
+    def generic_visit(self, node: ast.AST) -> None:
+        if hasattr(node, "parent"):
+            node.parent = self.parent  # type: ignore
+        super().generic_visit(node)
+
+    def reinject(self, tree: ast.AST) -> None:
+        for node in ast.walk(tree):
+            for child in ast.iter_child_nodes(node):
+                if getattr(child, "parent", None) == self.has_parent:
+                    child.parent = node  # type: ignore
+
+
+@contextmanager
+def _save_parents(node: ast.AST) -> Generator[_SaveParentsVisitor, None, None]:
+    visitor = _SaveParentsVisitor()
+    visitor.visit(node)
+    yield visitor
+
+
+def copy_ast(node: ast.AST) -> ast.AST:
+    with _save_parents(node) as parents:
+        node_copy = copy.deepcopy(node)
+    parents.reinject(node_copy)
+    return node_copy
 
 
 def make_test(var_name: str, negate: bool = False) -> ast.expr:

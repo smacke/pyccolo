@@ -42,7 +42,7 @@ class AstRewriter(ast.NodeTransformer):
         tracers: "List[BaseTracer]",
         module_id: Optional[int] = None,
         path: Optional[str] = None,
-    ):
+    ) -> None:
         self._tracers = tracers
         self._module_id: Optional[int] = module_id
         self._path: Optional[str] = path
