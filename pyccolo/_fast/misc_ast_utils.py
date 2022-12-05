@@ -36,7 +36,7 @@ class _SaveParentsVisitor(ast.NodeVisitor):
 
     def generic_visit(self, node: ast.AST) -> None:
         if hasattr(node, "parent"):
-            node.parent = self.parent  # type: ignore
+            node.parent = self.has_parent  # type: ignore
         super().generic_visit(node)
 
     def reinject(self, tree: ast.AST) -> None:

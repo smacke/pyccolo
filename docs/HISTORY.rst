@@ -1,7 +1,7 @@
 History
 =======
 
-0.0.40 (2022-12-04)
+0.0.41 (2022-12-04)
 -------------------
 * Fix degraded performance of deepcopy when ast nodes have parent pointers;
 
