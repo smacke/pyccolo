@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-from .fast_ast import FastAst
-from .misc_ast_utils import (
+from pyccolo._fast.fast_ast import FastAst
+from pyccolo._fast.misc_ast_utils import (
     EmitterMixin,
     copy_ast,
     make_composite_condition,

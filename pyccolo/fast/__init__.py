@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 
-from .._fast import (
+from pyccolo._fast import (
     EmitterMixin,
     FastAst,
     copy_ast,

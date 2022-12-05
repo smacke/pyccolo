@@ -243,5 +243,5 @@ __all__ = [
 # all the events now
 __all__.extend(evt.name for evt in TraceEvent)
 
-from . import _version  # noqa: E402
+from pyccolo import _version  # noqa: E402
 __version__ = _version.get_versions()['version']

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import ast
 
-from .._fast import *
+from pyccolo._fast import *
 
 def location_of(*args, **kwargs) -> "Any": ...
 def kw(arg: str, value: "ast.expr") -> "ast.keyword": ...
