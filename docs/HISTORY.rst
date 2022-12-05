@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.40 (2022-12-04)
+-------------------
+* Fix degraded performance of deepcopy when ast nodes have parent pointers;
+
 0.0.39 (2022-11-19)
 -------------------
 * Use Python tokenizer for syntax extensions;
