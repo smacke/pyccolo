@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.42 (2022-12-06)
+-------------------
+* Bugfix to ensure that patched sys.settrace does no override behavior on new threads;
+
 0.0.41 (2022-12-04)
 -------------------
 * Fix degraded performance of deepcopy when ast nodes have parent pointers;

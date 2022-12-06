@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import textwrap
+import threading
 import types
 from collections import defaultdict
 from contextlib import contextmanager, suppress
@@ -401,18 +402,21 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             assert self._is_tracing_enabled
             assert not has_sys_trace_events or sys.gettrace() is self.sys_tracer
         self._is_tracing_enabled = False
-        if has_sys_trace_events:
+        if has_sys_trace_events and sys.gettrace() is not None:
             sys_settrace(self.existing_tracer)
         if len(_TRACER_STACK) == 0:
             setattr(builtins, TRACING_ENABLED, False)
 
     def _patch_sys_settrace_non_context(self) -> Callable:
         original_sys_settrace = sys.settrace
+        orig_thread = threading.current_thread()
 
         def cleanup_callback():
             sys.settrace = original_sys_settrace
 
         def patched_sys_settrace(trace_func):  # pragma: no cover
+            if threading.current_thread() is not orig_thread:
+                return original_sys_settrace(trace_func)
             # called by third-party tracers
             self.existing_tracer = trace_func
             if self._is_tracing_enabled:
