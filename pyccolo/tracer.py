@@ -7,7 +7,6 @@ import logging
 import os
 import sys
 import textwrap
-import threading
 import types
 from collections import defaultdict
 from contextlib import contextmanager, suppress
@@ -408,6 +407,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             setattr(builtins, TRACING_ENABLED, False)
 
     def _patch_sys_settrace_non_context(self) -> Callable:
+        import threading
+
         original_sys_settrace = sys.settrace
         orig_thread = threading.current_thread()
 

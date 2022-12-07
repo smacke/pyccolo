@@ -2,6 +2,7 @@
 import ast
 import logging
 import sys
+import threading
 from contextlib import contextmanager
 from importlib.abc import MetaPathFinder
 from importlib.machinery import SourceFileLoader
@@ -131,6 +132,7 @@ class TraceLoader(SourceFileLoader):
 class TraceFinder(MetaPathFinder):
     def __init__(self, tracers) -> None:
         self.tracers = tracers
+        self._thread = threading.current_thread()
 
     @contextmanager
     def _clear_preceding_finders(self) -> Generator[None, None, None]:
@@ -168,6 +170,8 @@ class TraceFinder(MetaPathFinder):
                 return spec
 
     def find_spec(self, fullname, path=None, target=None):
+        if threading.current_thread() is not self._thread:
+            return None
         if target is None:
             with self._clear_preceding_finders():
                 spec = find_spec(fullname, path)

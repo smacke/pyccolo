@@ -1,9 +1,10 @@
 History
 =======
 
-0.0.42 (2022-12-06)
+0.0.43 (2022-12-06)
 -------------------
 * Bugfix to ensure that patched sys.settrace does no override behavior on new threads;
+* Bugfix to ensure that custom finder does not override behavior on new threads;
 
 0.0.41 (2022-12-04)
 -------------------
