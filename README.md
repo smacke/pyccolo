@@ -14,7 +14,7 @@ instrumentation you wish to perform, and takes care of the *how* for you.  It
 aims to be *ergonomic*, *composable*, and *portable*, by providing an intuitive
 interface, making it easy to layer multiple levels of instrumentation, and
 allowing the same code to work across multiple versions of Python (3.6 to
-3.10), with few exceptions. Portability across versions is accomplished by
+3.11), with few exceptions. Portability across versions is accomplished by
 embedding instrumentation at the level of source code (as opposed to
 bytecode-level instrumentation).
 
@@ -23,7 +23,7 @@ tools and other instrumentation:
 - Code coverage (see [pyccolo/examples/coverage.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/coverage.py))
 - Syntactic macros such as quasiquotes (like [MacroPy's](https://macropy3.readthedocs.io/en/latest/reference.html#quasiquote)) or quick lambdas; see [pyccolo/examples/quasiquote.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/quasiquote.py) and [pyccolo/examples/quick_lambda.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/quick_lambda.py)
 - Syntax-augmented Python (3.8 and up, see [pyccolo/examples/optional_chaining.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/optional_chaining.py))
-- Dynamic dataflow analysis performed by [nbsafety](https://github.com/nbsafety-project/nbsafety)
+- Dynamic dataflow analysis performed by [ipyflow](https://github.com/ipyflow/ipyflow)
 - Tools to perform (most) imports lazily (see [pyccolo/examples/lazy_imports.py](https://github.com/smacke/pyccolo/blob/master/pyccolo/examples/lazy_imports.py))
 - Tools to uncover [semantic memory leaks](http://ithare.com/java-vs-c-trading-ub-for-semantic-memory-leaks-same-problem-different-punishment-for-failure/)
 - \<Your tool here!>
