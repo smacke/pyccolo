@@ -813,7 +813,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             )
         return local_env.pop(env_name)
 
-    def trace_lambda(self, lam):
+    def trace_lambda(self, lam: Callable[..., Any]) -> Callable[..., Any]:
         # for now, this is primarily so that we can distinguish between
         # lambdas that we generate vs that user generates
         code: CodeType = lam.__code__
@@ -960,7 +960,7 @@ def register_universal_handler(handler):
 
 
 class BaseTracer(_InternalBaseTracer):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._saved_slice: Optional[Any] = None
 

@@ -82,7 +82,7 @@ class _LazySymbol:
 
 
 class _GetLazyNames(ast.NodeVisitor):
-    def __init__(self):
+    def __init__(self) -> None:
         self.lazy_names: Optional[Set[str]] = set()
 
     def visit_Import(self, node: ast.Import) -> None:

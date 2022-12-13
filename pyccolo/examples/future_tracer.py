@@ -114,7 +114,7 @@ class FutureTracer(pyc.BaseTracer):
     def should_propagate_handler_exception(self, *_) -> bool:
         return True
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         with self.persistent_fields():
             self._executor = ThreadPoolExecutor(max_workers=self._MAX_WORKERS)

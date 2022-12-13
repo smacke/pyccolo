@@ -10,7 +10,7 @@ import inspect
 import textwrap
 import types
 from contextlib import contextmanager
-from typing import Any, Dict, Union
+from typing import Any, Callable, Dict, List, Union
 
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.emit_event import _TRACER_STACK, SkipAll, allow_reentrant_event_handling
@@ -147,8 +147,8 @@ def execute(*args, **kwargs) -> Dict[str, Any]:
     return exec(*args, **kwargs)
 
 
-def instrumented(tracers):
-    def decorator(f):
+def instrumented(tracers: List[BaseTracer]) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
         f_defined_file = f.__code__.co_filename
         with multi_context([tracer.tracing_disabled() for tracer in tracers]):
             code = ast.parse(textwrap.dedent(inspect.getsource(f)))
@@ -163,7 +163,7 @@ def instrumented(tracers):
                     break
 
         @functools.wraps(f)
-        def instrumented_f(*args, **kwargs):
+        def instrumented_f(*args, **kwargs) -> Any:
             with multi_context(
                 [
                     tracer.tracing_enabled(tracing_enabled_file=f_defined_file)

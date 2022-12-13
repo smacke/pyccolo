@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 class TraceLoader(SourceFileLoader):
-    def __init__(self, tracers, *args, **kwargs):
+    def __init__(self, tracers: List["BaseTracer"], *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._tracers: List["BaseTracer"] = tracers
+        self._tracers = tracers
         self._ast_rewriter = tracers[-1].make_ast_rewriter()
         self._syntax_augmenters: List[Tuple["BaseTracer", List[Callable]]] = []
         for tracer in tracers:

@@ -12,13 +12,13 @@ optional_chaining_spec = pyc.AugmentationSpec(
 
 class OptionalChainer(pyc.BaseTracer):
     class ResolvesToNone:
-        def __getattr__(self, _item):
+        def __getattr__(self, _item: str) -> None:
             return None
 
-        def __call__(self, *_, **__):
+        def __call__(self, *_, **__) -> None:
             return None
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.lexical_call_stack: pyc.TraceStack = self.make_stack()
         with self.lexical_call_stack.register_stack_state():
