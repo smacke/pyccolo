@@ -17,13 +17,15 @@ from typing import (
     Union,
 )
 
-from pyccolo import fast
 from pyccolo.extra_builtins import EMIT_EVENT, TRACE_LAMBDA
 from pyccolo.trace_events import BEFORE_EXPR_EVENTS, TraceEvent
 
 if TYPE_CHECKING:
+    from pyccolo import fast
     from pyccolo.ast_rewriter import GUARD_DATA_T
     from pyccolo.tracer import BaseTracer
+else:
+    from pyccolo._fast.fast_ast import FastAst as fast
 
 if sys.version_info < (3, 8):
     NumConst = ast.Num
