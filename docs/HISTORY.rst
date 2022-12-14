@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.44 (2022-12-14)
+-------------------
+* Bugfix for circular deps;
+* Add events for various literal comprehensions;
+
 0.0.43 (2022-12-06)
 -------------------
 * Bugfix to ensure that patched sys.settrace does no override behavior on new threads;

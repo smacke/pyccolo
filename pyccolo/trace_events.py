@@ -88,6 +88,11 @@ class TraceEvent(Enum):
     before_compare = "before_compare"
     after_compare = "after_compare"
 
+    after_comprehension_if = "after_comprehension_if"
+    after_comprehension_elt = "after_comprehension_elt"
+    after_dict_comprehension_key = "after_dict_comprehension_key"
+    after_dict_comprehension_value = "after_dict_comprehension_value"
+
     ellipses = "ellipses"
 
     line = "line"

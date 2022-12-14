@@ -846,3 +846,57 @@ def test_lambda_wrapping_call(events):
             events,
         )
     )
+
+
+@given(events=subsets(set(pyc.TraceEvent)))
+@patch_events_and_emitter
+def test_comprehension(events):
+    assert _RECORDED_EVENTS == []
+    pyc.BaseTracer().exec(
+        """
+        [i for i in range(10) if i%2==0]
+        """,
+        filename=_FILENAME,
+    )
+    if_evts = [
+        pyc.before_compare,
+        pyc.before_binop,
+        pyc.load_name,
+        pyc.left_binop_arg,
+        pyc.right_binop_arg,
+        pyc.after_binop,
+        pyc.left_compare_arg,
+        pyc.compare_arg,
+        pyc.after_compare,
+        pyc.after_comprehension_if,
+    ]
+    throw_and_print_diff_if_recorded_not_equal_to(
+        filter_events_to_subset(
+            [
+                pyc.init_module,
+                pyc.before_stmt,
+                # range
+                pyc.before_load_complex_symbol,
+                pyc.load_name,
+                pyc.before_call,
+                pyc.before_argument,
+                pyc.after_argument,
+                pyc.after_call,
+                pyc.after_load_complex_symbol,
+            ]
+            + [
+                *if_evts,
+                pyc.load_name,
+                pyc.after_comprehension_elt,
+                *if_evts,
+            ]
+            * 5
+            + [
+                pyc.after_expr_stmt,
+                pyc.after_stmt,
+                pyc.after_module_stmt,
+                pyc.exit_module,
+            ],
+            events,
+        )
+    )

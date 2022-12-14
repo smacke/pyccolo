@@ -558,6 +558,70 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def visit_Tuple(self, node: ast.Tuple):
         return self.visit_List_or_Set_or_Tuple(node)
 
+    def _transform_comprehension_field(self, field, evt: TraceEvent):
+        untraced_field = self.orig_to_copy_mapping[id(field)]
+        with fast.location_of(field):
+            visited_field = self.visit(field)
+            extra_kwargs = {}
+            if self.global_guards_enabled:
+                loop_guard = make_guard_name(untraced_field)
+                self.register_guard(loop_guard)
+                extra_kwargs["guard"] = fast.Str(loop_guard)
+            else:
+                loop_guard = None
+            if self.handler_predicate_by_event[evt](untraced_field):
+                visited_field = self.emit(evt, field, ret=visited_field, **extra_kwargs)
+            if loop_guard is not None:
+                visited_field = fast.IfExp(
+                    test=make_composite_condition(
+                        [
+                            make_test(TRACING_ENABLED),
+                            make_test(loop_guard),
+                        ]
+                    ),
+                    body=visited_field,
+                    orelse=untraced_field,
+                )
+        return visited_field
+
+    def visit_Union_Comp(
+        self, node: Union[ast.DictComp, ast.GeneratorExp, ast.ListComp, ast.SetComp]
+    ):
+        for fieldname, evt in {
+            "elt": TraceEvent.after_comprehension_elt,
+            "key": TraceEvent.after_dict_comprehension_key,
+            "value": TraceEvent.after_dict_comprehension_value,
+        }.items():
+            field = getattr(node, fieldname, None)
+            if field is not None:
+                setattr(
+                    node, fieldname, self._transform_comprehension_field(field, evt)
+                )
+        for comp in node.generators:
+            for name, field in ast.iter_fields(comp):
+                if name == "ifs":
+                    for idx, if_field in enumerate(list(comp.ifs)):
+                        comp.ifs[idx] = self._transform_comprehension_field(
+                            if_field, TraceEvent.after_comprehension_if
+                        )
+                elif hasattr(field, "_fields"):
+                    setattr(comp, name, self.visit(field))
+                else:
+                    continue
+        return node
+
+    def visit_DictComp(self, node: ast.DictComp):
+        return self.visit_Union_Comp(node)
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp):
+        return self.visit_Union_Comp(node)
+
+    def visit_ListComp(self, node: ast.ListComp):
+        return self.visit_Union_Comp(node)
+
+    def visit_SetComp(self, node: ast.SetComp):
+        return self.visit_Union_Comp(node)
+
     @staticmethod
     def _ast_container_to_elt_trace_evt(
         node: Union[ast.List, ast.Set, ast.Tuple]

@@ -102,6 +102,10 @@ left_compare_arg = TraceEvent.left_compare_arg
 compare_arg = TraceEvent.compare_arg
 before_compare = TraceEvent.before_compare
 after_compare = TraceEvent.after_compare
+after_comprehension_if = TraceEvent.after_comprehension_if
+after_comprehension_elt = TraceEvent.after_comprehension_elt
+after_dict_comprehension_key = TraceEvent.after_dict_comprehension_key
+after_dict_comprehension_value = TraceEvent.after_dict_comprehension_value
 
 
 # redundant; do this just in case we forgot to add stubs in trace_events.py
