@@ -63,6 +63,9 @@ Skip = object()
 SANDBOX_FNAME = "<sandbox>"
 
 
+PYCCOLO_DEV_MODE_ENV_VAR = "PYCCOLO_DEV_MODE"
+
+
 def register_tracer_state_machine(tracer_cls: "Type[BaseTracer]") -> None:
     tracer_cls.EVENT_HANDLERS_BY_CLASS[tracer_cls] = defaultdict(
         list, tracer_cls.EVENT_HANDLERS_PENDING_REGISTRATION
@@ -131,6 +134,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     current_module: List[Optional[ast.Module]] = [None]
 
     def __init__(self, is_reset: bool = False):
+        self._is_dev_mode = os.environ.get(PYCCOLO_DEV_MODE_ENV_VAR) == "1"
         if is_reset:
             return
         if not self._MANAGER_CLASS_REGISTERED:
@@ -339,7 +343,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 except Exception as exc:
                     if self.should_propagate_handler_exception(event, exc):
                         raise exc
-                    else:
+                    elif self._is_dev_mode:
                         logger.exception("An exception while handling evt %s", event)
                     new_ret = None
                 if new_ret is SkipAll:

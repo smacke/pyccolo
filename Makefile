@@ -34,7 +34,7 @@ typecheck:
 check_no_typing:
 	rm -f .coverage
 	rm -rf htmlcov
-	pytest --cov-config=pyproject.toml --cov=pyccolo
+	PYCCOLO_DEV_MODE=1 pytest --cov-config=pyproject.toml --cov=pyccolo
 
 check: blackcheck lint typecheck check_no_typing
 
