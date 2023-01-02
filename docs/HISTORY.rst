@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.45 (2023-01-02)
+-------------------
+* Environment var for developer mode with more verbose logging;
+
 0.0.44 (2022-12-14)
 -------------------
 * Bugfix for circular deps;
