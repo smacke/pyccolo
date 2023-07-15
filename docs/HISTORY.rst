@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.46 (2023-07-15)
+-------------------
+* Fixes for 3.12 compat;
+* Improve composability of sys tracing;
+
 0.0.45 (2023-01-02)
 -------------------
 * Environment var for developer mode with more verbose logging;
