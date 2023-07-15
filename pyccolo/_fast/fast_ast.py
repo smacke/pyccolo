@@ -63,3 +63,6 @@ for ctor_name in ast.__dict__:
 if sys.version_info >= (3, 8):
     FastAst.Str = staticmethod(_make_func("Constant"))  # type: ignore
     FastAst.Num = staticmethod(_make_func("Constant"))  # type: ignore
+    FastAst.Bytes = staticmethod(_make_func("Constant"))  # type: ignore
+    FastAst.NameConstant = staticmethod(_make_func("Constant"))  # type: ignore
+    FastAst.Ellipsis = staticmethod(_make_func("Constant"))  # type: ignore

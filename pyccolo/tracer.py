@@ -889,19 +889,19 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 return None
 
         if self._has_fancy_sys_tracing and evt == "call":
-            orig_trace_lines = frame.f_trace_lines
-            orig_trace_opcodes = frame.f_trace_opcodes
-            frame.f_trace_lines = (
-                TraceEvent.line not in self.events_with_registered_handlers  # type: ignore
+            orig_trace_lines = frame.f_trace_lines  # type: ignore
+            orig_trace_opcodes = frame.f_trace_opcodes  # type: ignore
+            frame.f_trace_lines = (  # type: ignore
+                TraceEvent.line not in self.events_with_registered_handlers
             )
-            frame.f_trace_opcodes = (
-                TraceEvent.opcode in self.events_with_registered_handlers  # type: ignore
+            frame.f_trace_opcodes = (  # type: ignore
+                TraceEvent.opcode in self.events_with_registered_handlers
             )
             try:
                 return self._emit_event(evt, None, frame, ret=arg)
             finally:
-                frame.f_trace_lines = orig_trace_lines
-                frame.f_trace_opcodes = orig_trace_opcodes
+                frame.f_trace_lines = orig_trace_lines  # type: ignore
+                frame.f_trace_opcodes = orig_trace_opcodes  # type: ignore
         else:
             return self._emit_event(evt, None, frame, ret=arg)
 
