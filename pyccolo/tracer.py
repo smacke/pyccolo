@@ -386,16 +386,16 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             else:
                 my_ret = None
             if isinstance(my_ret, tuple) and len(my_ret) > 1 and my_ret[0] is SkipAll:
-                my_ret = my_ret[1]
+                return my_ret[1]
             existing_ret = self._call_existing_tracer(
                 existing_tracer, frame, evt, arg, **kwargs
             )
-            if evt == "call" and my_ret is not None and existing_ret is not None:
-                return self._make_composed_tracer(existing_ret)
-            elif existing_ret is None:
-                return my_ret
-            else:
-                return existing_ret
+            if evt == "call":
+                if my_ret is not None and existing_ret is not None:
+                    return self._make_composed_tracer(existing_ret)
+                elif my_ret is None:
+                    return existing_ret
+            return my_ret
 
         return _composed_tracer
 
@@ -416,7 +416,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             assert not has_sys_trace_events or sys_gettrace() is self.sys_tracer
         self._is_tracing_enabled = False
         if has_sys_trace_events and sys_gettrace() is not None:
-            sys_settrace(self.existing_tracer)
+            sys.settrace(self.existing_tracer)
         if len(_TRACER_STACK) == 0:
             setattr(builtins, TRACING_ENABLED, False)
 
