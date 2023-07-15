@@ -1,7 +1,7 @@
 History
 =======
 
-0.0.47 (2023-07-15)
+0.0.48 (2023-07-15)
 -------------------
 * Fixes for 3.12 compat;
 * Improve composability of sys tracing;
