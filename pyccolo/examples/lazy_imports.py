@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 _unresolved = object()
 
 
+ast_Constant = getattr(ast, "Constant", type(None))
+ast_Num = getattr(ast, "Num", type(None))
+ast_Str = getattr(ast, "Str", type(None))
+
+
 class _LazySymbol:
     non_modules: Set[str] = set()
     blocklist_packages: Set[str] = set()
@@ -134,7 +139,7 @@ def _make_attr_guard(node: ast.Attribute) -> Optional[str]:
 
 def _make_subscript_guard_helper(node: ast.Subscript) -> Optional[str]:
     slice_val = subscript_to_slice(node)
-    if isinstance(slice_val, (ast.Constant, ast.Str, ast.Num, ast.Name)):
+    if isinstance(slice_val, (ast_Constant, ast_Str, ast_Num, ast.Name)):
         if isinstance(slice_val, ast.Name):
             subscript = slice_val.id
         elif hasattr(slice_val, "s"):

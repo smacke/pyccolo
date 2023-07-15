@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import ast
+import sys
 from enum import Enum
 
 from pyccolo import fast
@@ -116,8 +117,15 @@ class TraceEvent(Enum):
         # this will be filled by tracer.py
         ...
 
-    def to_ast(self):
-        return fast.Constant(self.name)
+    if sys.version_info < (3, 8):
+
+        def to_ast(self):
+            return fast.Str(self.name)
+
+    else:
+
+        def to_ast(self):
+            return fast.Constant(self.name)
 
 
 SYS_TRACE_EVENTS = {
