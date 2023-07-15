@@ -416,7 +416,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             assert not has_sys_trace_events or sys_gettrace() is self.sys_tracer
         self._is_tracing_enabled = False
         if has_sys_trace_events and sys_gettrace() is not None:
-            sys.settrace(self.existing_tracer)
+            sys_settrace(self.existing_tracer)
         if len(_TRACER_STACK) == 0:
             setattr(builtins, TRACING_ENABLED, False)
 
