@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
 
+sys_gettrace = sys.gettrace
 sys_settrace = sys.settrace
 internal_directories = (
     os.path.dirname(os.path.dirname((lambda: 0).__code__.co_filename)),
@@ -174,7 +175,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         self._saved_thunk: Optional[Union[str, ast.AST]] = None
         self._is_tracing_enabled = False
         self._is_tracing_hard_disabled = False
-        self.existing_tracer = sys.gettrace()
+        self.existing_tracer = sys_gettrace()
         self.sys_tracer = self._make_composed_tracer(self.existing_tracer)
         self.augmented_node_ids_by_spec: Dict[AugmentationSpec, Set[int]] = defaultdict(
             set
@@ -365,6 +366,18 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def make_stack(self):
         return TraceStack(self)
 
+    def _call_existing_tracer(
+        self, existing_tracer, frame: FrameType, evt: str, arg: Any, **kwargs
+    ):  # pragma: no cover
+        if existing_tracer is None:
+            return None
+        orig_sys_tracer = sys_gettrace()
+        existing_ret = existing_tracer(frame, evt, arg, **kwargs)
+        if sys_gettrace() is not orig_sys_tracer:
+            # to deal with the existing tracer messing with things
+            sys_settrace(orig_sys_tracer)
+        return existing_ret
+
     def _make_composed_tracer(self, existing_tracer):  # pragma: no cover
         @functools.wraps(self._sys_tracer)
         def _composed_tracer(frame: FrameType, evt: str, arg: Any, **kwargs):
@@ -373,19 +386,16 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             else:
                 my_ret = None
             if isinstance(my_ret, tuple) and len(my_ret) > 1 and my_ret[0] is SkipAll:
-                return my_ret[1]
-            orig_sys_tracer = sys.gettrace()
-            if existing_tracer is None:
-                existing_ret = None
-            else:
-                existing_ret = existing_tracer(frame, evt, arg, **kwargs)
-            if sys.gettrace() is not orig_sys_tracer:
-                # to deal with the existing tracer messing with things
-                sys_settrace(orig_sys_tracer)
-            if my_ret is None and evt == "call":
-                return existing_ret
-            else:
+                my_ret = my_ret[1]
+            existing_ret = self._call_existing_tracer(
+                existing_tracer, frame, evt, arg, **kwargs
+            )
+            if evt == "call" and my_ret is not None and existing_ret is not None:
+                return self._make_composed_tracer(existing_ret)
+            elif existing_ret is None:
                 return my_ret
+            else:
+                return existing_ret
 
         return _composed_tracer
 
@@ -394,7 +404,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             assert not self._is_tracing_enabled
         self._is_tracing_enabled = True
         if self.has_sys_trace_events:
-            self.existing_tracer = existing_tracer or sys.gettrace()
+            self.existing_tracer = existing_tracer or sys_gettrace()
             self.sys_tracer = self._make_composed_tracer(self.existing_tracer)
             sys_settrace(self.sys_tracer)
         setattr(builtins, TRACING_ENABLED, True)
@@ -403,9 +413,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         has_sys_trace_events = self.has_sys_trace_events
         if check_enabled:
             assert self._is_tracing_enabled
-            assert not has_sys_trace_events or sys.gettrace() is self.sys_tracer
+            assert not has_sys_trace_events or sys_gettrace() is self.sys_tracer
         self._is_tracing_enabled = False
-        if has_sys_trace_events and sys.gettrace() is not None:
+        if has_sys_trace_events and sys_gettrace() is not None:
             sys_settrace(self.existing_tracer)
         if len(_TRACER_STACK) == 0:
             setattr(builtins, TRACING_ENABLED, False)
@@ -413,15 +423,21 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def _patch_sys_settrace_non_context(self) -> Callable:
         import threading
 
+        original_sys_gettrace = sys.gettrace
         original_sys_settrace = sys.settrace
         orig_thread = threading.current_thread()
+        existing_tracer = self.existing_tracer
 
         def cleanup_callback():
+            sys.gettrace = original_sys_gettrace
             sys.settrace = original_sys_settrace
 
         def patched_sys_settrace(trace_func):  # pragma: no cover
             if threading.current_thread() is not orig_thread:
-                return original_sys_settrace(trace_func)
+                if trace_func is None:
+                    return sys_settrace(None)
+                else:
+                    return sys_settrace(trace_func)
             # called by third-party tracers
             self.existing_tracer = trace_func
             if self._is_tracing_enabled:
@@ -431,6 +447,10 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             else:
                 original_sys_settrace(trace_func)
 
+        def patched_sys_gettrace():
+            return existing_tracer
+
+        sys.gettrace = patched_sys_gettrace
         sys.settrace = patched_sys_settrace
         return cleanup_callback
 
@@ -869,12 +889,21 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                 return None
 
         if self._has_fancy_sys_tracing and evt == "call":
-            if TraceEvent.line not in self.events_with_registered_handlers:
-                frame.f_trace_lines = False  # type: ignore
-            if TraceEvent.opcode in self.events_with_registered_handlers:
-                frame.f_trace_opcodes = True  # type: ignore
-
-        return self._emit_event(evt, None, frame, ret=arg)
+            orig_trace_lines = frame.f_trace_lines
+            orig_trace_opcodes = frame.f_trace_opcodes
+            frame.f_trace_lines = (
+                TraceEvent.line not in self.events_with_registered_handlers  # type: ignore
+            )
+            frame.f_trace_opcodes = (
+                TraceEvent.opcode in self.events_with_registered_handlers  # type: ignore
+            )
+            try:
+                return self._emit_event(evt, None, frame, ret=arg)
+            finally:
+                frame.f_trace_lines = orig_trace_lines
+                frame.f_trace_opcodes = orig_trace_opcodes
+        else:
+            return self._emit_event(evt, None, frame, ret=arg)
 
     if TYPE_CHECKING:
         TracerT = TypeVar("TracerT", bound="_InternalBaseTracer")

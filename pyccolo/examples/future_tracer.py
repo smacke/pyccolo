@@ -17,15 +17,15 @@ try:
     from IPython import get_ipython
 except ImportError:
 
-    def get_ipython(*_):
+    def get_ipython():
         return None
 
 
 try:
-    from nbsafety.singletons import nbs
+    from ipyflow.singletons import flow
 except ImportError:
 
-    def nbs(*_):
+    def flow():
         return None
 
 
@@ -213,16 +213,16 @@ class FutureTracer(pyc.BaseTracer):
             self._exec_counter_by_future_id.pop(id(old_fut), None)
             self._future_by_name_and_version.pop((async_var, current_version - 1), None)
             try:
-                flow = nbs()
+                flow_ = flow()
             except:  # noqa: E722
-                flow = None
+                flow_ = None
             with self._version_lock:
                 if self._async_variable_version_by_name[async_var] == current_version:
                     # by using 'is_outer_stmt', we can be sure
                     # that setting the global is the right thing
                     frame.f_globals[async_var] = retval
-                if flow is not None:
-                    aliases = list(flow.aliases.get(id(fut), []))
+                if flow_ is not None:
+                    aliases = list(flow_.aliases.get(id(fut), []))
                     for alias in aliases:
                         alias.update_obj_ref(retval)
             return retval

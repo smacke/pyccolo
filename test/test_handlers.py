@@ -378,7 +378,6 @@ def test_tracing_context_manager_toggling():
 
 
 def test_composes_with_existing_sys_tracer():
-
     num_calls_seen_from_existing_tracer = 0
 
     sys_settrace = sys.settrace

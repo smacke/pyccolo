@@ -5,7 +5,6 @@ import sys
 import pyccolo as pyc
 
 if sys.version_info >= (3, 8):  # noqa
-
     add_42_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="++", replacement="+"
     )
