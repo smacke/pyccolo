@@ -14,7 +14,7 @@ instrumentation you wish to perform, and takes care of the *how* for you.  It
 aims to be *ergonomic*, *composable*, and *portable*, by providing an intuitive
 interface, making it easy to layer multiple levels of instrumentation, and
 allowing the same code to work across multiple versions of Python (3.6 to
-3.11), with few exceptions. Portability across versions is accomplished by
+3.12), with few exceptions. Portability across versions is accomplished by
 embedding instrumentation at the level of source code (as opposed to
 bytecode-level instrumentation).
 
