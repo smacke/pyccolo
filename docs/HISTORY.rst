@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.49 (2023-08-19)
+-------------------
+* Fix a bug around trace stack field initialization;
+
 0.0.48 (2023-07-15)
 -------------------
 * Fixes for 3.12 compat;

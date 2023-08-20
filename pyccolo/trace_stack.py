@@ -25,6 +25,10 @@ class TraceStack:
     def get_field(self, field: str, depth: int = 1) -> Any:
         return self._stack[-depth][self._field_mapping[field]]
 
+    @staticmethod
+    def _make_initer_from_val(init_val: Any) -> Callable[[], Any]:
+        return lambda: init_val
+
     @contextmanager
     def register_stack_state(self):
         self._registering_stack_state_context = True
@@ -42,7 +46,9 @@ class TraceStack:
                 self._stack_item_initializers[stack_item_name] = lambda: None
             elif isinstance(stack_item, (int, bool, str, float)):
                 init_val = type(stack_item)(stack_item)
-                self._stack_item_initializers[stack_item_name] = lambda: init_val
+                self._stack_item_initializers[
+                    stack_item_name
+                ] = self._make_initer_from_val(init_val)
             else:
                 self._stack_item_initializers[stack_item_name] = type(stack_item)
         for i, stack_item_name in enumerate(self._stack_item_names()):
