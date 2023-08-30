@@ -279,7 +279,7 @@ def test_reentrant_handling():
 
         @pyc.register_handler(ast.Assign)
         def handle_outer_assign(self, ret, _node, frame, *_, **__):
-            if type(ret) != int or frame.f_code.co_filename != "<sandbox>":
+            if type(ret) is not int or frame.f_code.co_filename != "<sandbox>":
                 return
             return ret + 2
 
