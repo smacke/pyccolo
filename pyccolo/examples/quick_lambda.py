@@ -5,8 +5,9 @@ Ref: https://macropy3.readthedocs.io/en/latest/quick_lambda.html#quicklambda
 
 Example:
 ```
-with QuickLambdaTracer.instance():
-    assert pyc.eval("f[_ + _](3, 4)") == 7
+with QuickLambdaTracer:
+    pyc.eval("f[_ + _](3, 4)")
+>>> 7
 ```
 """
 import ast

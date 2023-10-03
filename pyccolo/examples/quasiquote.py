@@ -7,7 +7,9 @@ Example:
 ```
 a = 10
 b = 2
-q[1 + u[a + b]]  -> BinOp(Add, left=Num(1), right=Num(12))
+with Quasiquoter:
+    pyc.eval("q[1 + u[a + b]]")
+>>> BinOp(Add, left=Num(1), right=Num(12))
 ```
 """
 import ast
