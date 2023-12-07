@@ -20,6 +20,7 @@ class OptionalChainer(pyc.BaseTracer):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self._saved_ret_expr = None
         self.lexical_call_stack: pyc.TraceStack = self.make_stack()
         with self.lexical_call_stack.register_stack_state():
             # TODO: pop this the right number of times if an exception occurs
@@ -34,10 +35,17 @@ class OptionalChainer(pyc.BaseTracer):
     def syntax_augmentation_specs(self):
         return [optional_chaining_spec]
 
+    @pyc.register_raw_handler(pyc.after_stmt)
+    def handle_after_module_stmt(self, ret, *_, **__):
+        self._saved_ret_expr = ret
+
     @pyc.register_raw_handler(pyc.after_module_stmt)
     def handle_after_module_stmt(self, *_, **__):
         while len(self.lexical_call_stack) > 0:
             self.lexical_call_stack.pop()
+        ret = self._saved_ret_expr
+        self._saved_ret_expr = None
+        return ret
 
     @pyc.register_raw_handler(pyc.before_attribute_load)
     def handle_before_attr(self, obj, node_id, *_, **__):
