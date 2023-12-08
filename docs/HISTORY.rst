@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.50 (2023-12-07)
+-------------------
+* Fix a bug in the optional chainer example;
+
 0.0.49 (2023-08-19)
 -------------------
 * Fix a bug around trace stack field initialization;
