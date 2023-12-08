@@ -36,7 +36,7 @@ class OptionalChainer(pyc.BaseTracer):
         return [optional_chaining_spec]
 
     @pyc.register_raw_handler(pyc.after_stmt)
-    def handle_after_module_stmt(self, ret, *_, **__):
+    def handle_after_stmt(self, ret, *_, **__):
         self._saved_ret_expr = ret
 
     @pyc.register_raw_handler(pyc.after_module_stmt)
