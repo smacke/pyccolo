@@ -303,16 +303,16 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     ):
         try:
             if self._is_tracing_hard_disabled:
-                return kwargs.get("ret", None)
+                return kwargs.get("ret")
             event = evt if isinstance(evt, TraceEvent) else TraceEvent(evt)
-            guards_by_spec_id = kwargs.get("guards_by_handler_spec_id", None)
+            guards_by_spec_id = kwargs.get("guards_by_handler_spec_id")
             for spec in self._event_handlers.get(event, []):
                 if reentrant_handlers_only and not spec.reentrant:
                     continue
                 guard_for_spec = (
                     None
                     if guards_by_spec_id is None
-                    else guards_by_spec_id.get(id(spec), None)
+                    else guards_by_spec_id.get(id(spec))
                 )
                 if guard_for_spec is not None and frame.f_globals.get(
                     guard_for_spec, False
@@ -323,7 +323,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     node_id_or_node = (
                         node_id
                         if spec.use_raw_node_id
-                        else self.ast_node_by_id.get(node_id, None)
+                        else self.ast_node_by_id.get(node_id)
                     )
                     if (
                         spec.predicate is Predicate.TRUE
@@ -358,7 +358,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     self._saved_thunk = new_ret
                 if should_break:
                     break
-            return kwargs.get("ret", None)
+            return kwargs.get("ret")
         except KeyboardInterrupt as ki:
             self._disable_tracing(check_enabled=False)
             raise ki.with_traceback(None)
@@ -1015,21 +1015,40 @@ class BaseTracer(_InternalBaseTracer):
         return ret
 
     @classmethod
-    def is_outer_stmt(cls, node_or_id, exclude_outer_stmt_types=None):
+    def stmt_only_has_ancestor_types(
+        cls, node_or_id: Union[int, ast.AST], ancestor_types: Tuple[Type[ast.AST], ...]
+    ):
         node_id = node_or_id if isinstance(node_or_id, int) else id(node_or_id)
-        containing_stmt = cls.containing_stmt_by_id.get(node_id, None)
+        containing_stmt = cls.containing_stmt_by_id.get(node_id)
         parent_stmt = cls.parent_stmt_by_id.get(
-            node_id if containing_stmt is None else id(containing_stmt), None
+            node_id if containing_stmt is None else id(containing_stmt)
         )
-        outer_stmts_to_consider = tuple(
+        while parent_stmt is not None and isinstance(parent_stmt, ancestor_types):
+            parent_stmt = cls.parent_stmt_by_id.get(id(parent_stmt))
+        return parent_stmt is None or isinstance(parent_stmt, ast.Module)
+
+    @classmethod
+    def is_outer_stmt(cls, node_or_id, exclude_outer_stmt_types=None):
+        ancestor_types = tuple(
             {ast.If, ast.Try, ast.With, ast.AsyncWith}
             - (exclude_outer_stmt_types or set())
         )
-        while parent_stmt is not None and isinstance(
-            parent_stmt, outer_stmts_to_consider
-        ):
-            parent_stmt = cls.parent_stmt_by_id.get(id(parent_stmt), None)
-        return parent_stmt is None or isinstance(parent_stmt, ast.Module)
+        return cls.stmt_only_has_ancestor_types(node_or_id, ancestor_types)
+
+    @classmethod
+    def is_initial_frame_stmt(cls, node_or_id: Union[int, ast.AST]):
+        return cls.stmt_only_has_ancestor_types(
+            node_or_id,
+            (
+                ast.If,
+                ast.Try,
+                ast.With,
+                ast.AsyncWith,
+                ast.For,
+                ast.AsyncFor,
+                ast.While,
+            ),
+        )
 
 
 class NoopTracer(BaseTracer):
