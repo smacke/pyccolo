@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import itertools
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from pyccolo.tracer import _InternalBaseTracer
@@ -22,8 +22,11 @@ class TraceStack:
             self._stack_items_with_manual_initialization,
         )
 
-    def get_field(self, field: str, depth: int = 1) -> Any:
-        return self._stack[-depth][self._field_mapping[field]]
+    def get_field(
+        self, field: str, depth: Optional[int] = None, height: Optional[int] = None
+    ) -> Any:
+        height = -(1 if depth is None else depth) if height is None else height
+        return self._stack[height][self._field_mapping[field]]
 
     @staticmethod
     def _make_initer_from_val(init_val: Any) -> Callable[[], Any]:
