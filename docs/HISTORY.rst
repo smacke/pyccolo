@@ -1,6 +1,12 @@
 History
 =======
 
+0.0.51 (2023-12-19)
+-------------------
+* Improve ergonomics of trace stack get_field() with height param;
+* Add option to disable tracing for non-main threads;
+* Add is_initial_frame_stmt utility;
+
 0.0.50 (2023-12-07)
 -------------------
 * Fix a bug in the optional chainer example;
