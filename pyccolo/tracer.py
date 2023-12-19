@@ -473,6 +473,9 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def allow_reentrant_events(self) -> bool:
         return True
 
+    def multiple_threads_allowed(self) -> bool:
+        return True
+
     def _should_instrument_file_impl(self, filename: str) -> bool:
         return filename in self._tracing_enabled_files or self.should_instrument_file(
             filename

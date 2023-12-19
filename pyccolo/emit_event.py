@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import sys
+import threading
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, List
 
@@ -40,6 +41,9 @@ def _make_ret(event, ret):
 SkipAll = object()
 
 
+_main_thread_id = threading.main_thread().ident
+
+
 def _emit_tracer_loop(
     event,
     node_id,
@@ -48,11 +52,17 @@ def _emit_tracer_loop(
 ):
     global _allow_reentrant_event_handling
     global _allow_event_handling
+    current_thread_id = threading.current_thread().ident
     orig_allow_reentrant_event_handling = _allow_reentrant_event_handling
     is_reentrant = not _allow_event_handling
     reentrant_handlers_only = is_reentrant and not _allow_reentrant_event_handling
     _allow_event_handling = False
     for tracer in _TRACER_STACK:
+        if (
+            current_thread_id != _main_thread_id
+            and not tracer.multiple_threads_allowed()
+        ):
+            continue
         _allow_reentrant_event_handling = False
         if not tracer._file_passes_filter_impl(
             event, frame.f_code.co_filename, is_reentrant=is_reentrant
