@@ -381,6 +381,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def _make_composed_tracer(self, existing_tracer):  # pragma: no cover
         @functools.wraps(self._sys_tracer)
         def _composed_tracer(frame: FrameType, evt: str, arg: Any, **kwargs):
+            __debuggerskip__ = True  # noqa: F841
             if self._is_tracing_enabled:
                 my_ret = self._sys_tracer(frame, evt, arg, **kwargs)
             else:

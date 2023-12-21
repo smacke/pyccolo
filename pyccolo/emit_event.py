@@ -86,6 +86,7 @@ def _emit_tracer_loop(
 def _emit_event(event, node_id, **kwargs):
     global _allow_event_handling
     global _allow_reentrant_event_handling
+    __debuggerskip__ = True  # noqa: F841
     frame = sys._getframe().f_back
     if frame.f_code.co_filename == __file__:
         # weird shit happens if we instrument this file, so exclude it.
