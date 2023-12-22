@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.52 (2023-12-21)
+-------------------
+* Skip pyccolo frames in pdb;
+
 0.0.51 (2023-12-19)
 -------------------
 * Improve ergonomics of trace stack get_field() with height param;
