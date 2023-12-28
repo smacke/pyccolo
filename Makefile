@@ -26,7 +26,7 @@ imports:
 	isort .
 
 lint:
-	flake8
+	ruff check
 
 typecheck:
 	mypy pyccolo

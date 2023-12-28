@@ -279,7 +279,7 @@ def test_reentrant_handling():
 
         @pyc.register_handler(ast.Assign)
         def handle_outer_assign(self, ret, _node, frame, *_, **__):
-            if type(ret) is not int or frame.f_code.co_filename != "<sandbox>":
+            if not isinstance(ret, int) or frame.f_code.co_filename != "<sandbox>":
                 return
             return ret + 2
 
@@ -460,9 +460,9 @@ def test_override_stmt():
             try:
                 pyc.exec("pass")
             except AssertionError:
-                assert x == 43
+                assert x == 43  # noqa: F821
             else:
-                assert x == 44
+                assert x == 44  # noqa: F821
     del globals()["x"]
 
 
