@@ -708,7 +708,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         for elt in node.body:
             self.visit(elt)
         new_decorator_list = []
-        for decorator in node.decorator_list:
+        for idx, decorator in enumerate(node.decorator_list):
             if not self.handler_predicate_by_event[TraceEvent.decorator](decorator):
                 new_decorator_list.append(self.visit(decorator))
                 continue
@@ -719,6 +719,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                         decorator,
                         ret=self.visit(decorator),
                         func_node_id=self.get_copy_id_ast(node),
+                        decorator_idx=fast.Num(idx),
                     )
                 )
         node.decorator_list = new_decorator_list

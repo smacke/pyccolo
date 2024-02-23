@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.53 (2024-02-24)
+-------------------
+* Add decorator trace event;
+
 0.0.52 (2023-12-21)
 -------------------
 * Skip pyccolo frames in pdb;
