@@ -67,6 +67,7 @@ after_if_test = TraceEvent.after_if_test
 after_while_test = TraceEvent.after_while_test
 before_lambda = TraceEvent.before_lambda
 after_lambda = TraceEvent.after_lambda
+decorator = TraceEvent.decorator
 before_call = TraceEvent.before_call
 after_call = TraceEvent.after_call
 before_argument = TraceEvent.before_argument

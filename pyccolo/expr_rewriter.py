@@ -701,6 +701,35 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         node.values = traced_values
         return self.visit_literal(node, should_inner_visit=False)
 
+    def visit_FunctionDef_or_AsyncFunctionDef(
+        self, node: Union[ast.FunctionDef, ast.AsyncFunctionDef]
+    ):
+        self.generic_visit(node.args)
+        for elt in node.body:
+            self.visit(elt)
+        new_decorator_list = []
+        for decorator in node.decorator_list:
+            if not self.handler_predicate_by_event[TraceEvent.decorator](decorator):
+                new_decorator_list.append(self.visit(decorator))
+                continue
+            with fast.location_of(decorator):
+                new_decorator_list.append(
+                    self.emit(
+                        TraceEvent.decorator,
+                        decorator,
+                        ret=self.visit(decorator),
+                        func_node_id=self.get_copy_id_ast(node),
+                    )
+                )
+        node.decorator_list = new_decorator_list
+        return node
+
+    def visit_FunctionDef(self, node: ast.FunctionDef):
+        return self.visit_FunctionDef_or_AsyncFunctionDef(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
+        return self.visit_FunctionDef_or_AsyncFunctionDef(node)
+
     def visit_Return(self, node: ast.Return):
         if node.value is None:
             return node

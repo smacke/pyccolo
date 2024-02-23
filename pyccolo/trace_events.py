@@ -46,6 +46,7 @@ class TraceEvent(Enum):
     before_lambda = "before_lambda"
     after_lambda = "after_lambda"
 
+    decorator = "decorator"
     before_call = "before_call"
     after_call = "after_call"
     before_argument = "before_argument"

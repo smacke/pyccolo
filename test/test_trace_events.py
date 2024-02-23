@@ -365,6 +365,7 @@ def test_decorator(events):
                 pyc.after_function_execution,
                 pyc.after_call,
                 pyc.after_load_complex_symbol,
+                pyc.decorator,
                 pyc.before_function_body,
                 pyc.before_stmt,
                 pyc.before_assign_rhs,
