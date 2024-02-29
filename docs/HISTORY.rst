@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.54 (2024-02-29)
+-------------------
+* Hoist global / nonlocal declarations above instrumentation branch;
+
 0.0.53 (2024-02-24)
 -------------------
 * Add decorator trace event;
