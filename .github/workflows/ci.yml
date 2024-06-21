@@ -5,11 +5,11 @@ on: [push, pull_request]
 jobs:
   build:
 
-    if: ${{ matrix.os == 'macos' && matrix.python-minor-version < 10 }}:
+    if: ${{ matrix.os == 'macos' && matrix.python-minor-version < 10 }}
     runs-on: 'macos-13'
-    if: ${{ matrix.os == 'macos' && matrix.python-minor-version >= 10 }}:
+    if: ${{ matrix.os == 'macos' && matrix.python-minor-version >= 10 }}
     runs-on: 'macos-latest'
-    if: ${{ matrix.os != 'macos' }}:
+    if: ${{ matrix.os != 'macos' }}
     runs-on: ${{ matrix.os }}
 
     strategy:
