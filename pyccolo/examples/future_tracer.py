@@ -202,7 +202,7 @@ class FutureTracer(pyc.BaseTracer):
                 # first, wait on everything that depends on the previous value to finish
                 try:
                     self._unwrap_future(waiter)
-                except:  # noqa: E722
+                except Exception:
                     pass
             self._threadlocal_state.current_fut = fut
             retval = eval(unwrap_futures_code, frame.f_globals, frame.f_locals)
@@ -214,7 +214,7 @@ class FutureTracer(pyc.BaseTracer):
             self._future_by_name_and_version.pop((async_var, current_version - 1), None)
             try:
                 flow_ = flow()
-            except:  # noqa: E722
+            except Exception:
                 flow_ = None
             with self._version_lock:
                 if self._async_variable_version_by_name[async_var] == current_version:
@@ -254,5 +254,5 @@ class FutureTracer(pyc.BaseTracer):
                 fut = self._future_by_name_and_version[async_var, version]
         try:
             frame.f_globals[async_var] = self._unwrap_future(fut)
-        except:  # noqa: E722
+        except Exception:
             pass
