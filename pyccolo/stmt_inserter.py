@@ -17,6 +17,7 @@ from pyccolo import fast
 from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
+    PYCCOLO_BUILTIN_PREFIX,
     TRACING_ENABLED,
     make_guard_name,
 )
@@ -228,7 +229,36 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                         orelse=fundef_copy.body,
                     ),
                 ]
-            return docstring + globals_and_nonlocals + ret
+            name_error_exc = f"{PYCCOLO_BUILTIN_PREFIX}_name_error"
+            ret = [
+                fast.Try(
+                    body=ret,
+                    handlers=[
+                        fast.ExceptHandler(
+                            type=fast.Name(NameError.__name__, ast.Load()),
+                            name=name_error_exc,
+                            body=[
+                                cast(
+                                    ast.stmt,
+                                    fast.If(
+                                        test=fast.parse(
+                                            f'not {name_error_exc}.name.startswith("{PYCCOLO_BUILTIN_PREFIX}")'
+                                        )
+                                        .body[0]
+                                        .value,
+                                        body=[fast.Raise()],
+                                        orelse=[],
+                                    ),
+                                )
+                            ]
+                            + fundef_copy.body,
+                        )
+                    ],
+                    orelse=[],
+                    finalbody=[],
+                ),
+            ]
+        return docstring + globals_and_nonlocals + ret
 
     def _handle_module_body(
         self, node: ast.Module, orig_body: List[ast.stmt]

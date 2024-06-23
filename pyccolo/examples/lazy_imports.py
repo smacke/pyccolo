@@ -9,6 +9,7 @@ from typing import Any, List, Optional, Set, Union
 
 import pyccolo as pyc
 from pyccolo._fast.misc_ast_utils import subscript_to_slice
+from pyccolo.extra_builtins import PYCCOLO_BUILTIN_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ def _make_attr_guard(node: ast.Attribute) -> Optional[str]:
     if suffix is None:
         return None
     else:
-        return f"_Xix_{suffix}"
+        return f"{PYCCOLO_BUILTIN_PREFIX}_{suffix}"
 
 
 def _make_subscript_guard_helper(node: ast.Subscript) -> Optional[str]:
@@ -167,7 +168,7 @@ def _make_subscript_guard(node: ast.Subscript) -> Optional[str]:
     if suffix is None:
         return None
     else:
-        return f"_Xix_{suffix}"
+        return f"{PYCCOLO_BUILTIN_PREFIX}_{suffix}"
 
 
 class LazyImportTracer(pyc.BaseTracer):
@@ -295,7 +296,7 @@ class LazyImportTracer(pyc.BaseTracer):
 
     @pyc.load_name(
         when=pyc.Predicate(_is_name_lazy_load, static=True),
-        guard=lambda node: f"_Xix_{node.id}_guard",
+        guard=lambda node: f"{PYCCOLO_BUILTIN_PREFIX}_{node.id}_guard",
     )
     def load_name(
         self, ret: Any, node: ast.Name, frame: FrameType, _evt, guard, *_, **__

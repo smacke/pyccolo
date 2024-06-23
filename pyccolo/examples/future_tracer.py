@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 import pyccolo as pyc
 import pyccolo.fast as fast
+from pyccolo.extra_builtins import PYCCOLO_BUILTIN_PREFIX
 
 try:
     from IPython import get_ipython
@@ -33,8 +34,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
 
 
-_UNWRAP_FUTURE_EXTRA_BUILTIN = "_Xix_PYCCOLO_UNWRAP_FUTURE"
-_FUT_TAB_EXTRA_BUILTIN = "_Xix_PYCCOLO_FUTURE_TABLE"
+_UNWRAP_FUTURE_EXTRA_BUILTIN = f"{PYCCOLO_BUILTIN_PREFIX}_PYCCOLO_UNWRAP_FUTURE"
+_FUT_TAB_EXTRA_BUILTIN = f"{PYCCOLO_BUILTIN_PREFIX}_PYCCOLO_FUTURE_TABLE"
 
 
 class FutureUnwrapper(ast.NodeTransformer):

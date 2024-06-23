@@ -17,7 +17,7 @@ from typing import (
     Union,
 )
 
-from pyccolo.extra_builtins import EMIT_EVENT, TRACE_LAMBDA
+from pyccolo.extra_builtins import EMIT_EVENT, PYCCOLO_BUILTIN_PREFIX, TRACE_LAMBDA
 from pyccolo.trace_events import BEFORE_EXPR_EVENTS, TraceEvent
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ else:
 
 
 class _SaveParentsVisitor(ast.NodeVisitor):
-    has_parent = "has_parent_Xix54321"
+    has_parent = f"{PYCCOLO_BUILTIN_PREFIX}_has_parent_Xix54321"
 
     def generic_visit(self, node: ast.AST) -> None:
         if hasattr(node, "parent"):

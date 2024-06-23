@@ -38,6 +38,7 @@ from pyccolo.emit_event import _TRACER_STACK, SkipAll, _emit_event
 from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
+    PYCCOLO_BUILTIN_PREFIX,
     TRACE_LAMBDA,
     TRACING_ENABLED,
     make_guard_name,
@@ -135,7 +136,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     current_module: List[Optional[ast.Module]] = [None]
 
     def __init__(self, is_reset: bool = False):
-        self._is_dev_mode = os.environ.get(PYCCOLO_DEV_MODE_ENV_VAR) == "1"
+        self._is_dev_mode = os.getenv(PYCCOLO_DEV_MODE_ENV_VAR) == "1"
         if is_reset:
             return
         if not self._MANAGER_CLASS_REGISTERED:
@@ -794,8 +795,8 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
             sandbox_args = ", ".join(["*"] + args_to_use + ["**__"])
         else:
             sandbox_args = "**__"
-        env_name = "__Xix_pyccolo_local_env"
-        fun_name = "__Xix_pyccolo_sandbox"
+        env_name = f"{PYCCOLO_BUILTIN_PREFIX}_pyccolo_local_env"
+        fun_name = f"{PYCCOLO_BUILTIN_PREFIX}_pyccolo_sandbox"
         sandboxed_code: Union[ast.Module, str] = textwrap.dedent(
             f"""
             {env_name} = dict(locals())

@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Union
 
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.emit_event import _TRACER_STACK, SkipAll, allow_reentrant_event_handling
-from pyccolo.extra_builtins import make_guard_name
+from pyccolo.extra_builtins import PYCCOLO_BUILTIN_PREFIX, make_guard_name
 from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
 from pyccolo.trace_events import TraceEvent
@@ -219,6 +219,7 @@ __all__ = [
     "BaseTracer",
     "NoopTracer",
     "Null",
+    "PYCCOLO_BUILTIN_PREFIX",
     "Pass",
     "Predicate",
     "Skip",

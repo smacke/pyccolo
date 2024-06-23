@@ -16,7 +16,7 @@ def test_local_guard_activation_prevents_future_handlers():
             for guard in self.local_guards_by_module_id.get(id(node), []):
                 frame.f_globals[guard] = False
 
-        @pyc.load_name(guard=lambda node: f"_Xix_{node.id}")
+        @pyc.load_name(guard=lambda node: f"{pyc.PYCCOLO_BUILTIN_PREFIX}_{node.id}")
         def load_name(
             self, _ret, node: ast.Name, frame: FrameType, _evt, guard, *_, **__
         ):
@@ -47,11 +47,15 @@ def test_subscript_local_guard_activation():
             for guard in self.local_guards_by_module_id.get(id(node), []):
                 frame.f_globals[guard] = False
 
-        @pyc.before_subscript_load(guard=lambda node: f"_Xix_{node.value.id}")
+        @pyc.before_subscript_load(
+            guard=lambda node: f"{pyc.PYCCOLO_BUILTIN_PREFIX}_{node.value.id}"
+        )
         def before_subscript_load(self, _ret, node, *_, **__):
             self.counter_by_subscript[node.value.id] += 1
 
-        @pyc.after_subscript_load(guard=lambda node: f"_Xix_{node.value.id}")
+        @pyc.after_subscript_load(
+            guard=lambda node: f"{pyc.PYCCOLO_BUILTIN_PREFIX}_{node.value.id}"
+        )
         def after_subscript_load(
             self, _ret, node, frame: FrameType, _evt, guard, *_, **__
         ):
