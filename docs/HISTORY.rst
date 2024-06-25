@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.55 (2024-06-24)
+-------------------
+* Remove bare except;
+* Be robust to undefined builtins;
+
 0.0.54 (2024-02-29)
 -------------------
 * Hoist global / nonlocal declarations above instrumentation branch;
