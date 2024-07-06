@@ -172,4 +172,5 @@ AST_TO_EVENT_MAPPING = {
     ast.Return: TraceEvent.after_return,
     ast.BinOp: TraceEvent.after_binop,
     ast.Compare: TraceEvent.after_compare,
+    ast.Ellipsis: TraceEvent.ellipses,
 }

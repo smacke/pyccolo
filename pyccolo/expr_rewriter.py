@@ -836,10 +836,13 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         else:
             node_type_id = id(node.type)
             node.type = self.visit(node.type)
-        with fast.location_of(node.type):
-            node.type = self.emit(
-                TraceEvent.exception_handler_type, node_type_id, ret=node.type
-            )
+        if self.handler_predicate_by_event[TraceEvent.exception_handler_type](
+            self.orig_to_copy_mapping[node_type_id]
+        ):
+            with fast.location_of(node.type):
+                node.type = self.emit(
+                    TraceEvent.exception_handler_type, node_type_id, ret=node.type
+                )
         node.body = [self.visit(stmt) for stmt in node.body]
         return node
 

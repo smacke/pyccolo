@@ -913,7 +913,7 @@ def test_exception_handler_types(events):
             try:
                 assert False
             except{exc_type}:
-                pass
+                ...
             """,
             filename=_FILENAME,
         )
@@ -926,6 +926,8 @@ def test_exception_handler_types(events):
                     *([pyc.load_name] if exc_type else []),
                     pyc.exception_handler_type,
                     pyc.before_stmt,
+                    pyc.ellipses,
+                    pyc.after_expr_stmt,
                     pyc.after_stmt,
                     pyc.after_stmt,
                     pyc.after_module_stmt,
