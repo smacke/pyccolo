@@ -3,4 +3,4 @@
 # nopycln: file
 
 foo = None
-assert foo?.bar is None  # noqa
+assert foo?.bar is None
