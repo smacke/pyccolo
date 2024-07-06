@@ -295,7 +295,7 @@ def test_function_call(events):
 @patch_events_and_emitter
 def test_lambda_in_tuple(events):
     assert _RECORDED_EVENTS == []
-    pyc.BaseTracer().exec("x = (lambda: 42,)", filename=_FILENAME)
+    pyc.BaseTracer().exec("x: foo = (lambda: 42,)", filename=_FILENAME)
     throw_and_print_diff_if_recorded_not_equal_to(
         filter_events_to_subset(
             [
@@ -901,3 +901,36 @@ def test_comprehension(events):
             events,
         )
     )
+
+
+@given(events=subsets(set(pyc.TraceEvent)))
+@patch_events_and_emitter
+def test_exception_handler_types(events):
+    for exc_type in "", " AssertionError":
+        assert _RECORDED_EVENTS == []
+        pyc.BaseTracer().exec(
+            f"""
+            try:
+                assert False
+            except{exc_type}:
+                pass
+            """,
+            filename=_FILENAME,
+        )
+        throw_and_print_diff_if_recorded_not_equal_to(
+            filter_events_to_subset(
+                [
+                    pyc.init_module,
+                    pyc.before_stmt,
+                    pyc.before_stmt,
+                    *([pyc.load_name] if exc_type else []),
+                    pyc.exception_handler_type,
+                    pyc.before_stmt,
+                    pyc.after_stmt,
+                    pyc.after_stmt,
+                    pyc.after_module_stmt,
+                    pyc.exit_module,
+                ],
+                events,
+            )
+        )

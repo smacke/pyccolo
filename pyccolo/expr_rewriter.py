@@ -391,13 +391,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         else:
             return cast(ast.With, self.generic_visit(node))
 
-    def visit_Assign(self, node: ast.Assign):
-        return self.visit_Assign_or_AugAssign(node)
-
-    def visit_AugAssign(self, node: ast.AugAssign):
-        return self.visit_Assign_or_AugAssign(node)
-
-    def visit_Assign_or_AugAssign(self, node: Union[ast.Assign, ast.AugAssign]):
+    def visit_assignment(self, node: Union[ast.AnnAssign, ast.Assign, ast.AugAssign]):
         if isinstance(node, ast.Assign):
             new_targets = []
             for target in node.targets:
@@ -407,7 +401,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             node.target = self.visit(node.target)
         orig_value = node.value
         orig_value_id = id(orig_value)
-        if isinstance(node, ast.Assign):
+        if isinstance(node, (ast.AnnAssign, ast.Assign)):
             before_evt = TraceEvent.before_assign_rhs
             after_evt = TraceEvent.after_assign_rhs
         else:
@@ -420,6 +414,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             if self.handler_predicate_by_event[after_evt](orig_value):
                 node.value = self.emit(after_evt, orig_value_id, ret=node.value)
         return node
+
+    visit_AnnAssign = visit_Assign = visit_AugAssign = visit_assignment
 
     def visit_If(self, node: ast.If):
         with fast.location_of(node):
@@ -529,35 +525,6 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         else:
             raise TypeError("invalid ast node: %s", ast.dump(node))
 
-    def visit_literal(
-        self,
-        node: Union[ast.Dict, ast.List, ast.Set, ast.Tuple],
-        should_inner_visit=True,
-    ):
-        untraced_lit = self.orig_to_copy_mapping[id(node)]
-        ret_node: ast.expr = node
-        if should_inner_visit:
-            ret_node = cast(ast.expr, self.generic_visit(node))
-        if not isinstance(getattr(node, "ctx", ast.Load()), ast.Load):
-            return ret_node
-        with fast.location_of(node):
-            lit_before_evt = self._ast_container_to_literal_trace_evt(node, before=True)
-            if self.handler_predicate_by_event[lit_before_evt](untraced_lit):
-                ret_node = self.emit(lit_before_evt, node, ret=ret_node)
-            lit_after_evt = self._ast_container_to_literal_trace_evt(node, before=False)
-            if self.handler_predicate_by_event[lit_after_evt](untraced_lit):
-                ret_node = self.emit(lit_after_evt, node, ret=ret_node)
-        return ret_node
-
-    def visit_List(self, node: ast.List):
-        return self.visit_List_or_Set_or_Tuple(node)
-
-    def visit_Set(self, node: ast.Set):
-        return self.visit_List_or_Set_or_Tuple(node)
-
-    def visit_Tuple(self, node: ast.Tuple):
-        return self.visit_List_or_Set_or_Tuple(node)
-
     def _transform_comprehension_field(self, field, evt: TraceEvent):
         untraced_field = self.orig_to_copy_mapping[id(field)]
         with fast.location_of(field):
@@ -584,7 +551,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 )
         return visited_field
 
-    def visit_Union_Comp(
+    def visit_generic_comprehension(
         self, node: Union[ast.DictComp, ast.GeneratorExp, ast.ListComp, ast.SetComp]
     ):
         for fieldname, evt in {
@@ -610,17 +577,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     continue
         return node
 
-    def visit_DictComp(self, node: ast.DictComp):
-        return self.visit_Union_Comp(node)
-
-    def visit_GeneratorExp(self, node: ast.GeneratorExp):
-        return self.visit_Union_Comp(node)
-
-    def visit_ListComp(self, node: ast.ListComp):
-        return self.visit_Union_Comp(node)
-
-    def visit_SetComp(self, node: ast.SetComp):
-        return self.visit_Union_Comp(node)
+    visit_DictComp = (
+        visit_GeneratorExp
+    ) = visit_ListComp = visit_SetComp = visit_generic_comprehension
 
     @staticmethod
     def _ast_container_to_elt_trace_evt(
@@ -635,7 +594,27 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         else:
             raise TypeError("invalid ast node: %s", ast.dump(node))
 
-    def visit_List_or_Set_or_Tuple(self, node: Union[ast.List, ast.Set, ast.Tuple]):
+    def visit_literal(
+        self,
+        node: Union[ast.Dict, ast.List, ast.Set, ast.Tuple],
+        should_inner_visit=True,
+    ):
+        untraced_lit = self.orig_to_copy_mapping[id(node)]
+        ret_node: ast.expr = node
+        if should_inner_visit:
+            ret_node = cast(ast.expr, self.generic_visit(node))
+        if not isinstance(getattr(node, "ctx", ast.Load()), ast.Load):
+            return ret_node
+        with fast.location_of(node):
+            lit_before_evt = self._ast_container_to_literal_trace_evt(node, before=True)
+            if self.handler_predicate_by_event[lit_before_evt](untraced_lit):
+                ret_node = self.emit(lit_before_evt, node, ret=ret_node)
+            lit_after_evt = self._ast_container_to_literal_trace_evt(node, before=False)
+            if self.handler_predicate_by_event[lit_after_evt](untraced_lit):
+                ret_node = self.emit(lit_after_evt, node, ret=ret_node)
+        return ret_node
+
+    def visit_collection(self, node: Union[ast.List, ast.Set, ast.Tuple]):
         traced_elts: List[ast.expr] = []
         is_load = isinstance(getattr(node, "ctx", ast.Load()), ast.Load)
         saw_starred = False
@@ -662,6 +641,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 )
         node.elts = traced_elts
         return self.visit_literal(node, should_inner_visit=False)
+
+    visit_List = visit_Set = visit_Tuple = visit_collection
 
     def visit_Dict(self, node: ast.Dict):
         traced_keys: List[Optional[ast.expr]] = []
@@ -725,11 +706,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         node.decorator_list = new_decorator_list
         return node
 
-    def visit_FunctionDef(self, node: ast.FunctionDef):
-        return self.visit_FunctionDef_or_AsyncFunctionDef(node)
-
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
-        return self.visit_FunctionDef_or_AsyncFunctionDef(node)
+    visit_FunctionDef = visit_AsyncFunctionDef = visit_FunctionDef_or_AsyncFunctionDef
 
     def visit_Return(self, node: ast.Return):
         if node.value is None:
@@ -849,6 +826,22 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             with fast.location_of(node):
                 ret = self.emit(TraceEvent.after_compare, node, ret=ret)
         return ret
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> ast.ExceptHandler:
+        if node.type is None:
+            with fast.location_of(node):
+                node.type = fast.Name(BaseException.__name__, ast.Load())
+                self.orig_to_copy_mapping[id(node.type)] = node.type
+            node_type_id = id(node.type)
+        else:
+            node_type_id = id(node.type)
+            node.type = self.visit(node.type)
+        with fast.location_of(node.type):
+            node.type = self.emit(
+                TraceEvent.exception_handler_type, node_type_id, ret=node.type
+            )
+        node.body = [self.visit(stmt) for stmt in node.body]
+        return node
 
     if sys.version_info < (3, 8):
 

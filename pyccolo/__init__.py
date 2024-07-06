@@ -107,6 +107,7 @@ after_comprehension_if = TraceEvent.after_comprehension_if
 after_comprehension_elt = TraceEvent.after_comprehension_elt
 after_dict_comprehension_key = TraceEvent.after_dict_comprehension_key
 after_dict_comprehension_value = TraceEvent.after_dict_comprehension_value
+exception_handler_type = TraceEvent.exception_handler_type
 
 
 # redundant; do this just in case we forgot to add stubs in trace_events.py

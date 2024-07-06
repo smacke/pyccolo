@@ -95,6 +95,8 @@ class TraceEvent(Enum):
     after_dict_comprehension_key = "after_dict_comprehension_key"
     after_dict_comprehension_value = "after_dict_comprehension_value"
 
+    exception_handler_type = "exception_handler_type"
+
     ellipses = "ellipses"
 
     line = "line"
