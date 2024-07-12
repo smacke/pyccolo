@@ -392,6 +392,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             return cast(ast.With, self.generic_visit(node))
 
     def visit_assignment(self, node: Union[ast.AnnAssign, ast.Assign, ast.AugAssign]):
+        if isinstance(node, ast.AnnAssign) and node.value is None:
+            return node
         if isinstance(node, ast.Assign):
             new_targets = []
             for target in node.targets:
@@ -827,24 +829,24 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 ret = self.emit(TraceEvent.after_compare, node, ret=ret)
         return ret
 
-    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> ast.ExceptHandler:
-        if node.type is None:
-            with fast.location_of(node):
-                node.type = fast.Name(BaseException.__name__, ast.Load())
-                self.orig_to_copy_mapping[id(node.type)] = node.type
-            node_type_id = id(node.type)
-        else:
-            node_type_id = id(node.type)
-            node.type = self.visit(node.type)
-        if self.handler_predicate_by_event[TraceEvent.exception_handler_type](
-            self.orig_to_copy_mapping[node_type_id]
-        ):
-            with fast.location_of(node.type):
-                node.type = self.emit(
-                    TraceEvent.exception_handler_type, node_type_id, ret=node.type
-                )
-        node.body = [self.visit(stmt) for stmt in node.body]
-        return node
+    # def visit_ExceptHandler(self, node: ast.ExceptHandler) -> ast.ExceptHandler:
+    #     if node.type is None:
+    #         with fast.location_of(node):
+    #             node.type = fast.Name(BaseException.__name__, ast.Load())
+    #             self.orig_to_copy_mapping[id(node.type)] = node.type
+    #         node_type_id = id(node.type)
+    #     else:
+    #         node_type_id = id(node.type)
+    #         node.type = self.visit(node.type)
+    #     if self.handler_predicate_by_event[TraceEvent.exception_handler_type](
+    #         self.orig_to_copy_mapping[node_type_id]
+    #     ):
+    #         with fast.location_of(node.type):
+    #             node.type = self.emit(
+    #                 TraceEvent.exception_handler_type, node_type_id, ret=node.type
+    #             )
+    #     node.body = [self.visit(stmt) for stmt in node.body]
+    #     return node
 
     if sys.version_info < (3, 8):
 
