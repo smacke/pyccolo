@@ -1,7 +1,7 @@
 History
 =======
 
-0.0.57 (2024-07-12)
+0.0.58 (2024-07-12)
 -------------------
 * Support exception type instrumentation;
 * Add support for bytecode caching;
