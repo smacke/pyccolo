@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.56 (2024-07-12)
+-------------------
+* Support exception type instrumentation;
+* Add support for bytecode caching;
+
 0.0.55 (2024-06-24)
 -------------------
 * Remove bare except;

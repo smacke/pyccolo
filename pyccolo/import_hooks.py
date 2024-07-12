@@ -9,9 +9,10 @@ from importlib.abc import MetaPathFinder
 from importlib.machinery import SourceFileLoader
 from importlib.util import decode_source, find_spec, spec_from_loader
 from types import CodeType, ModuleType
-from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Generator, List, Optional, Tuple
 
 from pyccolo.trace_events import TraceEvent
+from pyccolo.utils import clone_function
 
 if TYPE_CHECKING:
     from pyccolo.tracer import BaseTracer
@@ -19,23 +20,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_local_env: Dict[str, Any] = {}
-exec(
-    "def cache_from_source(*args, **kwargs): pass",
-    importlib.util.cache_from_source.__globals__,
-    _local_env,
-)
-orig_cache_from_source = _local_env["cache_from_source"]
-orig_cache_from_source.__code__ = importlib.util.cache_from_source.__code__
-_local_env.clear()
-exec(
-    "def source_from_cache(*args, **kwargs): pass",
-    importlib.util.source_from_cache.__globals__,
-    _local_env,
-)
-orig_source_from_cache = _local_env["source_from_cache"]
-orig_source_from_cache.__code__ = importlib.util.source_from_cache.__code__
-del _local_env
+orig_cache_from_source = clone_function(importlib.util.cache_from_source)  # type: ignore
+orig_source_from_cache = clone_function(importlib.util.source_from_cache)  # type: ignore
 
 
 _pyccolo_loader: "TraceLoader" = None  # type: ignore
