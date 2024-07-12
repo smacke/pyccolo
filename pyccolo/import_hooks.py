@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import ast
+import importlib.util
 import logging
 import sys
 import threading
@@ -7,8 +8,8 @@ from contextlib import contextmanager
 from importlib.abc import MetaPathFinder
 from importlib.machinery import SourceFileLoader
 from importlib.util import decode_source, find_spec, spec_from_loader
-from types import ModuleType
-from typing import TYPE_CHECKING, Callable, Generator, List, Tuple
+from types import CodeType, ModuleType
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Tuple
 
 from pyccolo.trace_events import TraceEvent
 
@@ -16,6 +17,45 @@ if TYPE_CHECKING:
     from pyccolo.tracer import BaseTracer
 
 logger = logging.getLogger(__name__)
+
+
+_local_env: Dict[str, Any] = {}
+exec(
+    "def cache_from_source(*args, **kwargs): pass",
+    importlib.util.cache_from_source.__globals__,
+    _local_env,
+)
+orig_cache_from_source = _local_env["cache_from_source"]
+orig_cache_from_source.__code__ = importlib.util.cache_from_source.__code__
+_local_env.clear()
+exec(
+    "def source_from_cache(*args, **kwargs): pass",
+    importlib.util.source_from_cache.__globals__,
+    _local_env,
+)
+orig_source_from_cache = _local_env["source_from_cache"]
+orig_source_from_cache.__code__ = importlib.util.source_from_cache.__code__
+del _local_env
+
+
+_pyccolo_loader: "TraceLoader" = None  # type: ignore
+
+
+def pyccolo_cache_from_source(path, debug_override=None, *, optimization=None):
+    path, ext = path.rsplit(".", 1)
+    return orig_cache_from_source(
+        f"{path}.{_pyccolo_loader.make_cache_signature(path)}.{ext}",
+        debug_override=debug_override,
+        optimization=optimization,
+    )
+
+
+def pyccolo_source_from_cache(path):
+    parts = path.split(".")
+    if len(parts) >= 3 and parts[-3].startswith("pyccolo"):
+        return orig_source_from_cache(".".join(parts[:-3] + parts[-2:]))
+    else:
+        return orig_source_from_cache(path)
 
 
 class TraceLoader(SourceFileLoader):
@@ -30,6 +70,23 @@ class TraceLoader(SourceFileLoader):
             )
         self._augmentation_context: bool = False
 
+    def make_cache_signature(self, path: str) -> str:
+        version_dict: Dict[str, str] = {}
+        suffix_parts = []
+        for tracer in self._tracers:
+            if tracer.should_instrument_file(path):
+                tracer_cls = tracer.__class__
+                suffix_parts.append(tracer_cls.__name__)
+                pkg = tracer_cls.__module__.split(".")[0]
+                pkg_version = getattr(sys.modules.get(pkg), "__version__", None)
+                if isinstance(pkg_version, (int, str)):
+                    version_dict[pkg] = str(pkg_version)
+        return "-".join(
+            ["pyccolo"]
+            + sorted("-".join(v) for v in version_dict.items())
+            + suffix_parts
+        ).replace(".", "_")
+
     @contextmanager
     def syntax_augmentation_context(self):
         orig_aug_context = self._augmentation_context
@@ -39,7 +96,35 @@ class TraceLoader(SourceFileLoader):
         finally:
             self._augmentation_context = orig_aug_context
 
-    def get_data(self, path) -> bytes:
+    @contextmanager
+    def patch_cache_handlers(self) -> Generator[None, None, None]:
+        cfs_globals = importlib.util.cache_from_source.__globals__
+        sfc_globals = importlib.util.source_from_cache.__globals__
+        try:
+            importlib.util.cache_from_source.__code__ = (
+                pyccolo_cache_from_source.__code__
+            )
+            importlib.util.source_from_cache.__code__ = (
+                pyccolo_source_from_cache.__code__
+            )
+            cfs_globals["orig_cache_from_source"] = orig_cache_from_source
+            sfc_globals["orig_source_from_cache"] = orig_source_from_cache
+            cfs_globals["_pyccolo_loader"] = sfc_globals["_pyccolo_loader"] = self
+            yield
+        finally:
+            importlib.util.cache_from_source.__code__ = orig_cache_from_source.__code__
+            importlib.util.source_from_cache.__code__ = orig_source_from_cache.__code__
+            cfs_globals.pop("orig_cache_from_source", None)
+            sfc_globals.pop("orig_source_from_cache", None)
+            cfs_globals.pop("_pyccolo_loader", None)
+            sfc_globals.pop("_pyccolo_loader", None)
+
+    def get_data(self, path: str) -> bytes:
+        parts = path.split(".")
+        if parts[-1] == "pyc":
+            if len(parts) >= 3 and parts[-3] == self.make_cache_signature(path):
+                return super().get_data(path)
+            path = orig_source_from_cache(path)
         path_str = str(path)
         if self._augmentation_context or not any(
             tracer._should_instrument_file_impl(path_str) for tracer in self._tracers
@@ -49,18 +134,21 @@ class TraceLoader(SourceFileLoader):
             source = self.get_augmented_source(path)
             return bytes(source, encoding="utf-8")
 
-    def get_code(self, fullname):
-        source_path = self.get_filename(fullname)
+    def get_filename(self, name: Optional[str] = None) -> str:
+        source_path = super().get_filename(name)
         for tracer in reversed(self._tracers):
             source_path = tracer._emit_event(
                 TraceEvent.before_import.value,
                 None,
                 None,
                 ret=source_path,
-                qualified_module_name=fullname,
+                qualified_module_name=name,
             )
-        source_bytes = self.get_data(source_path)
-        return self.source_to_code(source_bytes, source_path)
+        return source_path
+
+    def get_code(self, fullname) -> CodeType:
+        with self.patch_cache_handlers():
+            return super().get_code(fullname)
 
     def get_augmented_source(self, source_path) -> str:
         source_bytes = super().get_data(source_path)
@@ -88,7 +176,7 @@ class TraceLoader(SourceFileLoader):
             source = decode_source(bytes(source, encoding="utf-8"))
         return source
 
-    def source_to_code(self, data, path, *, _optimize=-1):
+    def source_to_code(self, data, path, *, _optimize=-1) -> CodeType:  # type: ignore[override]
         path_str = str(path)
         try:
             if any(
@@ -103,10 +191,10 @@ class TraceLoader(SourceFileLoader):
                     optimize=_optimize,
                 )
             else:
-                return super().source_to_code(data, path, _optimize=_optimize)
+                return super().source_to_code(data, path, _optimize=_optimize)  # type: ignore[call-arg]
         except Exception:
             logger.exception("exception during source to code for path %s", path)
-            return super().source_to_code(data, path, _optimize=_optimize)
+            return super().source_to_code(data, path, _optimize=_optimize)  # type: ignore[call-arg]
 
     def exec_module(self, module: ModuleType) -> None:
         source_path = str(self.get_filename(module.__name__))
