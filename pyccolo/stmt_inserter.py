@@ -7,6 +7,7 @@ from typing import (
     DefaultDict,
     Dict,
     List,
+    Optional,
     Tuple,
     TypeVar,
     Union,
@@ -48,7 +49,7 @@ def _get_parsed_insert_stmt(stmt: ast.stmt, evt: TraceEvent) -> ast.Expr:
 
 def _get_parsed_append_stmt(
     stmt: ast.stmt,
-    ret_expr: ast.expr = None,
+    ret_expr: Optional[ast.expr] = None,
     evt: TraceEvent = TraceEvent.after_stmt,
     **kwargs,
 ) -> ast.Expr:

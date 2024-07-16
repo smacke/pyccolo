@@ -75,8 +75,10 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             # but we can specify a context of not being in chain if we are
             # inside one (in order to support arguments)
             self._top_level_node_for_symbol = top_level_node
-        yield
-        self._top_level_node_for_symbol = old
+        try:
+            yield
+        finally:
+            self._top_level_node_for_symbol = old
 
     @property
     def _inside_attrsub_load_chain(self):
@@ -226,6 +228,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             is_subscript = isinstance(node, ast.Subscript)
             should_emit_evt = self.handler_predicate_by_event[evt_to_use](orig_node)
             with self.attrsub_context(node):
+                assert self._top_level_node_for_symbol is not None
                 extra_keywords: Dict[str, ast.AST] = {}
                 if isinstance(node.value, ast.Name):
                     extra_keywords["obj_name"] = fast.Str(node.value.id)
@@ -394,6 +397,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def visit_assignment(self, node: Union[ast.AnnAssign, ast.Assign, ast.AugAssign]):
         if isinstance(node, ast.AnnAssign) and node.value is None:
             return node
+        assert node.value is not None
         if isinstance(node, ast.Assign):
             new_targets = []
             for target in node.targets:
@@ -650,8 +654,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         traced_keys: List[Optional[ast.expr]] = []
         traced_values: List[ast.expr] = []
         for k, v in zip(node.keys, node.values):
-            is_dict_unpack = k is None
-            if is_dict_unpack:
+            if k is None:
+                # dict unpack
                 traced_keys.append(None)
             else:
                 with fast.location_of(k):
@@ -666,7 +670,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                         )
                     traced_keys.append(traced_key)
             with fast.location_of(v):
-                if is_dict_unpack:
+                if k is None:
+                    # dict unpack
                     key_node_id_ast: ast.AST = fast.NameConstant(None)
                 else:
                     key_node_id_ast = self.get_copy_id_ast(k)

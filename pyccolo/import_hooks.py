@@ -126,13 +126,13 @@ class TraceLoader(SourceFileLoader):
             source_path = tracer._emit_event(
                 TraceEvent.before_import.value,
                 None,
-                None,
+                sys._getframe(),
                 ret=source_path,
                 qualified_module_name=name,
             )
         return source_path
 
-    def get_code(self, fullname) -> CodeType:
+    def get_code(self, fullname) -> Optional[CodeType]:
         with self.patch_cache_handlers():
             return super().get_code(fullname)
 
@@ -196,7 +196,9 @@ class TraceLoader(SourceFileLoader):
         should_reenable_saved_state.reverse()
         super().exec_module(module)
         for tracer, should_reenable in zip(self._tracers, should_reenable_saved_state):
-            tracer._emit_event(TraceEvent.after_import.value, None, None, module=module)
+            tracer._emit_event(
+                TraceEvent.after_import.value, None, sys._getframe(), module=module
+            )
             if should_reenable:
                 tracer._enable_tracing()
 

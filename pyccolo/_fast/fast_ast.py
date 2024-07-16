@@ -17,8 +17,10 @@ class FastAst:
         """
         old_location_of_node = FastAst._LOCATION_OF_NODE
         FastAst._LOCATION_OF_NODE = node
-        yield
-        FastAst._LOCATION_OF_NODE = old_location_of_node
+        try:
+            yield
+        finally:
+            FastAst._LOCATION_OF_NODE = old_location_of_node
 
     @staticmethod
     def kw(arg, value):

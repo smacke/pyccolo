@@ -60,7 +60,7 @@ class _LazySymbol:
                 raise
         module_symbol = module.rsplit(".", 1)
         if len(module_symbol) != 2:
-            raise exc
+            raise ValueError("invalid module %s" % module) from exc
         else:
             module, symbol = module_symbol
         ret = getattr(cls._unwrap_module(module), symbol)
@@ -98,6 +98,7 @@ class _GetLazyNames(ast.NodeVisitor):
             if alias.asname is None:
                 return
         for alias in node.names:
+            assert alias.asname is not None
             self.lazy_names.add(alias.asname)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
@@ -114,7 +115,7 @@ class _GetLazyNames(ast.NodeVisitor):
     def compute(cls, node: ast.Module) -> Set[str]:
         inst = cls()
         inst.visit(node)
-        return inst.lazy_names
+        return inst.lazy_names or set()
 
 
 def _make_attr_guard_helper(node: ast.Attribute) -> Optional[str]:

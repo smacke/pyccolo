@@ -324,12 +324,12 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
                     node_id_or_node = (
                         node_id
                         if spec.use_raw_node_id
-                        else self.ast_node_by_id.get(node_id)
+                        else self.ast_node_by_id.get(node_id or -1)
                     )
                     if (
                         spec.predicate is Predicate.TRUE
                         or spec.predicate.static
-                        or spec.predicate.dynamic_call(node_id_or_node)
+                        or spec.predicate.dynamic_call(node_id_or_node or -1)
                     ):
                         new_ret = spec.handler(
                             self,
@@ -525,7 +525,7 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
     def __enter__(self, **kwargs) -> ContextManager:
         assert self._ctx is None
         self._ctx = self.tracing_enabled(**kwargs)
-        return self._ctx.__enter__()
+        return self._ctx.__enter__()  # type: ignore
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         assert self._ctx is not None
@@ -726,15 +726,16 @@ class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
         local_env: Optional[dict],
         num_extra_lookback_frames: int,
     ) -> Tuple[dict, dict]:
-        frame = None
         if global_env is None or local_env is None:
             frame = sys._getframe().f_back
+            assert frame is not None
             for _ in range(num_extra_lookback_frames):
                 frame = frame.f_back
-        if global_env is None:
-            global_env = frame.f_globals
-        if local_env is None:
-            local_env = frame.f_locals
+                assert frame is not None
+            if global_env is None:
+                global_env = frame.f_globals
+            if local_env is None:
+                local_env = frame.f_locals
         return global_env, local_env
 
     def eval(

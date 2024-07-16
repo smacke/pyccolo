@@ -6,8 +6,8 @@ from typing_extensions import Literal
 
 
 class Predicate:
-    TRUE: "Predicate" = None
-    FALSE: "Predicate" = None
+    TRUE: "Predicate"
+    FALSE: "Predicate"
 
     @overload
     def __init__(

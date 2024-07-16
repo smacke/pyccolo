@@ -41,7 +41,9 @@ class StatementMapper(ast.NodeVisitor):
             return node.col_offset + 10
         elif isinstance(node, (ast.Import, ast.ImportFrom)) and len(node.names) == 1:
             # "import " vs "from <base_module> import "
-            base_offset = 7 if isinstance(node, ast.Import) else 13 + len(node.module)
+            base_offset = (
+                7 if isinstance(node, ast.Import) else 13 + len(node.module or "")
+            )
             name = node.names[0]
             return (
                 node.col_offset
@@ -69,7 +71,9 @@ class StatementMapper(ast.NodeVisitor):
         elif isinstance(node, (ast.Import, ast.ImportFrom)) and len(node.names) == 1:
             name = node.names[0]
             # "import " vs "from <base_module> import "
-            base_offset = 7 if isinstance(node, ast.Import) else 13 + len(node.module)
+            base_offset = (
+                7 if isinstance(node, ast.Import) else 13 + len(node.module or "")
+            )
             col_offset = node.col_offset + base_offset
             if name.asname is None:
                 col_offset += len(name.name)

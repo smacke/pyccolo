@@ -68,7 +68,7 @@ class AstRewriter(ast.NodeTransformer):
         self, predicate: Callable[..., _T]
     ) -> Callable[..., _T]:
         return lambda node_or_id: predicate(
-            self.orig_to_copy_mapping.get(
+            (self.orig_to_copy_mapping or {}).get(
                 node_or_id if isinstance(node_or_id, int) else id(node_or_id),
                 node_or_id,
             )
