@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.59 (2024-07-19)
+-------------------
+* Add py.typed;
+
 0.0.58 (2024-07-12)
 -------------------
 * Support exception type instrumentation;
