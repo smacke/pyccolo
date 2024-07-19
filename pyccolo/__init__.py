@@ -11,7 +11,6 @@ import textwrap
 import types
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union
-from typing_extensions import Literal, TypeAlias
 
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.emit_event import _TRACER_STACK, allow_reentrant_event_handling
@@ -31,18 +30,10 @@ from pyccolo.utils import multi_context, resolve_tracer
 
 
 if TYPE_CHECKING:
-    from enum import Enum
-
-    class PyccoloTracerInstructions(Enum):
-        Null = "Null"
-        Pass = "Pass"
-        Skip = "Skip"
-        SkipAll = "SkipAll"
-
-    Null: Literal[PyccoloTracerInstructions.Null]
-    Pass: Literal[PyccoloTracerInstructions.Pass]
-    Skip: Literal[PyccoloTracerInstructions.Skip]
-    SkipAll: Literal[PyccoloTracerInstructions.SkipAll]
+    class Null: ...
+    class Pass: ...
+    class Skip: ...
+    class SkipAll: ...
 else:
     from pyccolo.emit_event import SkipAll
     from pyccolo.tracer import Null, Pass, Skip
