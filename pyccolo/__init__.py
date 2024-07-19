@@ -10,10 +10,10 @@ import inspect
 import textwrap
 import types
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union
 
 from pyccolo.ast_rewriter import AstRewriter
-from pyccolo.emit_event import _TRACER_STACK, SkipAll, allow_reentrant_event_handling
+from pyccolo.emit_event import _TRACER_STACK, allow_reentrant_event_handling
 from pyccolo.extra_builtins import PYCCOLO_BUILTIN_PREFIX, make_guard_name
 from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
@@ -22,14 +22,29 @@ from pyccolo.trace_stack import TraceStack
 from pyccolo.tracer import (
     BaseTracer,
     NoopTracer,
-    Null,
-    Pass,
-    Skip,
     register_handler,
     register_raw_handler,
     skip_when_tracing_disabled,
 )
 from pyccolo.utils import multi_context, resolve_tracer
+
+
+if TYPE_CHECKING:
+    from enum import Enum
+
+    class PyccoloTracerAtoms(Enum):
+        Null = "Null"
+        Pass = "Pass"
+        Skip = "Skip"
+        SkipAll = "SkipAll"
+
+    Null = PyccoloTracerAtoms.Null
+    Pass = PyccoloTracerAtoms.Pass
+    Skip = PyccoloTracerAtoms.Skip
+    SkipAll = PyccoloTracerAtoms.SkipAll
+else:
+    from pyccolo.emit_event import SkipAll
+    from pyccolo.tracer import Null, Pass, Skip
 
 event = TraceEvent
 

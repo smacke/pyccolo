@@ -107,7 +107,13 @@ class MetaTracerStateMachine(MetaHasTraits):
         return cls.instance().__exit__(exc_type, exc_val, exc_tb)  # type: ignore
 
 
-class _InternalBaseTracer(metaclass=MetaTracerStateMachine):
+if TYPE_CHECKING:
+    _InternalBaseTracerSuper = SingletonConfigurable
+else:
+    _InternalBaseTracerSuper = object
+
+
+class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMachine):
     ast_rewriter_cls = AstRewriter
     defined_file = ""
 
