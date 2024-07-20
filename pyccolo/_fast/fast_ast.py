@@ -3,14 +3,21 @@ import ast
 import sys
 import textwrap
 from contextlib import contextmanager
+from typing import TYPE_CHECKING, Generator, List, Optional
 
 
 class FastAst:
-    _LOCATION_OF_NODE = None
+    _LOCATION_OF_NODE: Optional[ast.AST] = None
+
+    if TYPE_CHECKING:
+
+        @staticmethod
+        def keyword(arg: str, value: ast.AST) -> ast.keyword:
+            ...
 
     @staticmethod
     @contextmanager
-    def location_of(node):
+    def location_of(node: ast.AST) -> Generator[None, None, None]:
         """
         All nodes created like `fast.AST(...)` instead of
         `ast.AST(...)` will inherit location info from `node`.
@@ -22,28 +29,28 @@ class FastAst:
         finally:
             FastAst._LOCATION_OF_NODE = old_location_of_node
 
-    @staticmethod
-    def kw(arg, value):
-        return FastAst.keyword(arg=arg, value=value)
+    @classmethod
+    def kw(cls, arg, value) -> ast.keyword:
+        return cls.keyword(arg=arg, value=value)
 
-    @staticmethod
-    def kwargs(**kwargs):
-        return [FastAst.keyword(arg=arg, value=value) for arg, value in kwargs.items()]
+    @classmethod
+    def kwargs(cls, **kwargs) -> List[ast.keyword]:
+        return [cls.keyword(arg=arg, value=value) for arg, value in kwargs.items()]
 
-    @staticmethod
-    def parse(code, *args, **kwargs):
-        ret = ast.parse(textwrap.dedent(code, *args, **kwargs))
-        if FastAst._LOCATION_OF_NODE is not None:
-            ast.copy_location(ret, FastAst._LOCATION_OF_NODE)
+    @classmethod
+    def parse(cls, code: str, *args, **kwargs) -> ast.AST:
+        ret = ast.parse(textwrap.dedent(code), *args, **kwargs)
+        if cls._LOCATION_OF_NODE is not None:
+            ast.copy_location(ret, cls._LOCATION_OF_NODE)
         return ret
 
-    @staticmethod
-    def Call(func, args=None, keywords=None, **kwargs):
+    @classmethod
+    def Call(cls, func, args=None, keywords=None, **kwargs) -> ast.Call:
         args = args or []
         keywords = keywords or []
         ret = ast.Call(func, args, keywords, **kwargs)
-        if FastAst._LOCATION_OF_NODE is not None:
-            ast.copy_location(ret, FastAst._LOCATION_OF_NODE)
+        if cls._LOCATION_OF_NODE is not None:
+            ast.copy_location(ret, cls._LOCATION_OF_NODE)
         return ret
 
 
