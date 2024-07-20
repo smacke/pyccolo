@@ -829,7 +829,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                     code = cast(ast.Module, ast.parse(code))
             if not isinstance(code, ast.Module):
                 assert isinstance(code, ast.stmt)
-                code = ast.Module([code], [])
+                if sys.version_info < (3, 8):
+                    code = ast.Module([code])
+                else:
+                    code = ast.Module([code], [])
             if instrument and not visited:
                 code = self.make_ast_rewriter().visit(code)
             # prepend the stuff before "return locals()"
