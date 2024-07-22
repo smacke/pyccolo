@@ -56,6 +56,24 @@ class TraceLoader(SourceFileLoader):
             )
         self._augmentation_context: bool = False
 
+    def get_tracers_for_path(self, path: str) -> List["BaseTracer"]:
+        return [
+            tracer
+            for tracer in self._tracers
+            if tracer._should_instrument_file_impl(path)
+        ]
+
+    @contextmanager
+    def tracer_override_context(
+        self, tracers: List["BaseTracer"]
+    ) -> Generator[None, None, None]:
+        orig_tracers = self._ast_rewriter._tracers
+        self._ast_rewriter._tracers = tracers
+        try:
+            yield
+        finally:
+            self._ast_rewriter._tracers = orig_tracers
+
     def make_cache_signature(self, path: str) -> str:
         version_dict: Dict[str, str] = {}
         suffix_parts = []
@@ -165,17 +183,16 @@ class TraceLoader(SourceFileLoader):
     def source_to_code(self, data, path, *, _optimize=-1) -> CodeType:  # type: ignore[override]
         path_str = str(path)
         try:
-            if any(
-                tracer._should_instrument_file_impl(path_str)
-                for tracer in self._tracers
-            ):
-                return compile(
-                    self._ast_rewriter.visit(ast.parse(data)),
-                    path,
-                    "exec",
-                    dont_inherit=True,
-                    optimize=_optimize,
-                )
+            tracers_for_path = self.get_tracers_for_path(path_str)
+            if tracers_for_path:
+                with self.tracer_override_context(tracers_for_path):
+                    return compile(
+                        self._ast_rewriter.visit(ast.parse(data)),
+                        path,
+                        "exec",
+                        dont_inherit=True,
+                        optimize=_optimize,
+                    )
             else:
                 return super().source_to_code(data, path, _optimize=_optimize)  # type: ignore[call-arg]
         except Exception:

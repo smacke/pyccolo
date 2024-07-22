@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from pyccolo import fast
 from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
@@ -123,16 +123,18 @@ class StatementMapper(ast.NodeVisitor):
 
     def __call__(
         self,
-        node: Union[ast.Expression, ast.Module, ast.FunctionDef, ast.AsyncFunctionDef],
+        node: ast.AST,
+        copy_node: Optional[ast.AST] = None,
     ) -> Dict[int, ast.AST]:
         # for some bizarre reason we need to visit once to clear empty nodes apparently
+        self.traversal.clear()
         self.visit(node)
         self.traversal.clear()
 
         self.visit(node)
         orig_traversal = self.traversal
         self.traversal = []
-        self.visit(fast.copy_ast(node))
+        self.visit(copy_node or fast.copy_ast(node))
         copy_traversal = self.traversal
         orig_to_copy_mapping = {}
         for no, nc in zip(orig_traversal, copy_traversal):
@@ -141,7 +143,7 @@ class StatementMapper(ast.NodeVisitor):
                 self._handle_augmentations(nc)
         return orig_to_copy_mapping
 
-    def visit(self, node):
+    def visit(self, node: ast.AST) -> None:
         self.traversal.append(node)
         for name, field in ast.iter_fields(node):
             if isinstance(field, ast.AST):

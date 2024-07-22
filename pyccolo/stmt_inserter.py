@@ -15,6 +15,7 @@ from typing import (
 )
 
 from pyccolo import fast
+from pyccolo.expr_rewriter import ExprRewriter
 from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
@@ -23,6 +24,7 @@ from pyccolo.extra_builtins import (
     make_guard_name,
 )
 from pyccolo.fast import EmitterMixin, make_composite_condition, make_test
+from pyccolo.stmt_mapper import StatementMapper
 from pyccolo.trace_events import TraceEvent
 
 if TYPE_CHECKING:
@@ -82,17 +84,26 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
     def __init__(
         self,
         tracers: "List[BaseTracer]",
+        mapper: StatementMapper,
         orig_to_copy_mapping: Dict[int, ast.AST],
         handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
+        guard_exempt_handler_predicate_by_event: DefaultDict[
+            TraceEvent, Callable[..., bool]
+        ],
         handler_guards_by_event: DefaultDict[TraceEvent, List["GUARD_DATA_T"]],
+        expr_rewriter: ExprRewriter,
     ):
         EmitterMixin.__init__(
             self,
             tracers,
+            mapper,
             orig_to_copy_mapping,
             handler_predicate_by_event,
+            guard_exempt_handler_predicate_by_event,
             handler_guards_by_event,
         )
+        self.mapper = mapper
+        self.expr_rewriter = expr_rewriter
 
     def _handle_loop_body(
         self, node: Union[ast.For, ast.While], orig_body: List[ast.AST]
@@ -134,6 +145,10 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             else:
                 ret = orig_body
             if self.global_guards_enabled:
+                with self.expr_rewriter.guard_exempt_context(node, loop_node_copy):
+                    orelse = [
+                        self.expr_rewriter.visit(node) for node in loop_node_copy.body
+                    ]
                 ret = [
                     fast.If(
                         test=make_composite_condition(
@@ -150,7 +165,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                             ]
                         ),
                         body=ret,
-                        orelse=loop_node_copy.body,
+                        orelse=orelse,
                     )
                 ]
             return globals_and_nonlocals + ret
@@ -205,6 +220,10 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             else:
                 ret = orig_body
             if self.global_guards_enabled:
+                with self.expr_rewriter.guard_exempt_context(node, fundef_copy):
+                    orelse = [
+                        self.expr_rewriter.visit(node) for node in fundef_copy.body
+                    ]
                 ret = [
                     fast.If(
                         test=make_composite_condition(
@@ -227,7 +246,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                             TraceEvent.after_function_execution
                         ](fundef_copy)
                         else orig_body,
-                        orelse=fundef_copy.body,
+                        orelse=orelse,
                     ),
                 ]
             name_error_exc = f"{PYCCOLO_BUILTIN_PREFIX}_name_error"

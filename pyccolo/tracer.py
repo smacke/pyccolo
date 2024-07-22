@@ -940,6 +940,7 @@ def register_handler(
     reentrant: bool = False,
     use_raw_node_id: bool = False,
     guard: Optional[Callable[[ast.AST], str]] = None,
+    exempt_from_guards: bool = False,
 ):
     events = event if isinstance(event, tuple) else (event,)
     when = Predicate.TRUE if when is None else when
@@ -954,7 +955,9 @@ def register_handler(
 
     def _inner_registrar(handler):
         for evt in events:
-            handler_spec = HandlerSpec(handler, use_raw_node_id, reentrant, pred, guard)
+            handler_spec = HandlerSpec(
+                handler, use_raw_node_id, reentrant, pred, guard, exempt_from_guards
+            )
             _InternalBaseTracer.EVENT_HANDLERS_PENDING_REGISTRATION[
                 AST_TO_EVENT_MAPPING[evt]
                 if type(evt) is type and issubclass(evt, ast.AST)

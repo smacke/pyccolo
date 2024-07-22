@@ -11,7 +11,8 @@ class HandlerSpec(NamedTuple):
     reentrant: bool
     predicate: Predicate
     guard: Optional[Callable[[ast.AST], str]]
+    exempt_from_guards: bool
 
     @classmethod
     def empty(cls):
-        return cls(None, False, False, Predicate(lambda *_: True), None)  # type: ignore
+        return cls(None, False, False, Predicate(lambda *_: True), None, False)  # type: ignore

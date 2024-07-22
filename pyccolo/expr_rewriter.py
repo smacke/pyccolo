@@ -22,6 +22,7 @@ from pyccolo.fast import (
     make_test,
     subscript_to_slice,
 )
+from pyccolo.stmt_mapper import StatementMapper
 from pyccolo.trace_events import TraceEvent
 
 if TYPE_CHECKING:
@@ -37,15 +38,21 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def __init__(
         self,
         tracers: "List[BaseTracer]",
+        mapper: StatementMapper,
         orig_to_copy_mapping: Dict[int, ast.AST],
         handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
+        guard_exempt_handler_predicate_by_event: DefaultDict[
+            TraceEvent, Callable[..., bool]
+        ],
         handler_guards_by_event: DefaultDict[TraceEvent, List["GUARD_DATA_T"]],
     ):
         EmitterMixin.__init__(
             self,
             tracers,
+            mapper,
             orig_to_copy_mapping,
             handler_predicate_by_event,
+            guard_exempt_handler_predicate_by_event,
             handler_guards_by_event,
         )
         self._top_level_node_for_symbol: Optional[ast.AST] = None

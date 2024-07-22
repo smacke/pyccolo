@@ -99,6 +99,9 @@ class AstRewriter(ast.NodeTransformer):
         raw_handler_predicates_by_event: DefaultDict[
             TraceEvent, List[Predicate]
         ] = defaultdict(list)
+        raw_guard_exempt_handler_predicates_by_event: DefaultDict[
+            TraceEvent, List[Predicate]
+        ] = defaultdict(list)
 
         for tracer in self._tracers:
             for evt in tracer.events_with_registered_handlers:
@@ -113,7 +116,16 @@ class AstRewriter(ast.NodeTransformer):
                 )
                 for handler_spec in handler_data:
                     raw_handler_predicates_by_event[evt].append(handler_spec.predicate)
+                    if handler_spec.exempt_from_guards:
+                        raw_guard_exempt_handler_predicates_by_event[evt].append(
+                            handler_spec.predicate
+                        )
         handler_predicate_by_event: DefaultDict[
+            TraceEvent, Callable[..., bool]
+        ] = defaultdict(
+            lambda: (lambda *_: False)  # type: ignore
+        )
+        guard_exempt_handler_prediate_by_event: DefaultDict[
             TraceEvent, Callable[..., bool]
         ] = defaultdict(
             lambda: (lambda *_: False)  # type: ignore
@@ -122,6 +134,10 @@ class AstRewriter(ast.NodeTransformer):
             handler_predicate_by_event[evt] = self._make_node_copy_flyweight(
                 CompositePredicate.any(raw_predicates)
             )
+        for evt, raw_predicates in raw_guard_exempt_handler_predicates_by_event.items():
+            guard_exempt_handler_prediate_by_event[
+                evt
+            ] = self._make_node_copy_flyweight(CompositePredicate.any(raw_predicates))
         handler_guards_by_event: DefaultDict[
             TraceEvent, List[GUARD_DATA_T]
         ] = defaultdict(list)
@@ -141,8 +157,10 @@ class AstRewriter(ast.NodeTransformer):
         # modifies existing ones), since StatementInserter relies on being able to map these
         expr_rewriter = ExprRewriter(
             self._tracers,
+            mapper,
             orig_to_copy_mapping,
             handler_predicate_by_event,
+            guard_exempt_handler_prediate_by_event,
             handler_guards_by_event,
         )
         if isinstance(node, ast.Expression):
@@ -152,8 +170,11 @@ class AstRewriter(ast.NodeTransformer):
                 node.body[i] = expr_rewriter.visit(node.body[i])
             node = StatementInserter(
                 self._tracers,
+                mapper,
                 orig_to_copy_mapping,
                 handler_predicate_by_event,
+                guard_exempt_handler_prediate_by_event,
                 handler_guards_by_event,
+                expr_rewriter,
             ).visit(node)
         return node

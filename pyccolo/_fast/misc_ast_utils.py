@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 import builtins
-import copy
+import pickle
 import sys
 from contextlib import contextmanager
 from typing import (
@@ -18,6 +18,7 @@ from typing import (
 )
 
 from pyccolo.extra_builtins import EMIT_EVENT, PYCCOLO_BUILTIN_PREFIX, TRACE_LAMBDA
+from pyccolo.stmt_mapper import StatementMapper
 from pyccolo.trace_events import BEFORE_EXPR_EVENTS, TraceEvent
 
 if TYPE_CHECKING:
@@ -57,7 +58,7 @@ def _save_parents(node: ast.AST) -> Generator[_SaveParentsVisitor, None, None]:
 
 def copy_ast(node: ast.AST) -> ast.AST:
     with _save_parents(node) as parents:
-        node_copy = copy.deepcopy(node)
+        node_copy = pickle.loads(pickle.dumps(node))
     parents.reinject(node_copy)
     return node_copy
 
@@ -95,18 +96,53 @@ class EmitterMixin:
     def __init__(
         self,
         tracers: "List[BaseTracer]",
+        mapper: StatementMapper,
         orig_to_copy_mapping: Dict[int, ast.AST],
         handler_predicate_by_event: DefaultDict[TraceEvent, Callable[..., bool]],
+        guard_exempt_handler_predicate_by_event: DefaultDict[
+            TraceEvent, Callable[..., bool]
+        ],
         handler_guards_by_event: DefaultDict[TraceEvent, List["GUARD_DATA_T"]],
     ):
         self.tracers = tracers
+        self.mapper = mapper
         self.orig_to_copy_mapping = orig_to_copy_mapping
-        self.handler_predicate_by_event = handler_predicate_by_event
+        self._handler_predicate_by_event = handler_predicate_by_event
+        self._guard_exempt_handler_predicate_by_event = (
+            guard_exempt_handler_predicate_by_event
+        )
         self.handler_guards_by_event = handler_guards_by_event
         self.guards: Set[str] = tracers[-1].guards
         self.global_guards_enabled = any(
             tracer.global_guards_enabled for tracer in tracers
         )
+        self._is_guard_exempt_context = False
+
+    @contextmanager
+    def guard_exempt_context(
+        self, node: ast.AST, guard_exempt_node: ast.AST
+    ) -> Generator[None, None, None]:
+        new_orig_to_copy_mapping = self.mapper(
+            guard_exempt_node, self.orig_to_copy_mapping[id(node)]
+        )
+        orig_is_guard_exempt_context = self._is_guard_exempt_context
+        orig_orig_to_copy_mapping = self.orig_to_copy_mapping
+        try:
+            self._is_guard_exempt_context = True
+            self.orig_to_copy_mapping = new_orig_to_copy_mapping
+            yield
+        finally:
+            self._is_guard_exempt_context = orig_is_guard_exempt_context
+            self.orig_to_copy_mapping = orig_orig_to_copy_mapping
+
+    @property
+    def handler_predicate_by_event(
+        self,
+    ) -> DefaultDict[TraceEvent, Callable[..., bool]]:
+        if self._is_guard_exempt_context:
+            return self._guard_exempt_handler_predicate_by_event
+        else:
+            return self._handler_predicate_by_event
 
     @staticmethod
     def is_tracing_disabled_context(node: ast.AST):
