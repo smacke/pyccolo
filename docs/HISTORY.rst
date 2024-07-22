@@ -1,12 +1,12 @@
 History
 =======
 
-0.0.65 (2024-07-21)
+0.0.64 (2024-07-21)
 -------------------
 * Implement guard exemption for event handlers;
 * Bugfix to ensure only applicable tracers transform ASTs of files instrumented in import hooks;
 
-0.0.64 (2024-07-19)
+0.0.63 (2024-07-19)
 -------------------
 * Add py.typed;
 
