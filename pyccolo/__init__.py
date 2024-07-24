@@ -166,7 +166,7 @@ def instrumented(tracers: List[BaseTracer]) -> Callable[[Callable[..., Any]], Ca
         f_defined_file = f.__code__.co_filename
         with multi_context([tracer.tracing_disabled() for tracer in tracers]):
             code = ast.parse(textwrap.dedent(inspect.getsource(f)))
-            code.body[0] = tracers[-1].make_ast_rewriter().visit(code.body[0])
+            code.body[0] = tracers[-1].make_ast_rewriter(path=f.__code__.co_filename).visit(code.body[0])
             compiled: types.CodeType = compile(code, f.__code__.co_filename, "exec")
             for const in compiled.co_consts:
                 if (

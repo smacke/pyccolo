@@ -2,6 +2,7 @@
 import ast
 import importlib.util
 import logging
+import os
 import sys
 import threading
 from contextlib import contextmanager
@@ -28,9 +29,15 @@ _pyccolo_loader: "TraceLoader" = None  # type: ignore
 
 
 def pyccolo_cache_from_source(path, debug_override=None, *, optimization=None):
-    path, ext = path.rsplit(".", 1)
+    # we don't use `os` since it is not available in the original __globals__
+    path_no_ext, ext = path.rsplit(".", 1)
+    sig = _pyccolo_loader.make_cache_signature(path)
+    if sig == "pyccolo":
+        return orig_cache_from_source(
+            path, debug_override=debug_override, optimization=optimization
+        )
     return orig_cache_from_source(
-        f"{path}.{_pyccolo_loader.make_cache_signature(path)}.{ext}",
+        f"{path_no_ext}.{sig}.{ext}",
         debug_override=debug_override,
         optimization=optimization,
     )
@@ -48,7 +55,7 @@ class TraceLoader(SourceFileLoader):
     def __init__(self, tracers: List["BaseTracer"], *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._tracers = tracers
-        self._ast_rewriter = tracers[-1].make_ast_rewriter()
+        self._ast_rewriter = tracers[-1].make_ast_rewriter(None)
         self._syntax_augmenters: List[Tuple["BaseTracer", List[Callable]]] = []
         for tracer in tracers:
             self._syntax_augmenters.append(
@@ -62,17 +69,6 @@ class TraceLoader(SourceFileLoader):
             for tracer in self._tracers
             if tracer._should_instrument_file_impl(path)
         ]
-
-    @contextmanager
-    def tracer_override_context(
-        self, tracers: List["BaseTracer"]
-    ) -> Generator[None, None, None]:
-        orig_tracers = self._ast_rewriter._tracers
-        self._ast_rewriter._tracers = tracers
-        try:
-            yield
-        finally:
-            self._ast_rewriter._tracers = orig_tracers
 
     def make_cache_signature(self, path: str) -> str:
         version_dict: Dict[str, str] = {}
@@ -124,11 +120,16 @@ class TraceLoader(SourceFileLoader):
             sfc_globals.pop("_pyccolo_loader", None)
 
     def get_data(self, path: str) -> bytes:
-        parts = path.split(".")
-        if parts[-1] == "pyc":
-            if len(parts) >= 3 and parts[-3] == self.make_cache_signature(path):
+        path_no_ext, ext = os.path.splitext(path)
+        sep = os.path.extsep
+        if ext == sep + "pyc":
+            parts = path.split(sep)
+            if len(parts) < 3:
                 return super().get_data(path)
-            path = orig_source_from_cache(path)
+            elif parts[-3] == self.make_cache_signature(path_no_ext + sep + "py"):
+                return super().get_data(path)
+            else:
+                path = pyccolo_source_from_cache(path)
         path_str = str(path)
         if self._augmentation_context or not any(
             tracer._should_instrument_file_impl(path_str) for tracer in self._tracers
@@ -185,7 +186,9 @@ class TraceLoader(SourceFileLoader):
         try:
             tracers_for_path = self.get_tracers_for_path(path_str)
             if tracers_for_path:
-                with self.tracer_override_context(tracers_for_path):
+                with self._ast_rewriter.tracer_override_context(
+                    tracers_for_path, path_str
+                ):
                     return compile(
                         self._ast_rewriter.visit(ast.parse(data)),
                         path,

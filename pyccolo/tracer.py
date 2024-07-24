@@ -63,6 +63,7 @@ Null = object()
 Pass = object()
 Skip = object()
 SANDBOX_FNAME = "<sandbox>"
+SANDBOX_FNAME_PREFIX = "<sandbox"
 
 
 PYCCOLO_DEV_MODE_ENV_VAR = "PYCCOLO_DEV_MODE"
@@ -116,6 +117,7 @@ else:
 class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMachine):
     ast_rewriter_cls = AstRewriter
     defined_file = ""
+    sandbox_fname_counter = 0
 
     _MANAGER_CLASS_REGISTERED = False
     EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[
@@ -177,7 +179,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             events_with_registered_handlers
         )
         self._ctx: Optional[ContextManager] = None
-        self._tracing_enabled_files: Set[str] = {SANDBOX_FNAME, self.defined_file}
+        self._tracing_enabled_files: Set[str] = {self.defined_file}
         self._current_sandbox_fname: str = SANDBOX_FNAME
         self._saved_thunk: Optional[Union[str, ast.AST]] = None
         self._is_tracing_enabled = False
@@ -214,6 +216,11 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             if node_id in node_ids:
                 augs.append(aug)
         return frozenset(augs)
+
+    @classmethod
+    def make_sandbox_fname(cls) -> str:
+        cls.sandbox_fname_counter += 1
+        return f"{SANDBOX_FNAME_PREFIX}-{cls.sandbox_fname_counter}>"
 
     @property
     def should_patch_meta_path(self) -> bool:
@@ -485,8 +492,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         return True
 
     def _should_instrument_file_impl(self, filename: str) -> bool:
-        return filename in self._tracing_enabled_files or self.should_instrument_file(
-            filename
+        return (
+            filename in self._tracing_enabled_files
+            or filename.startswith(SANDBOX_FNAME_PREFIX)
+            or self.should_instrument_file(filename)
         )
 
     def _file_passes_filter_impl(
@@ -508,8 +517,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             or self._should_instrument_file_impl(filename)
         ) and self.file_passes_filter_for_event(evt, filename)
 
-    def make_ast_rewriter(self, **kwargs) -> AstRewriter:
-        return self.ast_rewriter_cls(_TRACER_STACK, **kwargs)
+    def make_ast_rewriter(
+        self, path: Optional[str], module_id: Optional[int] = None
+    ) -> AstRewriter:
+        return self.ast_rewriter_cls(_TRACER_STACK, path, module_id=module_id)
 
     def make_syntax_augmenters(self, ast_rewriter: AstRewriter) -> List[Callable]:
         return [
@@ -553,7 +564,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         f_defined_file = f.__code__.co_filename
         with self.tracing_disabled():
             code = ast.parse(textwrap.dedent(inspect.getsource(f)))
-            code.body[0] = self.make_ast_rewriter().visit(code.body[0])
+            code.body[0] = self.make_ast_rewriter(f.__code__.co_filename).visit(
+                code.body[0]
+            )
             compiled: types.CodeType = compile(code, f.__code__.co_filename, "exec")
             for const in compiled.co_consts:
                 if (
@@ -696,7 +709,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         return code
 
     def parse(self, code: str, mode="exec") -> Union[ast.Module, ast.Expression]:
-        rewriter = self.make_ast_rewriter()
+        rewriter = self.make_ast_rewriter(None)
         for tracer in _TRACER_STACK:
             code = tracer.preprocess(code, rewriter)
         return rewriter.visit(ast.parse(code, mode=mode))
@@ -706,10 +719,12 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         code: Union[ast.Module, ast.Expression, str],
         global_env: dict,
         local_env: dict,
-        filename: str = SANDBOX_FNAME,
+        filename: str,
         instrument: bool = True,
         do_eval: bool = False,
     ) -> Any:
+        if filename is None:
+            filename = self.make_sandbox_fname()
         with self.tracing_context(
             disabled=self._is_tracing_hard_disabled,
             tracing_enabled_file=filename,
@@ -718,7 +733,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 code = textwrap.dedent(code).strip()
                 code = self.parse(code)
             if instrument:
-                code = self.make_ast_rewriter().visit(code)
+                code = self.make_ast_rewriter(path=filename).visit(code)
             code_obj = compile(code, filename, "eval" if do_eval else "exec")
             if do_eval:
                 self._num_sandbox_calls_seen = 2
@@ -751,9 +766,11 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         local_env: Optional[dict] = None,
         *,
         instrument: bool = True,
-        filename: str = SANDBOX_FNAME,
+        filename: Optional[str] = None,
         num_extra_lookback_frames: int = 0,
     ) -> Any:
+        if filename is None:
+            filename = self.make_sandbox_fname()
         global_env, local_env = self._get_environments(
             global_env, local_env, num_extra_lookback_frames + 1
         )
@@ -771,7 +788,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             if not isinstance(code, ast.Expression):
                 code = ast.Expression(code)
             if instrument and not visited:
-                code = self.make_ast_rewriter().visit(code)
+                code = self.make_ast_rewriter(path=filename).visit(code)
             return self.exec_raw(
                 code,  # type: ignore
                 global_env=global_env,
@@ -788,9 +805,11 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         local_env: Optional[dict] = None,
         *,
         instrument: bool = True,
-        filename: str = SANDBOX_FNAME,
+        filename: Optional[str] = None,
         num_extra_lookback_frames: int = 0,
     ) -> Dict[str, Any]:
+        if filename is None:
+            filename = self.make_sandbox_fname()
         global_env, local_env = self._get_environments(
             global_env, local_env, num_extra_lookback_frames + 1
         )
@@ -834,7 +853,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 else:
                     code = ast.Module([code], [])
             if instrument and not visited:
-                code = self.make_ast_rewriter().visit(code)
+                code = self.make_ast_rewriter(path=filename).visit(code)
             # prepend the stuff before "return locals()"
             fundef: ast.FunctionDef = cast(ast.FunctionDef, sandboxed_code.body[1])
             if isinstance(code, ast.Module):

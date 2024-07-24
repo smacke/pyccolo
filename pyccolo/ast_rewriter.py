@@ -2,11 +2,13 @@
 import ast
 import logging
 from collections import defaultdict
+from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
     Callable,
     DefaultDict,
     Dict,
+    Generator,
     List,
     Optional,
     Set,
@@ -40,16 +42,30 @@ class AstRewriter(ast.NodeTransformer):
     def __init__(
         self,
         tracers: "List[BaseTracer]",
+        path: Optional[str],
         module_id: Optional[int] = None,
-        path: Optional[str] = None,
     ) -> None:
         self._tracers = tracers
-        self._module_id: Optional[int] = module_id
-        self._path: Optional[str] = path
+        self._path = path
+        self._module_id = module_id
         self._augmented_positions_by_spec: Dict[
             AugmentationSpec, Set[Tuple[int, int]]
         ] = defaultdict(set)
         self.orig_to_copy_mapping: Optional[Dict[int, ast.AST]] = None
+
+    @contextmanager
+    def tracer_override_context(
+        self, tracers: List["BaseTracer"], path: str
+    ) -> Generator[None, None, None]:
+        orig_tracers = self._tracers
+        orig_path = self._path
+        self._tracers = tracers
+        self._path = path
+        try:
+            yield
+        finally:
+            self._tracers = orig_tracers
+            self._path = orig_path
 
     def _get_order_of_specs_applied(self) -> Tuple[AugmentationSpec, ...]:
         specs = []
@@ -73,6 +89,9 @@ class AstRewriter(ast.NodeTransformer):
                 node_or_id,
             )
         )
+
+    def should_instrument_with_tracer(self, tracer: "BaseTracer") -> bool:
+        return self._path is None or tracer._should_instrument_file_impl(self._path)
 
     def visit(self, node: ast.AST):
         assert isinstance(
@@ -104,11 +123,9 @@ class AstRewriter(ast.NodeTransformer):
         ] = defaultdict(list)
 
         for tracer in self._tracers:
+            if not self.should_instrument_with_tracer(tracer):
+                continue
             for evt in tracer.events_with_registered_handlers:
-                if self._path is not None and not tracer._file_passes_filter_impl(
-                    evt.value, self._path
-                ):
-                    continue
                 # this is to deal with the tests in test_trace_events.py,
                 # which patch events_with_registered_handlers but not _event_handlers
                 handler_data = tracer._event_handlers.get(

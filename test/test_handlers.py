@@ -4,6 +4,7 @@ import sys
 from types import FrameType
 
 import pyccolo as pyc
+from pyccolo.tracer import SANDBOX_FNAME_PREFIX
 
 
 def test_sandbox():
@@ -279,7 +280,9 @@ def test_reentrant_handling():
 
         @pyc.register_handler(ast.Assign)
         def handle_outer_assign(self, ret, _node, frame, *_, **__):
-            if not isinstance(ret, int) or frame.f_code.co_filename != "<sandbox>":
+            if not isinstance(ret, int) or not frame.f_code.co_filename.startswith(
+                SANDBOX_FNAME_PREFIX
+            ):
                 return
             return ret + 2
 
@@ -321,7 +324,7 @@ def test_tracing_context_manager_toggling():
     class TracesStatements(pyc.BaseTracer):
         @pyc.register_handler(ast.stmt)
         def handle_stmt(self, _ret, _node, frame, *_, **__):
-            if frame.f_code.co_filename == "<sandbox>":
+            if frame.f_code.co_filename.startswith(SANDBOX_FNAME_PREFIX):
                 nonlocal num_stmts_seen
                 num_stmts_seen += 1
 
@@ -387,7 +390,7 @@ def test_composes_with_existing_sys_tracer():
     def existing_tracer(frame: FrameType, evt, *args, **kwargs):
         if (
             evt == "call"
-            and frame.f_code.co_filename == "<sandbox>"
+            and frame.f_code.co_filename.startswith(SANDBOX_FNAME_PREFIX)
             and frame.f_code.co_name in ("foo", "bar")
         ):
             nonlocal num_calls_seen_from_existing_tracer
