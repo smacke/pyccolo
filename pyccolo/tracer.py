@@ -518,7 +518,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         ) and self.file_passes_filter_for_event(evt, filename)
 
     def make_ast_rewriter(
-        self, path: Optional[str], module_id: Optional[int] = None
+        self, path: str, module_id: Optional[int] = None
     ) -> AstRewriter:
         return self.ast_rewriter_cls(_TRACER_STACK, path, module_id=module_id)
 
@@ -709,7 +709,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         return code
 
     def parse(self, code: str, mode="exec") -> Union[ast.Module, ast.Expression]:
-        rewriter = self.make_ast_rewriter(None)
+        rewriter = self.make_ast_rewriter(self.make_sandbox_fname())
         for tracer in _TRACER_STACK:
             code = tracer.preprocess(code, rewriter)
         return rewriter.visit(ast.parse(code, mode=mode))

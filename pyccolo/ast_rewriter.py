@@ -42,7 +42,7 @@ class AstRewriter(ast.NodeTransformer):
     def __init__(
         self,
         tracers: "List[BaseTracer]",
-        path: Optional[str],
+        path: str,
         module_id: Optional[int] = None,
     ) -> None:
         self._tracers = tracers
@@ -97,6 +97,7 @@ class AstRewriter(ast.NodeTransformer):
         assert isinstance(
             node, (ast.Expression, ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)
         )
+        assert self._path is not None
         mapper = StatementMapper(
             self._tracers,
             fix_positions(
