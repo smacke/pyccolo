@@ -17,7 +17,7 @@ from typing import (
     Union,
 )
 
-from pyccolo.ast_bookkeeping import BookkeepingVisitor
+from pyccolo.ast_bookkeeping import AstBookkeeper, BookkeepingVisitor
 from pyccolo.expr_rewriter import ExprRewriter
 from pyccolo.handler import HandlerSpec
 from pyccolo.predicate import CompositePredicate, Predicate
@@ -106,15 +106,21 @@ class AstRewriter(ast.NodeTransformer):
             ),
         )
         orig_to_copy_mapping = mapper(node)
+        old_bookkeeper = self._tracers[-1].ast_bookkeeper_by_fname.get(self._path)
+        module_id = id(node) if self._module_id is None else self._module_id
+        new_bookkeeper = self._tracers[-1].ast_bookkeeper_by_fname[
+            self._path
+        ] = AstBookkeeper.create(self._path, module_id)
+        if old_bookkeeper is not None:
+            self._tracers[-1].remove_bookkeeping(old_bookkeeper, module_id)
         BookkeepingVisitor(
-            self._tracers[-1].ast_node_by_id,
-            self._tracers[-1].containing_ast_by_id,
-            self._tracers[-1].containing_stmt_by_id,
-            self._tracers[-1].parent_stmt_by_id,
-            self._tracers[-1].stmt_by_lineno_by_module_id[
-                id(node) if self._module_id is None else self._module_id
-            ],
+            new_bookkeeper.ast_node_by_id,
+            new_bookkeeper.containing_ast_by_id,
+            new_bookkeeper.containing_stmt_by_id,
+            new_bookkeeper.parent_stmt_by_id,
+            new_bookkeeper.stmt_by_lineno,
         ).visit(orig_to_copy_mapping[id(node)])
+        self._tracers[-1].add_bookkeeping(new_bookkeeper, module_id)
         self.orig_to_copy_mapping = orig_to_copy_mapping
         raw_handler_predicates_by_event: DefaultDict[
             TraceEvent, List[Predicate]

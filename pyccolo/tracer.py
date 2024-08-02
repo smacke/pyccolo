@@ -33,6 +33,7 @@ from typing import (
 from traitlets.config.configurable import SingletonConfigurable
 from traitlets.traitlets import MetaHasTraits
 
+from pyccolo.ast_bookkeeping import AstBookkeeper
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.emit_event import _TRACER_STACK, SkipAll, _emit_event
 from pyccolo.extra_builtins import (
@@ -49,6 +50,7 @@ from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
 from pyccolo.trace_events import AST_TO_EVENT_MAPPING, SYS_TRACE_EVENTS, TraceEvent
 from pyccolo.trace_stack import TraceStack
+from pyccolo.utils import clear_keys
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -136,11 +138,14 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     handler_spec_by_id: Dict[int, HandlerSpec] = {}
 
     # shared ast bookkeeping fields
+    ast_bookkeeper_by_fname: Dict[str, AstBookkeeper] = {}
     ast_node_by_id: Dict[int, ast.AST] = {}
     containing_ast_by_id: Dict[int, ast.AST] = {}
     containing_stmt_by_id: Dict[int, ast.stmt] = {}
     parent_stmt_by_id: Dict[int, ast.stmt] = {}
     stmt_by_lineno_by_module_id: Dict[int, Dict[int, ast.stmt]] = defaultdict(dict)
+    augmented_node_ids_by_spec: Dict[AugmentationSpec, Set[int]] = defaultdict(set)
+
     current_module: List[Optional[ast.Module]] = [None]
 
     def __init__(self, is_reset: bool = False):
@@ -186,15 +191,42 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         self._is_tracing_hard_disabled = False
         self.existing_tracer = sys_gettrace()
         self.sys_tracer = self._make_composed_tracer(self.existing_tracer)
-        self.augmented_node_ids_by_spec: Dict[AugmentationSpec, Set[int]] = defaultdict(
-            set
-        )
         self._num_sandbox_calls_seen: int = 0
 
         self._transient_fields: Set[str] = set()
         self._persistent_fields: Set[str] = set()
         self._manual_persistent_fields: Set[str] = set()
         self._post_init_hook_start()
+
+    @classmethod
+    def remove_bookkeeping(cls, bookkeeper: AstBookkeeper, module_id: int) -> None:
+        clear_keys(cls.ast_node_by_id, bookkeeper.ast_node_by_id)
+        clear_keys(cls.containing_ast_by_id, bookkeeper.containing_ast_by_id)
+        clear_keys(cls.containing_stmt_by_id, bookkeeper.containing_stmt_by_id)
+        clear_keys(cls.parent_stmt_by_id, bookkeeper.parent_stmt_by_id)
+        clear_keys(
+            cls.stmt_by_lineno_by_module_id[module_id], bookkeeper.stmt_by_lineno
+        )
+        for spec, node_ids in cls.augmented_node_ids_by_spec.items():
+            clear_keys(node_ids, bookkeeper.ast_node_by_id)
+
+    @classmethod
+    def add_bookkeeping(cls, bookkeeper: AstBookkeeper, module_id: int) -> None:
+        cls.ast_node_by_id.update(bookkeeper.ast_node_by_id)
+        cls.containing_ast_by_id.update(bookkeeper.containing_ast_by_id)
+        cls.containing_stmt_by_id.update(bookkeeper.containing_stmt_by_id)
+        cls.parent_stmt_by_id.update(bookkeeper.parent_stmt_by_id)
+        cls.stmt_by_lineno_by_module_id[module_id].update(bookkeeper.stmt_by_lineno)
+
+    @classmethod
+    def reset_bookkeeping(cls) -> None:
+        cls.ast_node_by_id.clear()
+        cls.containing_ast_by_id.clear()
+        cls.containing_stmt_by_id.clear()
+        cls.parent_stmt_by_id.clear()
+        cls.stmt_by_lineno_by_module_id.clear()
+        for node_ids in cls.augmented_node_ids_by_spec.values():
+            node_ids.clear()
 
     @property
     def has_sys_trace_events(self):
@@ -1053,7 +1085,9 @@ class BaseTracer(_InternalBaseTracer):
 
     @classmethod
     def stmt_only_has_ancestor_types(
-        cls, node_or_id: Union[int, ast.AST], ancestor_types: Tuple[Type[ast.AST], ...]
+        cls,
+        node_or_id: Union[int, ast.AST],
+        ancestor_types: Tuple[Type[ast.AST], ...],
     ):
         node_id = node_or_id if isinstance(node_or_id, int) else id(node_or_id)
         containing_stmt = cls.containing_stmt_by_id.get(node_id)

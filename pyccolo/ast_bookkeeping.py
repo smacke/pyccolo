@@ -1,6 +1,20 @@
 # -*- coding: utf-8 -*-
 import ast
-from typing import Dict, Optional
+from typing import Dict, NamedTuple, Optional
+
+
+class AstBookkeeper(NamedTuple):
+    path: str
+    module_id: int
+    ast_node_by_id: Dict[int, ast.AST]
+    containing_ast_by_id: Dict[int, ast.AST]
+    containing_stmt_by_id: Dict[int, ast.stmt]
+    parent_stmt_by_id: Dict[int, ast.stmt]
+    stmt_by_lineno: Dict[int, ast.stmt]
+
+    @classmethod
+    def create(cls, path: str, module_id: int) -> "AstBookkeeper":
+        return cls(path, module_id, {}, {}, {}, {}, {})
 
 
 class BookkeepingVisitor(ast.NodeVisitor):
