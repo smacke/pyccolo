@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.65 (2024-08-25)
+-------------------
+* Implement garbage collection for invalidated AST bookkeeping;
+
 0.0.64 (2024-07-21)
 -------------------
 * Implement guard exemption for event handlers;
