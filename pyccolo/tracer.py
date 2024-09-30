@@ -140,6 +140,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     # shared ast bookkeeping fields
     ast_bookkeeper_by_fname: Dict[str, AstBookkeeper] = {}
     ast_node_by_id: Dict[int, ast.AST] = {}
+    node_id_remapping_by_fname: Dict[str, Dict[int, int]] = {}
     containing_ast_by_id: Dict[int, ast.AST] = {}
     containing_stmt_by_id: Dict[int, ast.stmt] = {}
     parent_stmt_by_id: Dict[int, ast.stmt] = {}
@@ -521,6 +522,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         return True
 
     def multiple_threads_allowed(self) -> bool:
+        return True
+
+    def requires_ast_bookkeeping(self) -> bool:
         return True
 
     def _should_instrument_file_impl(self, filename: str) -> bool:

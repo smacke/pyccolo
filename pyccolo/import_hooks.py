@@ -3,6 +3,7 @@ import ast
 import importlib.util
 import logging
 import os
+import pickle
 import sys
 import threading
 from contextlib import contextmanager
@@ -126,10 +127,10 @@ class TraceLoader(SourceFileLoader):
             parts = path.split(sep)
             if len(parts) < 3:
                 return super().get_data(path)
-            elif parts[-3] == self.make_cache_signature(path_no_ext + sep + "py"):
+            source_path = pyccolo_source_from_cache(path)
+            if parts[-3] == self.make_cache_signature(source_path):
                 return super().get_data(path)
-            else:
-                path = pyccolo_source_from_cache(path)
+            path = source_path
         path_str = str(path)
         if self._augmentation_context or not any(
             tracer._should_instrument_file_impl(path_str) for tracer in self._tracers
@@ -202,19 +203,47 @@ class TraceLoader(SourceFileLoader):
             logger.exception("exception during source to code for path %s", path)
             return super().source_to_code(data, path, _optimize=_optimize)  # type: ignore[call-arg]
 
+    def _pyccolo_cache_from_source(
+        self, path, debug_override=None, *, optimization=None
+    ):
+        with self.patch_cache_handlers():
+            return importlib.util.cache_from_source(
+                path, debug_override=debug_override, optimization=optimization
+            )
+
     def exec_module(self, module: ModuleType) -> None:
         source_path = str(self.get_filename(module.__name__))
         should_reenable_saved_state = []
+        enforce_pickled_bookkeeping = False
+        tracer = None
         for tracer in reversed(self._tracers):
-            should_disable = (
-                tracer._is_tracing_enabled
-                and not tracer._should_instrument_file_impl(source_path)
-            )
+            should_disable = False
+            if tracer._should_instrument_file_impl(source_path):
+                enforce_pickled_bookkeeping = (
+                    enforce_pickled_bookkeeping or tracer.requires_ast_bookkeeping()
+                )
+                should_disable = tracer._is_tracing_enabled
             should_reenable_saved_state.append(should_disable)
             if should_disable:
                 tracer._disable_tracing()
+        pickle_path = None
+        if enforce_pickled_bookkeeping:
+            cache_path = self._pyccolo_cache_from_source(source_path)
+            pickle_path = os.path.splitext(cache_path)[0] + ".pkl"
+            tracer = self._tracers[-1]
+        pickle_path_exists = pickle_path is not None and os.path.exists(pickle_path)
+        if pickle_path is not None and tracer is not None and pickle_path_exists:
+            # read the pickled bookkeeping and use it to update ast bookkeeping / remapping
+            assert source_path not in tracer.ast_bookkeeper_by_fname
+            with open(pickle_path, "rb") as f:
+                new_bookkeeping, remapping = pickle.load(f).remap(id(module))
+            tracer.add_bookkeeping(new_bookkeeping, id(module))
+            tracer.node_id_remapping_by_fname[source_path] = remapping
         should_reenable_saved_state.reverse()
         super().exec_module(module)
+        if pickle_path is not None and tracer is not None and not pickle_path_exists:
+            with open(pickle_path, "wb") as f:
+                pickle.dump(tracer.ast_bookkeeper_by_fname[source_path], f)
         for tracer, should_reenable in zip(self._tracers, should_reenable_saved_state):
             tracer._emit_event(
                 TraceEvent.after_import.value, None, sys._getframe(), module=module

@@ -93,6 +93,12 @@ def _emit_event(event, node_id, **kwargs):
         return _make_ret(event, kwargs.get("ret", None))
     orig_allow_event_handling = _allow_event_handling
     orig_allow_reentrant_event_handling = _allow_reentrant_event_handling
+    if len(_TRACER_STACK) > 0:
+        remapping = _TRACER_STACK[-1].node_id_remapping_by_fname.get(
+            frame.f_code.co_filename
+        )
+        if remapping is not None:
+            node_id = remapping.get(node_id, node_id)
     try:
         _emit_tracer_loop(
             event,
