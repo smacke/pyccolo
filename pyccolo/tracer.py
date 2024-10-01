@@ -117,6 +117,13 @@ else:
 
 
 class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMachine):
+    instrument_all_files = False
+    allow_reentrant_events = True
+    multiple_threads_allowed = True
+    requires_ast_bookkeeping = True
+    should_patch_meta_path = True
+    global_guards_enabled = True
+
     ast_rewriter_cls = AstRewriter
     defined_file = ""
     sandbox_fname_counter = 0
@@ -254,14 +261,6 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     def make_sandbox_fname(cls) -> str:
         cls.sandbox_fname_counter += 1
         return f"{SANDBOX_FNAME_PREFIX}-{cls.sandbox_fname_counter}>"
-
-    @property
-    def should_patch_meta_path(self) -> bool:
-        return True
-
-    @property
-    def global_guards_enabled(self) -> bool:
-        return True
 
     @property
     def is_tracing_enabled(self) -> bool:
@@ -518,18 +517,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     def should_instrument_file(self, filename: str) -> bool:
         return False
 
-    def allow_reentrant_events(self) -> bool:
-        return True
-
-    def multiple_threads_allowed(self) -> bool:
-        return True
-
-    def requires_ast_bookkeeping(self) -> bool:
-        return True
-
     def _should_instrument_file_impl(self, filename: str) -> bool:
         return (
-            filename in self._tracing_enabled_files
+            self.instrument_all_files
+            or filename in self._tracing_enabled_files
             or filename.startswith(SANDBOX_FNAME_PREFIX)
             or self.should_instrument_file(filename)
         )
@@ -537,7 +528,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     def _file_passes_filter_impl(
         self, evt: str, filename: str, is_reentrant: bool = False
     ) -> bool:
-        if is_reentrant and not self.allow_reentrant_events():
+        if is_reentrant and not self.allow_reentrant_events:
             return False
         if filename == self._current_sandbox_fname and self.has_sys_trace_events:
             ret = self._num_sandbox_calls_seen >= 2
@@ -953,9 +944,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             return None
         if evt == "call" and frame.f_code.co_filename == self.defined_file:
             func_name = frame.f_code.co_name
-            if func_name == self.allow_reentrant_events.__name__:
-                return None
-            elif func_name in self._handler_names and not self.allow_reentrant_events():
+            if func_name in self._handler_names and not self.allow_reentrant_events:
                 return None
 
         if self._has_fancy_sys_tracing and evt == "call":
@@ -1127,16 +1116,8 @@ class BaseTracer(_InternalBaseTracer):
 
 
 class NoopTracer(BaseTracer):
-    @property
-    def should_patch_meta_path(self) -> bool:
-        return False
-
-    @property
-    def global_guards_enabled(self) -> bool:
-        return False
+    should_patch_meta_path = False
+    global_guards_enabled = False
 
     def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
-        return False
-
-    def should_instrument_file(self, filename: str) -> bool:
         return False

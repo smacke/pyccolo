@@ -220,7 +220,7 @@ class TraceLoader(SourceFileLoader):
             should_disable = False
             if tracer._should_instrument_file_impl(source_path):
                 enforce_pickled_bookkeeping = (
-                    enforce_pickled_bookkeeping or tracer.requires_ast_bookkeeping()
+                    enforce_pickled_bookkeeping or tracer.requires_ast_bookkeeping
                 )
                 should_disable = tracer._is_tracing_enabled
             should_reenable_saved_state.append(should_disable)

@@ -58,10 +58,7 @@ def _emit_tracer_loop(
     reentrant_handlers_only = is_reentrant and not _allow_reentrant_event_handling
     _allow_event_handling = False
     for tracer in _TRACER_STACK:
-        if (
-            current_thread_id != _main_thread_id
-            and not tracer.multiple_threads_allowed()
-        ):
+        if current_thread_id != _main_thread_id and not tracer.multiple_threads_allowed:
             continue
         _allow_reentrant_event_handling = False
         if not tracer._file_passes_filter_impl(

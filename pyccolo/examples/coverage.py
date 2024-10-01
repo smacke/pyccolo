@@ -47,6 +47,8 @@ class CountStatementsVisitor(ast.NodeVisitor):
 
 
 class CoverageTracer(pyc.BaseTracer):
+    allow_reentrant_events = False
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.seen_stmts = set()
@@ -65,9 +67,6 @@ class CoverageTracer(pyc.BaseTracer):
         ret = self.count_static_statements_visitor.num_stmts
         self.count_static_statements_visitor.num_stmts = 0
         return ret
-
-    def allow_reentrant_events(self) -> bool:
-        return False
 
     def should_instrument_file(self, filename: str) -> bool:
         if "test/" in filename or "examples" in filename:
