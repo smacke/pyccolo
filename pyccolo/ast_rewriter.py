@@ -106,14 +106,14 @@ class AstRewriter(ast.NodeTransformer):
             ),
         )
         orig_to_copy_mapping = mapper(node)
-        tracer = self._tracers[-1]
-        old_bookkeeper = tracer.ast_bookkeeper_by_fname.get(self._path)
+        last_tracer = self._tracers[-1]
+        old_bookkeeper = last_tracer.ast_bookkeeper_by_fname.get(self._path)
         module_id = id(node) if self._module_id is None else self._module_id
-        new_bookkeeper = tracer.ast_bookkeeper_by_fname[
+        new_bookkeeper = last_tracer.ast_bookkeeper_by_fname[
             self._path
         ] = AstBookkeeper.create(self._path, module_id)
         if old_bookkeeper is not None:
-            tracer.remove_bookkeeping(old_bookkeeper, module_id)
+            last_tracer.remove_bookkeeping(old_bookkeeper, module_id)
         BookkeepingVisitor(
             new_bookkeeper.ast_node_by_id,
             new_bookkeeper.containing_ast_by_id,
@@ -121,7 +121,7 @@ class AstRewriter(ast.NodeTransformer):
             new_bookkeeper.parent_stmt_by_id,
             new_bookkeeper.stmt_by_lineno,
         ).visit(orig_to_copy_mapping[id(node)])
-        tracer.add_bookkeeping(new_bookkeeper, module_id)
+        last_tracer.add_bookkeeping(new_bookkeeper, module_id)
         self.orig_to_copy_mapping = orig_to_copy_mapping
         raw_handler_predicates_by_event: DefaultDict[
             TraceEvent, List[Predicate]
@@ -202,4 +202,6 @@ class AstRewriter(ast.NodeTransformer):
                 handler_guards_by_event,
                 expr_rewriter,
             ).visit(node)
+        if not any(tracer.requires_ast_bookkeeping for tracer in self._tracers):
+            last_tracer.remove_bookkeeping(new_bookkeeper, module_id)
         return node

@@ -128,7 +128,7 @@ class TraceLoader(SourceFileLoader):
             if len(parts) < 3:
                 return super().get_data(path)
             source_path = pyccolo_source_from_cache(path)
-            if parts[-3] == self.make_cache_signature(source_path):
+            if self.make_cache_signature(source_path) in (parts[-3], "pyccolo"):
                 return super().get_data(path)
             path = source_path
         path_str = str(path)

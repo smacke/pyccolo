@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.66 (2024-10-06)
+-------------------
+* Small configuration simplification;
+
 0.0.65 (2024-08-25)
 -------------------
 * Implement garbage collection for invalidated AST bookkeeping;
