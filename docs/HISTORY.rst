@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.67 (2024-10-13)
+-------------------
+* Make AST bookkeeping garbage collection optional;
+
 0.0.66 (2024-10-06)
 -------------------
 * Small configuration simplification;
