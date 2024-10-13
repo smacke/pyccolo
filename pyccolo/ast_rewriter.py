@@ -39,6 +39,8 @@ GUARD_DATA_T = Tuple[HandlerSpec, Callable[[Union[int, ast.AST]], str]]
 
 
 class AstRewriter(ast.NodeTransformer):
+    gc_bookkeeping = True
+
     def __init__(
         self,
         tracers: "List[BaseTracer]",
@@ -112,7 +114,7 @@ class AstRewriter(ast.NodeTransformer):
         new_bookkeeper = last_tracer.ast_bookkeeper_by_fname[
             self._path
         ] = AstBookkeeper.create(self._path, module_id)
-        if old_bookkeeper is not None:
+        if old_bookkeeper is not None and self.gc_bookkeeping:
             last_tracer.remove_bookkeeping(old_bookkeeper, module_id)
         BookkeepingVisitor(
             new_bookkeeper.ast_node_by_id,

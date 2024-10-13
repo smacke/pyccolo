@@ -207,14 +207,17 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         self._post_init_hook_start()
 
     @classmethod
-    def remove_bookkeeping(cls, bookkeeper: AstBookkeeper, module_id: int) -> None:
+    def remove_bookkeeping(
+        cls, bookkeeper: AstBookkeeper, module_id: Optional[int]
+    ) -> None:
         clear_keys(cls.ast_node_by_id, bookkeeper.ast_node_by_id)
         clear_keys(cls.containing_ast_by_id, bookkeeper.containing_ast_by_id)
         clear_keys(cls.containing_stmt_by_id, bookkeeper.containing_stmt_by_id)
         clear_keys(cls.parent_stmt_by_id, bookkeeper.parent_stmt_by_id)
-        clear_keys(
-            cls.stmt_by_lineno_by_module_id[module_id], bookkeeper.stmt_by_lineno
-        )
+        if module_id is not None:
+            clear_keys(
+                cls.stmt_by_lineno_by_module_id[module_id], bookkeeper.stmt_by_lineno
+            )
         for spec, node_ids in cls.augmented_node_ids_by_spec.items():
             clear_keys(node_ids, bookkeeper.ast_node_by_id)
 
