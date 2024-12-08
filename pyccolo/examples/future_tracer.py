@@ -59,7 +59,7 @@ class FutureUnwrapper(ast.NodeTransformer):
 
     def visit_Name(self, node: ast.Name):
         assert isinstance(node.ctx, ast.Load)
-        current_version = self._async_vars.get(node.id, None)
+        current_version = self._async_vars.get(node.id)
         if current_version is None:
             return node
         else:
@@ -140,9 +140,7 @@ class FutureTracer(pyc.BaseTracer):
     def _unwrap_future(self, fut):
         if isinstance(fut, Future):
             if not fut.done():
-                current_ts = self._timestamp_by_future_id.get(
-                    id(self._threadlocal_state.current_fut), None
-                )
+                current_ts = self._timestamp_by_future_id.get(id(self._threadlocal_state.current_fut))
                 for waiter in self._waiters_by_future_id.get(id(fut), []):
                     if (
                         current_ts is not None
@@ -162,7 +160,7 @@ class FutureTracer(pyc.BaseTracer):
                 return self._unwrap_future(ret)
             except Exception as ex:
                 ex = _unwrap_exception(ex)
-                relevant_cell = self._exec_counter_by_future_id.get(id(ret), None)
+                relevant_cell = self._exec_counter_by_future_id.get(id(ret))
                 if relevant_cell is not None:
                     logger.error("Exception occurred in cell %d:", relevant_cell)
                 logger.error(
@@ -196,9 +194,7 @@ class FutureTracer(pyc.BaseTracer):
                 # this very job
                 while fut is None:
                     fut_cv.wait()
-            old_fut = self._future_by_name_and_version.get(
-                (async_var, current_version - 1), None
-            )
+            old_fut = self._future_by_name_and_version.get((async_var, current_version - 1))
             for waiter in self._waiters_by_future_id.get(id(old_fut), []):
                 # first, wait on everything that depends on the previous value to finish
                 try:
@@ -248,7 +244,7 @@ class FutureTracer(pyc.BaseTracer):
     def handle_augassign(self, _ret, node, frame, *_, **__):
         async_var = node.target.id
         with self._version_lock:
-            version = self._async_variable_version_by_name.get(async_var, None)
+            version = self._async_variable_version_by_name.get(async_var)
             if version is None:
                 return
             else:
