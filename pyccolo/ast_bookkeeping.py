@@ -70,7 +70,8 @@ class BookkeepingVisitor(ast.NodeVisitor):
     def generic_visit(self, node: ast.AST):
         if isinstance(node, ast.stmt):
             self._current_containing_stmt = node
-        self.containing_stmt_by_id[id(node)] = self._current_containing_stmt
+        if self._current_containing_stmt is not None:
+            self.containing_stmt_by_id.setdefault(id(node), self._current_containing_stmt)
         self.ast_node_by_id[id(node)] = node
         if isinstance(node, ast.stmt):
             self.stmt_by_lineno[node.lineno] = node
