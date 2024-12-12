@@ -140,7 +140,9 @@ class FutureTracer(pyc.BaseTracer):
     def _unwrap_future(self, fut):
         if isinstance(fut, Future):
             if not fut.done():
-                current_ts = self._timestamp_by_future_id.get(id(self._threadlocal_state.current_fut))
+                current_ts = self._timestamp_by_future_id.get(
+                    id(self._threadlocal_state.current_fut)
+                )
                 for waiter in self._waiters_by_future_id.get(id(fut), []):
                     if (
                         current_ts is not None
@@ -194,7 +196,9 @@ class FutureTracer(pyc.BaseTracer):
                 # this very job
                 while fut is None:
                     fut_cv.wait()
-            old_fut = self._future_by_name_and_version.get((async_var, current_version - 1))
+            old_fut = self._future_by_name_and_version.get(
+                (async_var, current_version - 1)
+            )
             for waiter in self._waiters_by_future_id.get(id(old_fut), []):
                 # first, wait on everything that depends on the previous value to finish
                 try:

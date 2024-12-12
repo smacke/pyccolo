@@ -19,6 +19,7 @@ from pyccolo.expr_rewriter import ExprRewriter
 from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
+    FUNCTION_TRACING_ENABLED,
     PYCCOLO_BUILTIN_PREFIX,
     TRACING_ENABLED,
     make_guard_name,
@@ -228,7 +229,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                     fast.If(
                         test=make_composite_condition(
                             [
-                                make_test(TRACING_ENABLED),
+                                make_test(FUNCTION_TRACING_ENABLED),
                                 make_test(function_guard),
                                 self.emit(
                                     TraceEvent.before_function_body,

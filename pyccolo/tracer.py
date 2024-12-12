@@ -39,6 +39,7 @@ from pyccolo.emit_event import _TRACER_STACK, SkipAll, _emit_event
 from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
+    FUNCTION_TRACING_ENABLED,
     PYCCOLO_BUILTIN_PREFIX,
     TRACE_LAMBDA,
     TRACING_ENABLED,
@@ -457,6 +458,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             self.existing_tracer = existing_tracer or sys_gettrace()
             self.sys_tracer = self._make_composed_tracer(self.existing_tracer)
             sys_settrace(self.sys_tracer)
+        setattr(builtins, FUNCTION_TRACING_ENABLED, True)
         setattr(builtins, TRACING_ENABLED, True)
 
     def _disable_tracing(self, check_enabled=True):
@@ -467,6 +469,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         self._is_tracing_enabled = False
         if has_sys_trace_events and sys_gettrace() is not None:
             sys_settrace(self.existing_tracer)
+        setattr(builtins, FUNCTION_TRACING_ENABLED, False)
         if len(_TRACER_STACK) == 0:
             setattr(builtins, TRACING_ENABLED, False)
 
@@ -716,6 +719,8 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 self.deactivate_guard(guard)
         if not hasattr(builtins, TRACING_ENABLED):
             setattr(builtins, TRACING_ENABLED, False)
+        if not hasattr(builtins, FUNCTION_TRACING_ENABLED):
+            setattr(builtins, FUNCTION_TRACING_ENABLED, False)
         setattr(builtins, EXEC_SAVED_THUNK, self.exec_saved_thunk)
         setattr(builtins, TRACE_LAMBDA, self.trace_lambda)
         if do_patch_meta_path is None:
