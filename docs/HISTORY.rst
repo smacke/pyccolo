@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.68 (2024-12-12)
+-------------------
+* Always track containing statement during bookkeeping;
+* Improve recursion efficiency;
+
 0.0.67 (2024-10-13)
 -------------------
 * Make AST bookkeeping garbage collection optional;
