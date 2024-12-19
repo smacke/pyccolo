@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.69 (2024-12-19)
+-------------------
+* Automatic bookkeeping for return expressions from `after_module_stmt` events;
+
 0.0.68 (2024-12-12)
 -------------------
 * Always track containing statement during bookkeeping;
