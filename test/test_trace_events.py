@@ -9,6 +9,7 @@ import hypothesis.strategies as st
 from hypothesis import example, given, settings
 
 import pyccolo as pyc
+from pyccolo.trace_events import TraceEvent
 
 logging.basicConfig(level=logging.INFO)
 
@@ -28,11 +29,18 @@ def patch_events_and_emitter(testfunc):
             pyc.before_subscript_store,
             pyc.before_subscript_del,
         }:
-            events.add(pyc._load_saved_slice)
-        if pyc._load_saved_slice in events:
+            events.add(TraceEvent._load_saved_slice)
+        if TraceEvent._load_saved_slice in events:
             events.add(pyc.before_subscript_load)
             events.add(pyc.before_subscript_store)
             events.add(pyc.before_subscript_del)
+        if events & {
+            TraceEvent._load_saved_expr_stmt_ret,
+            pyc.after_module_stmt,
+        }:
+            events.add(TraceEvent._load_saved_expr_stmt_ret)
+            events.add(pyc.after_stmt)
+            events.add(pyc.after_module_stmt)
         # get rid of all the builtin tracing events since we'll have all if we have one
         events -= {
             pyc.line,
@@ -117,6 +125,7 @@ def test_recorded_events_simple(events):
                 pyc.after_load_complex_symbol,
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -147,6 +156,7 @@ def test_recorded_events_two_stmts(events):
                 pyc.after_list_literal,
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.before_stmt,
                 pyc.before_load_complex_symbol,
@@ -161,6 +171,7 @@ def test_recorded_events_two_stmts(events):
                 pyc.after_load_complex_symbol,
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -204,6 +215,7 @@ def test_nested_chains_no_call(events):
                 pyc.after_load_complex_symbol,
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -232,6 +244,7 @@ def test_list_nested_in_dict(events):
                 pyc.after_dict_literal,
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -258,6 +271,7 @@ def test_function_call(events):
                 pyc.init_module,
                 pyc.before_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.before_stmt,
                 pyc.before_load_complex_symbol,
@@ -283,6 +297,7 @@ def test_function_call(events):
                 pyc.after_load_complex_symbol,
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -309,6 +324,7 @@ def test_lambda_in_tuple(events):
                 pyc.after_tuple_literal,
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -342,11 +358,13 @@ def test_decorator(events):
                 pyc.init_module,
                 pyc.before_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.before_stmt,
                 pyc.before_assign_rhs,
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.before_stmt,
                 pyc.before_load_complex_symbol,
@@ -380,6 +398,7 @@ def test_decorator(events):
                 pyc.after_return,
                 pyc.after_function_execution,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.before_stmt,
                 pyc.before_compare,
@@ -397,6 +416,7 @@ def test_decorator(events):
                 pyc.compare_arg,
                 pyc.after_compare,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -422,6 +442,7 @@ def test_fundef_defaults(events):
                 pyc.load_name,
                 pyc.load_name,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -451,12 +472,14 @@ def test_classdef(events):
                 pyc.before_stmt,
                 pyc.after_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.before_stmt,
                 pyc.load_name,
                 pyc.before_stmt,
                 pyc.after_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -494,6 +517,7 @@ def test_fancy_slices(events):
                 pyc.after_stmt,
                 pyc.return_,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 # foo = Foo(1)
                 pyc.before_stmt,
@@ -518,6 +542,7 @@ def test_fancy_slices(events):
                 pyc.after_load_complex_symbol,
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 # logging.info(foo[foo.x:foo.x+1,...])
                 pyc.before_stmt,
@@ -547,7 +572,7 @@ def test_fancy_slices(events):
                 pyc.ellipses,
                 pyc.after_subscript_slice,
                 pyc.before_subscript_load,
-                pyc._load_saved_slice,
+                TraceEvent._load_saved_slice,
                 pyc.call,
                 pyc.before_function_body,
                 pyc.before_stmt,
@@ -563,6 +588,7 @@ def test_fancy_slices(events):
                 pyc.after_load_complex_symbol,
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -604,6 +630,7 @@ def test_for_loop(events):
             * 10
             + [
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -632,6 +659,7 @@ def test_while_loop(events):
                 pyc.before_assign_rhs,
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.before_stmt,
             ]
@@ -658,6 +686,7 @@ def test_while_loop(events):
                 pyc.after_compare,
                 pyc.after_while_test,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -699,6 +728,7 @@ def test_loop_with_continue(events):
             * 10
             + [
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -728,6 +758,7 @@ def test_for_loop_nested_in_while_loop(events):
                 pyc.before_assign_rhs,
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.before_stmt,
             ]
@@ -770,6 +801,7 @@ def test_for_loop_nested_in_while_loop(events):
                 pyc.after_compare,
                 pyc.after_while_test,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -801,10 +833,12 @@ def test_lambda_wrapping_call(events):
                 pyc.before_assign_rhs,
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 # def f(): ...
                 pyc.before_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 # lam = lambda: f()
                 pyc.before_stmt,
@@ -813,6 +847,7 @@ def test_lambda_wrapping_call(events):
                 pyc.after_lambda,
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 # x = lam()
                 pyc.before_stmt,
@@ -841,6 +876,7 @@ def test_lambda_wrapping_call(events):
                 pyc.after_load_complex_symbol,
                 pyc.after_assign_rhs,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -895,6 +931,7 @@ def test_comprehension(events):
             + [
                 pyc.after_expr_stmt,
                 pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
                 pyc.after_module_stmt,
                 pyc.exit_module,
             ],
@@ -930,6 +967,7 @@ def test_exception_handler_types(events):
                     pyc.after_expr_stmt,
                     pyc.after_stmt,
                     pyc.after_stmt,
+                    TraceEvent._load_saved_expr_stmt_ret,
                     pyc.after_module_stmt,
                     pyc.exit_module,
                 ],

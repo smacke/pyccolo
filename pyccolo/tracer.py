@@ -1065,7 +1065,18 @@ def register_universal_handler(handler):
 class BaseTracer(_InternalBaseTracer):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self._saved_expr_stmt_ret: Optional[Any] = None
         self._saved_slice: Optional[Any] = None
+
+    @register_raw_handler(TraceEvent.after_stmt, reentrant=True)
+    def _save_expr_stmt_ret_for_later(self, ret_expr: Any, *_, **__) -> None:
+        self._saved_expr_stmt_ret = ret_expr
+
+    @register_raw_handler(TraceEvent._load_saved_expr_stmt_ret, reentrant=True)
+    def _load_saved_expr_stmt_ret(self, *_, **__) -> Any:
+        ret = self._saved_expr_stmt_ret
+        self._saved_expr_stmt_ret = None
+        return ret
 
     @register_raw_handler(
         (

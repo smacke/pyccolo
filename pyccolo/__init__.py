@@ -67,7 +67,6 @@ before_subscript_del = TraceEvent.before_subscript_del
 after_subscript_load = TraceEvent.after_subscript_load
 before_subscript_slice = TraceEvent.before_subscript_slice
 after_subscript_slice = TraceEvent.after_subscript_slice
-_load_saved_slice = TraceEvent._load_saved_slice
 before_load_complex_symbol = TraceEvent.before_load_complex_symbol
 after_load_complex_symbol = TraceEvent.after_load_complex_symbol
 after_if_test = TraceEvent.after_if_test
@@ -255,8 +254,8 @@ __all__ = [
 ]
 
 
-# all the events now
-__all__.extend(evt.name for evt in TraceEvent)
+# all the public events now
+__all__.extend(evt.name for evt in TraceEvent if evt not in (TraceEvent._load_saved_expr_stmt_ret, TraceEvent._load_saved_slice))
 
 from pyccolo import _version  # noqa: E402
 __version__ = _version.get_versions()['version']

@@ -36,16 +36,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_INSERT_STMT_TEMPLATE = '{}("{{evt}}", {{stmt_id}})'.format(EMIT_EVENT)
+_EMIT_EVENT_TEMPLATE = '{}("{{evt}}", {{node_id}})'.format(EMIT_EVENT)
 _T = TypeVar("_T", bound=ast.AST)
 
 
-def _get_parsed_insert_stmt(stmt: ast.stmt, evt: TraceEvent) -> ast.Expr:
+def _get_emit_event_ast(stmt: ast.stmt, evt: TraceEvent) -> ast.Expr:
     with fast.location_of(stmt):
         return cast(
             ast.Expr,
             fast.parse(
-                _INSERT_STMT_TEMPLATE.format(evt=evt.value, stmt_id=id(stmt))
+                _EMIT_EVENT_TEMPLATE.format(evt=evt.value, node_id=id(stmt))
             ).body[0],
         )
 
@@ -57,7 +57,7 @@ def _get_parsed_append_stmt(
     **kwargs,
 ) -> ast.Expr:
     with fast.location_of(stmt):
-        ret = _get_parsed_insert_stmt(stmt, evt)
+        ret = _get_emit_event_ast(stmt, evt)
         if ret_expr is not None:
             kwargs["ret"] = ret_expr
         ret_value = cast(ast.Call, ret.value)
@@ -304,13 +304,16 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         prev_stmt: ast.stmt,
         prev_stmt_copy: ast.stmt,
     ) -> List[ast.stmt]:
+        is_module_stmt = isinstance(outer_node, ast.Module) and field_name == "body"
         if not self.handler_predicate_by_event[TraceEvent.after_stmt](prev_stmt_copy):
-            return [self.visit(prev_stmt)]
-        if (
-            isinstance(prev_stmt, ast.Expr)
-            and isinstance(outer_node, ast.Module)
-            and field_name == "body"
-        ):
+            if (
+                not self.handler_predicate_by_event[TraceEvent.after_module_stmt](
+                    prev_stmt_copy
+                )
+                or not is_module_stmt
+            ):
+                return [self.visit(prev_stmt)]
+        if isinstance(prev_stmt, ast.Expr) and is_module_stmt:
             val = prev_stmt.value
             while isinstance(val, ast.Expr):
                 val = val.value
@@ -340,7 +343,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                 #   and add a new statement that just evaluates to that returned value
                 stmts_to_extend.append(
                     fast.If(
-                        test=_get_parsed_insert_stmt(
+                        test=_get_emit_event_ast(
                             stmt_copy, TraceEvent.before_stmt
                         ).value,
                         body=self._make_main_and_after_stmt_stmts(
@@ -360,8 +363,13 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             and self.handler_predicate_by_event[TraceEvent.after_module_stmt](stmt_copy)
         ):
             assert not isinstance(inner_node, ast.Return)
+            ret_expr = _get_emit_event_ast(
+                stmt_copy, evt=TraceEvent._load_saved_expr_stmt_ret
+            ).value
             stmts_to_extend.append(
-                _get_parsed_append_stmt(stmt_copy, evt=TraceEvent.after_module_stmt)
+                _get_parsed_append_stmt(
+                    stmt_copy, ret_expr=ret_expr, evt=TraceEvent.after_module_stmt
+                )
             )
         return stmts_to_extend
 

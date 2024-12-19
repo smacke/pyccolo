@@ -16,6 +16,7 @@ class TraceEvent(Enum):
     after_stmt = "after_stmt"
     after_module_stmt = "after_module_stmt"
     after_expr_stmt = "after_expr_stmt"
+    _load_saved_expr_stmt_ret = "_load_saved_expr_stmt_ret"
 
     load_name = "load_name"
 
