@@ -507,6 +507,29 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 setattr(node, name, self.visit(field))
         return node
 
+    def visit_For_or_Async_For(self, node: Union[ast.For, ast.AsyncFor]):
+        orig_node_iter = node.iter
+        with fast.location_of(node):
+            node.iter = self.visit(node.iter)
+            if self.handler_predicate_by_event[TraceEvent.before_for_iter](
+                orig_node_iter
+            ):
+                node.iter = self.emit(
+                    TraceEvent.before_for_iter, orig_node_iter, ret=node.iter
+                )
+            if self.handler_predicate_by_event[TraceEvent.after_for_iter](
+                orig_node_iter
+            ):
+                node.iter = self.emit(
+                    TraceEvent.after_for_iter, orig_node_iter, ret=node.iter
+                )
+        node.target = self.visit(node.target)
+        node.body = [self.visit(stmt) for stmt in node.body]
+        node.orelse = [self.visit(stmt) for stmt in node.orelse]
+        return node
+
+    visit_For = visit_AsyncFor = visit_For_or_Async_For
+
     @staticmethod
     def _ast_container_to_literal_trace_evt(
         node: Union[ast.Dict, ast.List, ast.Set, ast.Tuple], before: bool

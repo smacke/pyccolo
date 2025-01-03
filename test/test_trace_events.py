@@ -613,6 +613,7 @@ def test_for_loop(events):
             [
                 pyc.init_module,
                 pyc.before_stmt,
+                pyc.before_for_iter,
                 pyc.before_load_complex_symbol,
                 pyc.load_name,
                 pyc.before_call,
@@ -620,6 +621,7 @@ def test_for_loop(events):
                 pyc.after_argument,
                 pyc.after_call,
                 pyc.after_load_complex_symbol,
+                pyc.after_for_iter,
             ]
             + [
                 pyc.before_for_loop_body,
@@ -712,6 +714,7 @@ def test_loop_with_continue(events):
             [
                 pyc.init_module,
                 pyc.before_stmt,
+                pyc.before_for_iter,
                 pyc.before_load_complex_symbol,
                 pyc.load_name,
                 pyc.before_call,
@@ -719,6 +722,7 @@ def test_loop_with_continue(events):
                 pyc.after_argument,
                 pyc.after_call,
                 pyc.after_load_complex_symbol,
+                pyc.after_for_iter,
             ]
             + [
                 pyc.before_for_loop_body,
@@ -771,6 +775,7 @@ def test_for_loop_nested_in_while_loop(events):
                 pyc.after_while_test,
                 pyc.before_while_loop_body,
                 pyc.before_stmt,
+                pyc.before_for_iter,
                 pyc.before_load_complex_symbol,
                 pyc.load_name,
                 pyc.before_call,
@@ -778,6 +783,7 @@ def test_for_loop_nested_in_while_loop(events):
                 pyc.after_argument,
                 pyc.after_call,
                 pyc.after_load_complex_symbol,
+                pyc.after_for_iter,
                 *(
                     [
                         pyc.before_for_loop_body,

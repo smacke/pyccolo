@@ -25,6 +25,9 @@ class TraceEvent(Enum):
     before_while_loop_body = "before_while_loop_body"
     after_while_loop_iter = "after_while_loop_iter"
 
+    before_for_iter = "before_for_iter"
+    after_for_iter = "after_for_iter"
+
     before_attribute_load = "before_attribute_load"
     before_attribute_store = "before_attribute_store"
     before_attribute_del = "before_attribute_del"
@@ -148,6 +151,7 @@ BEFORE_EXPR_EVENTS = {
     TraceEvent.before_binop,
     TraceEvent.before_compare,
     TraceEvent.before_dict_literal,
+    TraceEvent.before_for_iter,
     TraceEvent.before_lambda,
     TraceEvent.before_list_literal,
     TraceEvent.before_load_complex_symbol,
@@ -159,13 +163,14 @@ BEFORE_EXPR_EVENTS = {
 
 
 AST_TO_EVENT_MAPPING = {
+    ast.arg: TraceEvent.after_argument,
     ast.stmt: TraceEvent.after_stmt,
     ast.Assign: TraceEvent.after_assign_rhs,
     ast.Module: TraceEvent.init_module,
     ast.Name: TraceEvent.load_name,
-    ast.Attribute: TraceEvent.before_attribute_load,
-    ast.Subscript: TraceEvent.before_subscript_load,
-    ast.Call: TraceEvent.before_call,
+    ast.Attribute: TraceEvent.after_attribute_load,
+    ast.Subscript: TraceEvent.after_subscript_load,
+    ast.Call: TraceEvent.after_call,
     ast.Dict: TraceEvent.after_dict_literal,
     ast.List: TraceEvent.after_list_literal,
     ast.Tuple: TraceEvent.after_tuple_literal,
