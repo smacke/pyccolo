@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.70 (2025-01-04)
+-------------------
+* add before / after for iter ast events
+
 0.0.69 (2024-12-19)
 -------------------
 * Automatic bookkeeping for return expressions from `after_module_stmt` events;
