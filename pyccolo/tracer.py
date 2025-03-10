@@ -130,9 +130,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     sandbox_fname_counter = 0
 
     _MANAGER_CLASS_REGISTERED = False
-    EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[
-        TraceEvent, List[HandlerSpec]
-    ] = defaultdict(list)
+    EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[TraceEvent, List[HandlerSpec]] = (
+        defaultdict(list)
+    )
     EVENT_HANDLERS_BY_CLASS: Dict[
         "Type[BaseTracer]",
         DefaultDict[TraceEvent, List[HandlerSpec]],
@@ -760,10 +760,14 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     ) -> Any:
         if filename is None:
             filename = self.make_sandbox_fname()
-        with self.tracing_context(
-            disabled=self._is_tracing_hard_disabled,
-            tracing_enabled_file=filename,
-        ) if instrument else suppress():
+        with (
+            self.tracing_context(
+                disabled=self._is_tracing_hard_disabled,
+                tracing_enabled_file=filename,
+            )
+            if instrument
+            else suppress()
+        ):
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
                 code = self.parse(code)
@@ -809,10 +813,14 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         global_env, local_env = self._get_environments(
             global_env, local_env, num_extra_lookback_frames + 1
         )
-        with self.tracing_context(
-            disabled=self._is_tracing_hard_disabled,
-            tracing_enabled_file=filename,
-        ) if instrument else suppress():
+        with (
+            self.tracing_context(
+                disabled=self._is_tracing_hard_disabled,
+                tracing_enabled_file=filename,
+            )
+            if instrument
+            else suppress()
+        ):
             visited = False
             if isinstance(code, str):
                 if instrument:
@@ -869,10 +877,14 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             """
         ).strip()
         sandboxed_code = ast.parse(cast(str, sandboxed_code), filename, "exec")
-        with self.tracing_context(
-            disabled=self._is_tracing_hard_disabled,
-            tracing_enabled_file=filename,
-        ) if instrument else suppress():
+        with (
+            self.tracing_context(
+                disabled=self._is_tracing_hard_disabled,
+                tracing_enabled_file=filename,
+            )
+            if instrument
+            else suppress()
+        ):
             visited = False
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
@@ -976,12 +988,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         TracerT = TypeVar("TracerT", bound="_InternalBaseTracer")
 
         @classmethod
-        def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT:
-            ...
+        def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT: ...
 
         @classmethod
-        def clear_instance(cls) -> None:
-            ...
+        def clear_instance(cls) -> None: ...
 
 
 def register_handler(
@@ -1011,9 +1021,11 @@ def register_handler(
                 handler, use_raw_node_id, reentrant, pred, guard, exempt_from_guards
             )
             _InternalBaseTracer.EVENT_HANDLERS_PENDING_REGISTRATION[
-                AST_TO_EVENT_MAPPING[evt]
-                if type(evt) is type and issubclass(evt, ast.AST)
-                else evt
+                (
+                    AST_TO_EVENT_MAPPING[evt]
+                    if type(evt) is type and issubclass(evt, ast.AST)
+                    else evt
+                )
             ].append(handler_spec)
             _InternalBaseTracer.handler_spec_by_id[id(handler_spec)] = handler_spec
         return handler

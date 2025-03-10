@@ -312,9 +312,11 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                                     ret=new_arg_value,
                                     is_starred=fast.NameConstant(is_starred),
                                     is_kwstarred=fast.NameConstant(is_kwstarred),
-                                    key=fast.NameConstant(key)
-                                    if key is None
-                                    else fast.Str(key),
+                                    key=(
+                                        fast.NameConstant(key)
+                                        if key is None
+                                        else fast.Str(key)
+                                    ),
                                     is_last=fast.NameConstant(
                                         compute_is_last and arg_idx == len(args) - 1
                                     ),
@@ -448,15 +450,17 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 test=make_composite_condition(
                     [
                         make_test(TRACING_ENABLED),
-                        self.emit(
-                            TraceEvent.before_lambda_body,
-                            node,
-                            ret=fast.NameConstant(True),
-                        )
-                        if self.handler_predicate_by_event[
-                            TraceEvent.before_lambda_body
-                        ](untraced_lam)
-                        else None,
+                        (
+                            self.emit(
+                                TraceEvent.before_lambda_body,
+                                node,
+                                ret=fast.NameConstant(True),
+                            )
+                            if self.handler_predicate_by_event[
+                                TraceEvent.before_lambda_body
+                            ](untraced_lam)
+                            else None
+                        ),
                     ]
                 ),
                 body=ret_node.body,
@@ -613,13 +617,13 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     continue
         return node
 
-    visit_DictComp = (
-        visit_GeneratorExp
-    ) = visit_ListComp = visit_SetComp = visit_generic_comprehension
+    visit_DictComp = visit_GeneratorExp = visit_ListComp = visit_SetComp = (
+        visit_generic_comprehension
+    )
 
     @staticmethod
     def _ast_container_to_elt_trace_evt(
-        node: Union[ast.List, ast.Set, ast.Tuple]
+        node: Union[ast.List, ast.Set, ast.Tuple],
     ) -> TraceEvent:
         if isinstance(node, ast.List):
             return TraceEvent.list_elt

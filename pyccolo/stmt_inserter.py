@@ -163,13 +163,17 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                             [
                                 make_test(TRACING_ENABLED),
                                 make_test(loop_guard),
-                                self.emit(
-                                    before_loop_evt, node, ret=fast.NameConstant(True)
-                                )
-                                if self.handler_predicate_by_event[before_loop_evt](
-                                    node
-                                )
-                                else None,
+                                (
+                                    self.emit(
+                                        before_loop_evt,
+                                        node,
+                                        ret=fast.NameConstant(True),
+                                    )
+                                    if self.handler_predicate_by_event[before_loop_evt](
+                                        node
+                                    )
+                                    else None
+                                ),
                             ]
                         ),
                         body=ret,
@@ -218,9 +222,11 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                             _get_parsed_append_stmt(
                                 cast(ast.stmt, fundef_copy),
                                 evt=TraceEvent.after_function_execution,
-                                guard=fast.Str(function_guard)
-                                if self.global_guards_enabled
-                                else fast.NameConstant(None),
+                                guard=(
+                                    fast.Str(function_guard)
+                                    if self.global_guards_enabled
+                                    else fast.NameConstant(None)
+                                ),
                             ),
                         ],
                     ),
@@ -238,22 +244,26 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                             [
                                 make_test(FUNCTION_TRACING_ENABLED),
                                 make_test(function_guard),
-                                self.emit(
-                                    TraceEvent.before_function_body,
-                                    node,
-                                    ret=fast.NameConstant(True),
-                                )
-                                if self.handler_predicate_by_event[
-                                    TraceEvent.before_function_body
-                                ](fundef_copy)
-                                else None,
+                                (
+                                    self.emit(
+                                        TraceEvent.before_function_body,
+                                        node,
+                                        ret=fast.NameConstant(True),
+                                    )
+                                    if self.handler_predicate_by_event[
+                                        TraceEvent.before_function_body
+                                    ](fundef_copy)
+                                    else None
+                                ),
                             ]
                         ),
-                        body=ret
-                        if self.handler_predicate_by_event[
-                            TraceEvent.after_function_execution
-                        ](fundef_copy)
-                        else orig_body,
+                        body=(
+                            ret
+                            if self.handler_predicate_by_event[
+                                TraceEvent.after_function_execution
+                            ](fundef_copy)
+                            else orig_body
+                        ),
                         orelse=orelse,
                     ),
                 ]

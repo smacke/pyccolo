@@ -49,9 +49,9 @@ class TraceStack:
                 self._stack_item_initializers[stack_item_name] = lambda: None
             elif isinstance(stack_item, (int, bool, str, float)):
                 init_val = type(stack_item)(stack_item)
-                self._stack_item_initializers[
-                    stack_item_name
-                ] = self._make_initer_from_val(init_val)
+                self._stack_item_initializers[stack_item_name] = (
+                    self._make_initer_from_val(init_val)
+                )
             else:
                 self._stack_item_initializers[stack_item_name] = type(stack_item)
         for i, stack_item_name in enumerate(self._stack_item_names()):

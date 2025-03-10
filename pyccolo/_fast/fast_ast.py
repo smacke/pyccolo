@@ -12,8 +12,7 @@ class FastAst:
     if TYPE_CHECKING:
 
         @staticmethod
-        def keyword(arg: str, value: ast.AST) -> ast.keyword:
-            ...
+        def keyword(arg: str, value: ast.AST) -> ast.keyword: ...
 
     @staticmethod
     @contextmanager

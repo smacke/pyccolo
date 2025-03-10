@@ -15,8 +15,7 @@ class Predicate:
         condition: Callable[[ast.AST], bool],
         use_raw_node_id: Literal[False],
         static: bool = True,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @overload
     def __init__(
@@ -24,8 +23,7 @@ class Predicate:
         condition: Callable[[int], bool],
         use_raw_node_id: Literal[True],
         static: bool = False,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @overload
     def __init__(
@@ -33,8 +31,7 @@ class Predicate:
         condition: Callable[..., bool],
         use_raw_node_id: bool = False,
         static: bool = False,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def __init__(
         self,

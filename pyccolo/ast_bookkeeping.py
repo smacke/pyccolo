@@ -85,9 +85,9 @@ class BookkeepingVisitor(ast.NodeVisitor):
             if isinstance(field, ast.AST):
                 self.containing_ast_by_id[id(field)] = node
                 if self._current_containing_stmt is not None:
-                    self.containing_stmt_by_id[
-                        id(field)
-                    ] = self._current_containing_stmt
+                    self.containing_stmt_by_id[id(field)] = (
+                        self._current_containing_stmt
+                    )
             elif isinstance(field, list):
                 for subfield in field:
                     if isinstance(subfield, ast.AST):
