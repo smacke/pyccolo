@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 import logging
+import sys
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -31,6 +32,12 @@ from pyccolo.trace_events import TraceEvent
 if TYPE_CHECKING:
     from pyccolo.ast_rewriter import GUARD_DATA_T
     from pyccolo.tracer import BaseTracer
+
+
+if sys.version_info < (3, 8):
+    StrConst = ast.Str
+else:
+    StrConst = ast.Constant
 
 
 logger = logging.getLogger(__name__)
@@ -192,7 +199,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
         if (
             len(orig_body) > 0
             and isinstance(orig_body[0], ast.Expr)
-            and isinstance(orig_body[0].value, ast.Str)
+            and isinstance(orig_body[0].value, StrConst)
         ):
             docstring = [orig_body.pop(0)]
             fundef_copy.body.pop(0)
