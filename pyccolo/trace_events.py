@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 import sys
+import warnings
 from enum import Enum
 
 from pyccolo import fast
@@ -178,5 +179,11 @@ AST_TO_EVENT_MAPPING = {
     ast.Return: TraceEvent.after_return,
     ast.BinOp: TraceEvent.after_binop,
     ast.Compare: TraceEvent.after_compare,
-    ast.Ellipsis: TraceEvent.ellipses,
 }
+
+
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    ast_Ellipsis = getattr(ast, "Ellipsis", None)
+    if ast_Ellipsis is not None:
+        AST_TO_EVENT_MAPPING[ast_Ellipsis] = TraceEvent.ellipses

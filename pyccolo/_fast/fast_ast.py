@@ -2,6 +2,7 @@
 import ast
 import sys
 import textwrap
+import warnings
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Generator, List, Optional
 
@@ -63,10 +64,12 @@ def _make_func(func_name):
     return ctor
 
 
-for ctor_name in ast.__dict__:
-    if ctor_name.startswith("_") or hasattr(FastAst, ctor_name):
-        continue
-    setattr(FastAst, ctor_name, staticmethod(_make_func(ctor_name)))
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    for ctor_name in ast.__dict__:
+        if ctor_name.startswith("_") or hasattr(FastAst, ctor_name):
+            continue
+        setattr(FastAst, ctor_name, staticmethod(_make_func(ctor_name)))
 
 if sys.version_info >= (3, 8):
     FastAst.Str = staticmethod(_make_func("Constant"))  # type: ignore

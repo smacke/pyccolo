@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import ast
+import warnings
 
 from pyccolo._fast import (
     EmitterMixin,
@@ -13,9 +14,11 @@ from pyccolo._fast import (
 location_of = FastAst.location_of
 kw = FastAst.kw
 kwargs = FastAst.kwargs
-for name in dir(FastAst):
-    if hasattr(ast, name):
-        globals()[name] = getattr(FastAst, name)
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    for name in dir(FastAst):
+        if hasattr(ast, name):
+            globals()[name] = getattr(FastAst, name)
 
 
 __all__ = [
