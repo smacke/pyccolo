@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.71 (2025-03-16)
+-------------------
+* suppress false positive deprecation warnings;
+
 0.0.70 (2025-01-04)
 -------------------
 * add before / after for iter ast events
