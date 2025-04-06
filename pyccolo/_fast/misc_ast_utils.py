@@ -66,13 +66,13 @@ def copy_ast(node: ast.AST) -> ast.AST:
 def make_test(var_name: str, negate: bool = False) -> ast.expr:
     ret: ast.expr = fast.Name(var_name, ast.Load())
     if negate:
-        ret = fast.UnaryOp(operand=ret, op=fast.Not())
+        ret = fast.UnaryOp(operand=ret, op=ast.Not())
     return ret
 
 
 def make_composite_condition(
     nullable_conditions: Iterable[Optional[Union[str, ast.expr]]],
-    op: Optional[ast.AST] = None,
+    op: Optional[ast.boolop] = None,
 ) -> ast.expr:
     conditions = [
         fast.Name(cond, ast.Load()) if isinstance(cond, str) else cond
@@ -240,7 +240,7 @@ class EmitterMixin:
             for guard in local_guards.values():
                 self.tracers[-1].register_local_guard(guard)
             ret = fast.IfExp(
-                test=make_composite_condition(local_guards.values(), op=fast.Or()),
+                test=make_composite_condition(local_guards.values(), op=ast.Or()),
                 body=self.get_copy_node(node_or_id),
                 orelse=ret,
             )
