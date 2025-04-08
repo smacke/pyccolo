@@ -942,8 +942,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             if type(node.s) is str:  # noqa: E721
                 if self.handler_predicate_by_event[TraceEvent.after_string](node):
                     return self.emit(TraceEvent.after_string, node, ret=node)
-            else:
-                return node
+            return node
 
     else:
 
