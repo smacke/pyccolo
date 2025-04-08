@@ -933,7 +933,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 if self.handler_predicate_by_event[TraceEvent.after_float](node):
                     return self.emit(TraceEvent.after_float, node, ret=node)
             if type(node.n) is complex:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_complex]:
+                if self.handler_predicate_by_event[TraceEvent.after_complex](node):
                     return self.emit(TraceEvent.after_complex, node, ret=node)
             return node
 
