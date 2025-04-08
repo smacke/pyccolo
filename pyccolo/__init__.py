@@ -53,6 +53,15 @@ after_stmt = TraceEvent.after_stmt
 after_module_stmt = TraceEvent.after_module_stmt
 after_expr_stmt = TraceEvent.after_expr_stmt
 load_name = TraceEvent.load_name
+after_bool = TraceEvent.after_bool
+after_bytes = TraceEvent.after_bytes
+after_complex = TraceEvent.after_complex
+after_float = TraceEvent.after_float
+after_int = TraceEvent.after_int
+after_none = TraceEvent.after_none
+after_string = TraceEvent.after_string
+before_fstring = TraceEvent.before_fstring
+after_fstring = TraceEvent.after_fstring
 before_for_loop_body = TraceEvent.before_for_loop_body
 after_for_loop_iter = TraceEvent.after_for_loop_iter
 before_while_loop_body = TraceEvent.before_while_loop_body
@@ -116,7 +125,7 @@ after_comprehension_elt = TraceEvent.after_comprehension_elt
 after_dict_comprehension_key = TraceEvent.after_dict_comprehension_key
 after_dict_comprehension_value = TraceEvent.after_dict_comprehension_value
 exception_handler_type = TraceEvent.exception_handler_type
-ellipses = TraceEvent.ellipses
+ellipses = TraceEvent.ellipsis
 
 
 # redundant; do this just in case we forgot to add stubs in trace_events.py

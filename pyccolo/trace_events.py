@@ -21,6 +21,17 @@ class TraceEvent(Enum):
 
     load_name = "load_name"
 
+    after_bool = "after_bool"
+    after_bytes = "after_bytes"
+    after_complex = "after_complex"
+    after_float = "after_float"
+    after_int = "after_int"
+    after_none = "after_none"
+    after_string = "after_string"
+
+    before_fstring = "before_fstring"
+    after_fstring = "after_fstring"
+
     before_for_loop_body = "before_for_loop_body"
     after_for_loop_iter = "after_for_loop_iter"
     before_while_loop_body = "before_while_loop_body"
@@ -102,7 +113,7 @@ class TraceEvent(Enum):
 
     exception_handler_type = "exception_handler_type"
 
-    ellipses = "ellipses"
+    ellipsis = "ellipsis"
 
     line = "line"
     call = "call"
@@ -153,6 +164,7 @@ BEFORE_EXPR_EVENTS = {
     TraceEvent.before_compare,
     TraceEvent.before_dict_literal,
     TraceEvent.before_for_iter,
+    TraceEvent.before_fstring,
     TraceEvent.before_lambda,
     TraceEvent.before_list_literal,
     TraceEvent.before_load_complex_symbol,
@@ -186,4 +198,4 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
     ast_Ellipsis = getattr(ast, "Ellipsis", None)
     if ast_Ellipsis is not None:
-        AST_TO_EVENT_MAPPING[ast_Ellipsis] = TraceEvent.ellipses
+        AST_TO_EVENT_MAPPING[ast_Ellipsis] = TraceEvent.ellipsis

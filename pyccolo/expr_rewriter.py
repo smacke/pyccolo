@@ -749,24 +749,20 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
 
     visit_FunctionDef = visit_AsyncFunctionDef = visit_FunctionDef_or_AsyncFunctionDef
 
+    @fast.location_of_arg
     def visit_Return(self, node: ast.Return):
         if node.value is None:
             return node
         orig_node_value = node.value
-        with fast.location_of(node):
-            node.value = self.visit(node.value)
-            if self.handler_predicate_by_event[TraceEvent.before_return](
-                orig_node_value
-            ):
-                node.value = self.emit(
-                    TraceEvent.before_return, orig_node_value, ret=node.value
-                )
-            if self.handler_predicate_by_event[TraceEvent.after_return](
-                orig_node_value
-            ):
-                node.value = self.emit(
-                    TraceEvent.after_return, orig_node_value, ret=node.value
-                )
+        node.value = self.visit(node.value)
+        if self.handler_predicate_by_event[TraceEvent.before_return](orig_node_value):
+            node.value = self.emit(
+                TraceEvent.before_return, orig_node_value, ret=node.value
+            )
+        if self.handler_predicate_by_event[TraceEvent.after_return](orig_node_value):
+            node.value = self.emit(
+                TraceEvent.after_return, orig_node_value, ret=node.value
+            )
         return node
 
     def visit_Delete(self, node: ast.Delete):
@@ -877,6 +873,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         else:
             node_type_id = id(node.type)
             node.type = self.visit(node.type)
+        assert node.type is not None
         if self.handler_predicate_by_event[TraceEvent.exception_handler_type](
             self.orig_to_copy_mapping[node_type_id]
         ):
@@ -887,22 +884,97 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         node.body = [self.visit(stmt) for stmt in node.body]
         return node
 
+    def visit_JoinedStr(self, node: ast.JoinedStr):
+        orig_node = node
+        transformed: ast.AST = node
+        if self.handler_predicate_by_event[TraceEvent.before_fstring](orig_node):
+            transformed = self.emit(
+                TraceEvent.before_fstring, orig_node, ret=transformed
+            )
+        if self.handler_predicate_by_event[TraceEvent.after_fstring](orig_node):
+            transformed = self.emit(
+                TraceEvent.after_fstring, orig_node, ret=transformed
+            )
+        return transformed
+
     if sys.version_info < (3, 8):
 
+        @fast.location_of_arg
+        def visit_Bytes(self, node: ast.Bytes):
+            if isinstance(node.s, bytes) and self.handler_predicate_by_event[
+                TraceEvent.after_bytes
+            ](node):
+                return self.emit(TraceEvent.after_bytes, node, ret=node)
+
+        @fast.location_of_arg
         def visit_Ellipsis(self, node: ast.Ellipsis):
-            if self.handler_predicate_by_event[TraceEvent.ellipses](node):
-                with fast.location_of(node):
-                    return self.emit(TraceEvent.ellipses, node, ret=node)
+            if self.handler_predicate_by_event[TraceEvent.ellipsis](node):
+                return self.emit(TraceEvent.ellipsis, node, ret=node)
+            else:
+                return node
+
+        @fast.location_of_arg
+        def visit_NameConstant(self, node: ast.NameConstant):
+            if node.value is None and self.handler_predicate_by_event[
+                TraceEvent.after_none
+            ](node):
+                return self.emit(TraceEvent.after_none, node, ret=node)
+            if type(node.value) is bool:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_bool](node):
+                    return self.emit(TraceEvent.after_bool, node, ret=node)
+            return node
+
+        @fast.location_of_arg
+        def visit_Num(self, node: ast.Num):
+            if type(node.n) is int:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_int](node):
+                    return self.emit(TraceEvent.after_int, node, ret=node)
+            if type(node.n) is float:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_float](node):
+                    return self.emit(TraceEvent.after_float, node, ret=node)
+            if type(node.n) is complex:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_complex]:
+                    return self.emit(TraceEvent.after_complex, node, ret=node)
+            return node
+
+        @fast.location_of_arg
+        def visit_Str(self, node: ast.Str):
+            if type(node.s) is str:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_string](node):
+                    return self.emit(TraceEvent.after_string, node, ret=node)
             else:
                 return node
 
     else:
 
+        @fast.location_of_arg
         def visit_Constant(self, node: ast.Constant):
             if node.value is ... and self.handler_predicate_by_event[
-                TraceEvent.ellipses
+                TraceEvent.ellipsis
             ](node):
-                with fast.location_of(node):
-                    return self.emit(TraceEvent.ellipses, node, ret=node)
-            else:
-                return node
+                return self.emit(TraceEvent.ellipsis, node, ret=node)
+            if node.value is None and self.handler_predicate_by_event[
+                TraceEvent.after_none
+            ](node):
+                return self.emit(TraceEvent.after_none, node, ret=node)
+            # we need these explicit type checks because e.g.
+            # bool is instance of int is instance of float
+            if type(node.value) is bytes:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_bytes](node):
+                    return self.emit(TraceEvent.after_bytes, node, ret=node)
+            if type(node.value) is bool:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_bool](node):
+                    return self.emit(TraceEvent.after_bool, node, ret=node)
+            if type(node.value) is int:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_int](node):
+                    return self.emit(TraceEvent.after_int, node, ret=node)
+            if type(node.value) is float:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_float](node):
+                    return self.emit(TraceEvent.after_float, node, ret=node)
+            if type(node.value) is complex:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_complex](node):
+                    return self.emit(TraceEvent.after_complex, node, ret=node)
+            if type(node.value) is str:  # noqa: E721
+                if self.handler_predicate_by_event[TraceEvent.after_string](node):
+                    return self.emit(TraceEvent.after_string, node, ret=node)
+            return node

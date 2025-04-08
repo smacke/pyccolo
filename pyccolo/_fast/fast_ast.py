@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import ast
+import functools
 import sys
 import textwrap
 import warnings
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Generator, List, Optional
+from typing import TYPE_CHECKING, Callable, Generator, List, Optional
 
 
 class FastAst:
@@ -28,6 +29,15 @@ class FastAst:
             yield
         finally:
             FastAst._LOCATION_OF_NODE = old_location_of_node
+
+    @classmethod
+    def location_of_arg(cls, func: Callable[..., ast.AST]) -> Callable[..., ast.AST]:
+        @functools.wraps(func)
+        def wrapped_node_transform(*args) -> ast.AST:
+            with cls.location_of(args[-1]):
+                return func(*args)
+
+        return wrapped_node_transform
 
     @classmethod
     def kw(cls, arg, value) -> ast.keyword:

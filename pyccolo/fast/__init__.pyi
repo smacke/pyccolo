@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 import sys
 import typing
-from typing import TYPE_CHECKING, Any
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Callable, Generator
 
 if TYPE_CHECKING:
     import ast
 
 from pyccolo._fast import *  # noqa: F403
 
-def location_of(*args, **kwargs) -> "Any": ...
+@contextmanager
+def location_of(node: ast.AST) -> "Generator[None, None, None]": ...
+def location_of_arg(func: Callable[..., ast.AST]) -> "Callable[..., ast.AST]": ...
 def kw(arg: str, value: "ast.expr") -> "ast.keyword": ...
 def kwargs(**kwargs: "ast.expr") -> "typing.List[ast.keyword]": ...
 def parse(*args, **kwargs) -> "ast.Module": ...

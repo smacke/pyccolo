@@ -12,6 +12,7 @@ from pyccolo._fast import (
 )
 
 location_of = FastAst.location_of
+location_of_arg = FastAst.location_of_arg
 kw = FastAst.kw
 kwargs = FastAst.kwargs
 with warnings.catch_warnings():
@@ -30,6 +31,7 @@ __all__ = [
     "subscript_to_slice",
     # now all the ast helper functions
     "location_of",
+    "location_of_arg",
     "kw",
     "kwargs",
 ]
