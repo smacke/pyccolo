@@ -390,12 +390,12 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             ret, call_context=True, orig_node_id=orig_node_id
         )
 
+    @fast.location_of_arg
     def visit_Expr(self, node: ast.Expr) -> ast.Expr:
-        with fast.location_of(node):
-            node.value = self.visit(node.value)
-            if self.handler_predicate_by_event[TraceEvent.after_expr_stmt](node):
-                node.value = self.emit(TraceEvent.after_expr_stmt, node, ret=node.value)
-            return node
+        node.value = self.visit(node.value)
+        if self.handler_predicate_by_event[TraceEvent.after_expr_stmt](node):
+            node.value = self.emit(TraceEvent.after_expr_stmt, node, ret=node.value)
+        return node
 
     def visit_With(self, node: ast.With) -> ast.With:
         if self.is_tracing_disabled_context(node):

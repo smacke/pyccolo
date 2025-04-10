@@ -75,13 +75,16 @@ class TraceLoader(SourceFileLoader):
         version_dict: Dict[str, str] = {}
         suffix_parts = []
         for tracer in self._tracers:
-            if tracer.should_instrument_file(path):
-                tracer_cls = tracer.__class__
-                suffix_parts.append(tracer_cls.__name__)
-                pkg = tracer_cls.__module__.split(".")[0]
-                pkg_version = getattr(sys.modules.get(pkg), "__version__", None)
-                if isinstance(pkg_version, (int, str)):
-                    version_dict[pkg] = str(pkg_version)
+            if not tracer.bytecode_caching_allowed:
+                return "pyccolo"
+            elif not tracer.should_instrument_file(path):
+                continue
+            tracer_cls = tracer.__class__
+            suffix_parts.append(tracer_cls.__name__)
+            pkg = tracer_cls.__module__.split(".")[0]
+            pkg_version = getattr(sys.modules.get(pkg), "__version__", None)
+            if isinstance(pkg_version, (int, str)):
+                version_dict[pkg] = str(pkg_version)
         return "-".join(
             ["pyccolo"]
             + sorted("-".join(v) for v in version_dict.items())
@@ -124,11 +127,17 @@ class TraceLoader(SourceFileLoader):
         path_no_ext, ext = os.path.splitext(path)
         sep = os.path.extsep
         if ext == sep + "pyc":
+            bytecode_imports_allowed = all(
+                tracer.bytecode_caching_allowed for tracer in self._tracers
+            )
             parts = path.split(sep)
-            if len(parts) < 3:
+            if bytecode_imports_allowed and len(parts) < 3:
                 return super().get_data(path)
             source_path = pyccolo_source_from_cache(path)
-            if self.make_cache_signature(source_path) in (parts[-3], "pyccolo"):
+            if bytecode_imports_allowed and self.make_cache_signature(source_path) in (
+                parts[-3],
+                "pyccolo",
+            ):
                 return super().get_data(path)
             path = source_path
         path_str = str(path)
@@ -153,8 +162,13 @@ class TraceLoader(SourceFileLoader):
         return source_path
 
     def get_code(self, fullname) -> Optional[CodeType]:
-        with self.patch_cache_handlers():
-            return super().get_code(fullname)
+        if all(tracer.bytecode_caching_allowed for tracer in self._tracers):
+            with self.patch_cache_handlers():
+                return super().get_code(fullname)
+        else:
+            source_path = self.get_filename(fullname)
+            source_bytes = self.get_data(source_path)
+            return self.source_to_code(source_bytes, source_path)
 
     def get_augmented_source(self, source_path) -> str:
         source_bytes = super().get_data(source_path)
@@ -216,16 +230,24 @@ class TraceLoader(SourceFileLoader):
         should_reenable_saved_state = []
         enforce_pickled_bookkeeping = False
         tracer = None
+        bytecode_imports_allowed = True
         for tracer in reversed(self._tracers):
             should_disable = False
             if tracer._should_instrument_file_impl(source_path):
+                bytecode_imports_allowed = (
+                    tracer.bytecode_caching_allowed and bytecode_imports_allowed
+                )
                 enforce_pickled_bookkeeping = (
                     enforce_pickled_bookkeeping or tracer.requires_ast_bookkeeping
                 )
+            else:
                 should_disable = tracer._is_tracing_enabled
             should_reenable_saved_state.append(should_disable)
             if should_disable:
                 tracer._disable_tracing()
+        enforce_pickled_bookkeeping = (
+            enforce_pickled_bookkeeping and bytecode_imports_allowed
+        )
         pickle_path = None
         if enforce_pickled_bookkeeping:
             cache_path = self._pyccolo_cache_from_source(source_path)

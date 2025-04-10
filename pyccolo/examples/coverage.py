@@ -2,7 +2,7 @@
 """
 Example of simple code coverage implemented using Pyccolo.
 
-Run as `python examples/pyccolo_coverage.py` from the repository root.
+Run as `python pyccolo/examples/coverage.py` from the repository root.
 """
 import ast
 import logging
@@ -20,6 +20,7 @@ join = os.path.join
 
 
 EXCEPTED_FILES = {
+    pyc.SANDBOX_FNAME,
     "version.py",
     "_version.py",
     # weird shit happens if we instrument _emit_event and import_hooks, so exclude them.
@@ -47,7 +48,7 @@ class CountStatementsVisitor(ast.NodeVisitor):
 
 
 class CoverageTracer(pyc.BaseTracer):
-    allow_reentrant_events = False
+    bytecode_caching_allowed = False
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -80,7 +81,7 @@ class CoverageTracer(pyc.BaseTracer):
     @pyc.register_raw_handler(pyc.before_stmt)
     def handle_stmt(self, _ret, stmt_id, frame, *_, **__):
         fname = frame.f_code.co_filename
-        if fname == "<sandbox>":
+        if fname.startswith(pyc.SANDBOX_FNAME_PREFIX):
             # filter these out. not necessary for non-pyccolo coverage
             return
         if stmt_id not in self.seen_stmts:
@@ -90,6 +91,8 @@ class CoverageTracer(pyc.BaseTracer):
     def exit_tracing_hook(self) -> None:
         total_stmts = 0
         for fname in sorted(self.stmt_count_by_fname.keys()):
+            if fname.startswith(pyc.SANDBOX_FNAME_PREFIX):
+                continue
             shortened = "." + fname.split(".", 1)[-1]
             seen = self.stmt_count_by_fname[fname]
             total_in_file = self.count_statements(fname)
@@ -104,7 +107,10 @@ class CoverageTracer(pyc.BaseTracer):
         num_seen_stmts = len(self.seen_stmts)
         logger.warning("num stmts seen: %s", num_seen_stmts)
         logger.warning("num stmts total: %s", total_stmts)
-        logger.warning("ratio: %.3f", float(num_seen_stmts) / total_stmts)
+        if total_stmts == 0:
+            logger.error("Counted 0 total statements; saw %d", num_seen_stmts)
+        else:
+            logger.warning("ratio: %.3f", float(num_seen_stmts) / total_stmts)
 
 
 def remove_pyccolo_modules():

@@ -156,7 +156,7 @@ class FutureTracer(pyc.BaseTracer):
             return fut
 
     @pyc.load_name(reentrant=True)
-    def handle_load_name(self, ret, node, frame, *_, **__):
+    def handle_load_name(self, ret, node, *_, **__):
         if node.id in self._async_variable_version_by_name:
             try:
                 return self._unwrap_future(ret)

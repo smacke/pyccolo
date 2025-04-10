@@ -199,17 +199,17 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             self.register_guard(function_guard)
         else:
             function_guard = None
-        docstring = []
+        docstring: list[ast.AST] = []
         if (
-            len(orig_body) > 0
-            and isinstance(orig_body[0], ast.Expr)
-            and isinstance(orig_body[0].value, StrConst)
+            len(fundef_copy.body) > 0
+            and isinstance(fundef_copy.body[0], ast.Expr)
+            and isinstance(fundef_copy.body[0].value, StrConst)
         ):
-            docstring = [orig_body.pop(0)]
-            fundef_copy.body.pop(0)
+            orig_body.pop(0)
+            docstring = [fundef_copy.body.pop(0)]
         if len(orig_body) == 0:
             return docstring
-        with fast.location_of(fundef_copy):
+        with fast.location_of((docstring + [fundef_copy])[0]):
             if self.handler_predicate_by_event[TraceEvent.after_function_execution](
                 fundef_copy
             ):
@@ -236,7 +236,12 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             if self.global_guards_enabled:
                 with self.expr_rewriter.guard_exempt_context(node, fundef_copy):
                     orelse = [
-                        self.expr_rewriter.visit(node) for node in fundef_copy.body
+                        (
+                            self.expr_rewriter.visit(node)
+                            if isinstance(node, ast.expr)
+                            else node
+                        )
+                        for node in fundef_copy.body
                     ]
                 ret = [
                     fast.If(

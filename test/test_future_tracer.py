@@ -17,7 +17,9 @@ def test_simple():
             """
         )
     FutureTracer.clear_instance()
-    assert not pyc._TRACER_STACK, "got %s" % pyc._TRACER_STACK
+    assert not any(isinstance(tracer, FutureTracer) for tracer in pyc._TRACER_STACK), (
+        "got %s" % pyc._TRACER_STACK
+    )
 
 
 if __name__ == "__main__":

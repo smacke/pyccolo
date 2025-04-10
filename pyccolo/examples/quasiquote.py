@@ -50,6 +50,8 @@ _identity_subscript = _IdentitySubscript()
 
 
 class Quasiquoter(pyc.BaseTracer):
+    allow_reentrant_events = True
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.macros = {"q", "u", "name", "ast_literal", "ast_list"}

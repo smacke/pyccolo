@@ -35,7 +35,17 @@ from traitlets.traitlets import MetaHasTraits
 
 from pyccolo.ast_bookkeeping import AstBookkeeper
 from pyccolo.ast_rewriter import AstRewriter
-from pyccolo.emit_event import _TRACER_STACK, SkipAll, _emit_event
+from pyccolo.emit_event import (
+    _TRACER_STACK,
+    SANDBOX_FNAME,
+    SANDBOX_FNAME_PREFIX,
+    SkipAll,
+    _emit_event,
+    _file_passes_filter_for_event,
+    _file_passes_filter_impl,
+    _should_instrument_file,
+    _should_instrument_file_impl,
+)
 from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
@@ -65,8 +75,6 @@ internal_directories = (
 Null = object()
 Pass = object()
 Skip = object()
-SANDBOX_FNAME = "<sandbox>"
-SANDBOX_FNAME_PREFIX = "<sandbox"
 
 
 PYCCOLO_DEV_MODE_ENV_VAR = "PYCCOLO_DEV_MODE"
@@ -119,11 +127,12 @@ else:
 
 class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMachine):
     instrument_all_files = False
-    allow_reentrant_events = True
-    multiple_threads_allowed = True
+    allow_reentrant_events = False
+    multiple_threads_allowed = False
     requires_ast_bookkeeping = True
     should_patch_meta_path = True
     global_guards_enabled = True
+    bytecode_caching_allowed = True
 
     ast_rewriter_cls = AstRewriter
     defined_file = ""
@@ -518,37 +527,18 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 cleanup_callback()
 
     def file_passes_filter_for_event(self, evt: str, filename: str) -> bool:
-        return True
+        return _file_passes_filter_for_event(self, evt, filename)
 
     def should_instrument_file(self, filename: str) -> bool:
-        return False
+        return _should_instrument_file(self, filename)
 
     def _should_instrument_file_impl(self, filename: str) -> bool:
-        return (
-            self.instrument_all_files
-            or filename in self._tracing_enabled_files
-            or filename.startswith(SANDBOX_FNAME_PREFIX)
-            or self.should_instrument_file(filename)
-        )
+        return _should_instrument_file_impl(self, filename)
 
     def _file_passes_filter_impl(
         self, evt: str, filename: str, is_reentrant: bool = False
     ) -> bool:
-        if is_reentrant and not self.allow_reentrant_events:
-            return False
-        if filename == self._current_sandbox_fname and self.has_sys_trace_events:
-            ret = self._num_sandbox_calls_seen >= 2
-            self._num_sandbox_calls_seen += evt == "call"
-            return ret
-        return (
-            evt
-            in (
-                TraceEvent.before_import.value,
-                TraceEvent.init_module.value,
-                TraceEvent.after_import.value,
-            )
-            or self._should_instrument_file_impl(filename)
-        ) and self.file_passes_filter_for_event(evt, filename)
+        return _file_passes_filter_impl(self, evt, filename, is_reentrant=is_reentrant)
 
     def make_ast_rewriter(
         self, path: str, module_id: Optional[int] = None
