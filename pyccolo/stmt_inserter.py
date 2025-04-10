@@ -199,7 +199,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             self.register_guard(function_guard)
         else:
             function_guard = None
-        docstring: list[ast.AST] = []
+        docstring: List[ast.AST] = []
         if (
             len(fundef_copy.body) > 0
             and isinstance(fundef_copy.body[0], ast.Expr)
