@@ -1,6 +1,12 @@
 History
 =======
 
+0.0.72 (2025-04-10)
+-------------------
+* improve default tracer options;
+* bugfixes for coverage example;
+* for guard exempt handlers, only instrument exprs;
+
 0.0.71 (2025-03-16)
 -------------------
 * suppress false positive deprecation warnings;
