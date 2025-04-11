@@ -127,14 +127,14 @@ class TraceLoader(SourceFileLoader):
         path_no_ext, ext = os.path.splitext(path)
         sep = os.path.extsep
         if ext == sep + "pyc":
-            bytecode_imports_allowed = all(
+            bytecode_caching_allowed = all(
                 tracer.bytecode_caching_allowed for tracer in self._tracers
             )
             parts = path.split(sep)
-            if bytecode_imports_allowed and len(parts) < 3:
+            if bytecode_caching_allowed and len(parts) < 3:
                 return super().get_data(path)
             source_path = pyccolo_source_from_cache(path)
-            if bytecode_imports_allowed and self.make_cache_signature(source_path) in (
+            if bytecode_caching_allowed and self.make_cache_signature(source_path) in (
                 parts[-3],
                 "pyccolo",
             ):
@@ -230,12 +230,12 @@ class TraceLoader(SourceFileLoader):
         should_reenable_saved_state = []
         enforce_pickled_bookkeeping = False
         tracer = None
-        bytecode_imports_allowed = True
+        bytecode_caching_allowed = True
         for tracer in reversed(self._tracers):
             should_disable = False
             if tracer._should_instrument_file_impl(source_path):
-                bytecode_imports_allowed = (
-                    tracer.bytecode_caching_allowed and bytecode_imports_allowed
+                bytecode_caching_allowed = (
+                    tracer.bytecode_caching_allowed and bytecode_caching_allowed
                 )
                 enforce_pickled_bookkeeping = (
                     enforce_pickled_bookkeeping or tracer.requires_ast_bookkeeping
@@ -246,7 +246,7 @@ class TraceLoader(SourceFileLoader):
             if should_disable:
                 tracer._disable_tracing()
         enforce_pickled_bookkeeping = (
-            enforce_pickled_bookkeeping and bytecode_imports_allowed
+            enforce_pickled_bookkeeping and bytecode_caching_allowed
         )
         pickle_path = None
         if enforce_pickled_bookkeeping:
