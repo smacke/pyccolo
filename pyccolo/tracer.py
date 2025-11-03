@@ -59,7 +59,12 @@ from pyccolo.handler import HandlerSpec
 from pyccolo.import_hooks import patch_meta_path_non_context
 from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
-from pyccolo.trace_events import AST_TO_EVENT_MAPPING, SYS_TRACE_EVENTS, TraceEvent
+from pyccolo.trace_events import (
+    AST_TO_EVENT_MAPPING,
+    EVT_TO_EVENT_MAPPING,
+    SYS_TRACE_EVENTS,
+    TraceEvent,
+)
 from pyccolo.trace_stack import TraceStack
 from pyccolo.utils import clear_keys
 
@@ -984,6 +989,18 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         def clear_instance(cls) -> None: ...
 
 
+def make_assert_evt_when(
+    orig_when: Optional[Callable[..., bool]],
+) -> Callable[..., bool]:
+    def when(node: ast.AST) -> bool:
+        return isinstance(node, ast.Assert)
+
+    if orig_when is None:
+        return when
+    else:
+        return lambda node: when(node) and orig_when(node)
+
+
 def register_handler(
     event: Union[
         Union[TraceEvent, Type[ast.AST]], Tuple[Union[TraceEvent, Type[ast.AST]], ...]
@@ -995,6 +1012,10 @@ def register_handler(
     exempt_from_guards: bool = False,
 ):
     events = event if isinstance(event, tuple) else (event,)
+    if TraceEvent.before_assert in events or TraceEvent.after_assert in events:
+        # TODO: support this
+        assert not isinstance(when, Predicate)
+        when = make_assert_evt_when(when)
     when = Predicate.TRUE if when is None else when
     if isinstance(when, Predicate):
         pred: Predicate = when
@@ -1014,7 +1035,7 @@ def register_handler(
                 (
                     AST_TO_EVENT_MAPPING[evt]
                     if type(evt) is type and issubclass(evt, ast.AST)
-                    else evt
+                    else EVT_TO_EVENT_MAPPING.get(evt, evt)
                 )
             ].append(handler_spec)
             _InternalBaseTracer.handler_spec_by_id[id(handler_spec)] = handler_spec

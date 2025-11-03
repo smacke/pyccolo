@@ -652,3 +652,27 @@ def test_quick_lambda():
     with QuickLambdaTracer.instance():
         assert pyc.eval("f[_ + _](41, 1)") == 42
         assert pyc.eval("f[_ + f[_ * _](3, 4)](1)") == 13
+
+
+def test_assert_events():
+    recorded = []
+
+    class AssertTracer(pyc.BaseTracer):
+        @pyc.before_assert
+        def before_assert(self, _ret, node, _frame, evt, *_, **__):
+            recorded.append((type(node), evt))
+
+        @pyc.after_assert
+        def after_assert(self, _ret, node, _frame, evt, *_, **__):
+            recorded.append((type(node), evt))
+
+    with AssertTracer:
+        pyc.exec(
+            """
+            pass
+            pass
+            assert True
+        """
+        )
+
+    assert recorded == [(ast.Assert, pyc.before_stmt), (ast.Assert, pyc.after_stmt)]

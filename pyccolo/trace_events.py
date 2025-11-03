@@ -90,6 +90,9 @@ class TraceEvent(Enum):
     before_augassign_rhs = "before_augassign_rhs"
     after_augassign_rhs = "after_augassign_rhs"
 
+    before_assert = "before_assert"
+    after_assert = "after_assert"
+
     before_function_body = "before_function_body"
     after_function_execution = "after_function_execution"
 
@@ -191,6 +194,11 @@ AST_TO_EVENT_MAPPING = {
     ast.Return: TraceEvent.after_return,
     ast.BinOp: TraceEvent.after_binop,
     ast.Compare: TraceEvent.after_compare,
+}
+
+EVT_TO_EVENT_MAPPING = {
+    TraceEvent.before_assert: TraceEvent.before_stmt,
+    TraceEvent.after_assert: TraceEvent.after_stmt,
 }
 
 
