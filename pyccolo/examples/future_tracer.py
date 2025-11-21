@@ -16,7 +16,7 @@ from pyccolo.extra_builtins import PYCCOLO_BUILTIN_PREFIX
 
 try:
     from IPython import get_ipython
-except ImportError:
+except Exception:
 
     def get_ipython():
         return None
@@ -24,7 +24,7 @@ except ImportError:
 
 try:
     from ipyflow.singletons import flow
-except ImportError:
+except Exception:
 
     def flow():
         return None

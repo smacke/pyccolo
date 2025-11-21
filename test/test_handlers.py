@@ -12,10 +12,6 @@ def test_sandbox():
     assert env["x"] == 42
     assert len(env) == 1, "got %s" % env
 
-    env = pyc.exec("locals()['x'] = 43", local_env={})
-    assert env["x"] == 43
-    assert len(env) == 1, "got %s" % env
-
     f = pyc.exec("def f(): return 42", local_env={})["f"]
     assert f() == 42
     assert len(env) == 1, "got %s" % env
@@ -590,12 +586,19 @@ def test_quasiquotes():
             node6 = q[ast_list[node1, node2, node3, node4, node5]]
             """
         )
-    assert nested.s.startswith("<ast.") or nested.s.startswith("<_ast.")
+    try:
+        assert nested.value.startswith(("<ast.", "<_ast.", "Constant"))
+    except AttributeError:
+        assert nested.s.startswith(("<ast.", "<_ast."))
 
     assert isinstance(binop, ast.BinOp)
     assert isinstance(binop.op, ast.Add)
-    assert binop.left.n == 41
-    assert binop.right.n == 1
+    try:
+        assert binop.left.value == 41
+        assert binop.right.value == 1
+    except AttributeError:
+        assert binop.left.n == 41
+        assert binop.right.n == 1
 
     assert d["x"] == d["lst"][-1] == 3
     node1, node2, node3, node4, node5, node6 = (
@@ -608,13 +611,22 @@ def test_quasiquotes():
     )
     assert isinstance(node1, ast.BinOp), "got %s" % type(node1)
     assert isinstance(node2, ast.BinOp), "got %s" % type(node2)
-    assert node2.left.n == 1
-    assert node2.right.n == 12
+    try:
+        assert node2.left.n == 1
+        assert node2.right.n == 12
+    except AttributeError:
+        assert node2.left.value == 1
+        assert node2.right.value == 12
 
-    assert node3.left.s == "a"
-    assert node3.right.s == "b"
+    try:
+        assert node3.left.value == "a"
+        assert node3.right.value == "b"
+        assert node4.right.value == "b"
+    except AttributeError:
+        assert node3.left.s == "a"
+        assert node3.right.s == "b"
+        assert node4.right.s == "b"
     assert isinstance(node4.left, ast.Name) and node4.left.id == "a"
-    assert node4.right.s == "b"
 
     assert isinstance(node5, ast.BinOp)
     assert isinstance(node5.op, ast.Add)

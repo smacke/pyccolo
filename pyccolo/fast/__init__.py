@@ -11,6 +11,13 @@ from pyccolo._fast import (
     subscript_to_slice,
 )
 
+backcompat_helpers = (
+    FastAst.Str.__name__,
+    FastAst.Num.__name__,
+    FastAst.Bytes.__name__,
+    FastAst.NameConstant.__name__,
+    FastAst.Ellipsis.__name__,
+)
 location_of = FastAst.location_of
 location_of_arg = FastAst.location_of_arg
 kw = FastAst.kw
@@ -18,7 +25,7 @@ kwargs = FastAst.kwargs
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
     for name in dir(FastAst):
-        if hasattr(ast, name):
+        if hasattr(ast, name) or name in backcompat_helpers:
             globals()[name] = getattr(FastAst, name)
 
 
@@ -37,4 +44,6 @@ __all__ = [
 ]
 
 
-__all__.extend(name for name in dir(FastAst) if hasattr(ast, name))
+__all__.extend(
+    {name for name in dir(FastAst) if hasattr(ast, name)} | set(backcompat_helpers)
+)

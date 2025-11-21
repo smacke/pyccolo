@@ -15,6 +15,16 @@ class FastAst:
 
         @staticmethod
         def keyword(arg: str, value: ast.AST) -> ast.keyword: ...
+        @staticmethod
+        def Str(*args, **kwargs) -> ast.Constant: ...
+        @staticmethod
+        def Num(*args, **kwargs) -> ast.Constant: ...
+        @staticmethod
+        def Bytes(*args, **kwargs) -> ast.Constant: ...
+        @staticmethod
+        def NameConstant(*args, **kwargs) -> ast.Constant: ...
+        @staticmethod
+        def Ellipsis(*args, **kwargs) -> ast.Constant: ...
 
     @staticmethod
     @contextmanager
@@ -64,13 +74,14 @@ class FastAst:
         return ret
 
 
-def _make_func(func_name):
+def _make_func(new_name, old_name=None):
     def ctor(*args, **kwargs):
-        ret = getattr(ast, func_name)(*args, **kwargs)
+        ret = getattr(ast, new_name)(*args, **kwargs)
         if FastAst._LOCATION_OF_NODE is not None:
             ast.copy_location(ret, FastAst._LOCATION_OF_NODE)
         return ret
 
+    ctor.__name__ = old_name or new_name
     return ctor
 
 
@@ -81,9 +92,7 @@ with warnings.catch_warnings():
             continue
         setattr(FastAst, ctor_name, staticmethod(_make_func(ctor_name)))
 
+
 if sys.version_info >= (3, 8):
-    FastAst.Str = staticmethod(_make_func("Constant"))  # type: ignore
-    FastAst.Num = staticmethod(_make_func("Constant"))  # type: ignore
-    FastAst.Bytes = staticmethod(_make_func("Constant"))  # type: ignore
-    FastAst.NameConstant = staticmethod(_make_func("Constant"))  # type: ignore
-    FastAst.Ellipsis = staticmethod(_make_func("Constant"))  # type: ignore
+    for old_name in ("Str", "Num", "Bytes", "NameConstant", "Ellipsis"):
+        setattr(FastAst, old_name, staticmethod(_make_func("Constant", old_name)))
