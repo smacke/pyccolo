@@ -1,6 +1,11 @@
 History
 =======
 
+0.0.73 (2025-11-21)
+-------------------
+* convenience events for before / after assert;
+* make compatible with Python 3.14;
+
 0.0.72 (2025-04-10)
 -------------------
 * improve default tracer options;
