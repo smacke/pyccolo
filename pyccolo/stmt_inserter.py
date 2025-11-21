@@ -284,7 +284,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                                 cast(
                                     ast.stmt,
                                     fast.If(
-                                        test=fast.parse(
+                                        test=fast.parse(  # type: ignore[attr-defined]
                                             f'not {name_error_exc}.name.startswith("{PYCCOLO_BUILTIN_PREFIX}")'
                                         )
                                         .body[0]
