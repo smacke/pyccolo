@@ -998,7 +998,7 @@ def make_assert_evt_when(
     if orig_when is None:
         return when
     else:
-        return lambda node: when(node) and orig_when(node)
+        return lambda node: when(node) and orig_when(node)  # type: ignore[misc]
 
 
 def register_handler(
