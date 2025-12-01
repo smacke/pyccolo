@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
-from pyccolo.examples.coverage import CoverageTracer
-from pyccolo.examples.future_tracer import FutureTracer
-from pyccolo.examples.lazy_imports import LazyImportTracer
-from pyccolo.examples.optional_chaining import OptionalChainer
-from pyccolo.examples.quasiquote import Quasiquoter
-from pyccolo.examples.quick_lambda import QuickLambdaTracer
+from .coverage import CoverageTracer
+from .future_tracer import FutureTracer
+from .lazy_imports import LazyImportTracer
+from .optional_chaining import OptionalChainer
+from .pipeline_tracer import PipelineTracer
+from .quasiquote import Quasiquoter
+from .quick_lambda import QuickLambdaTracer
 
 __all__ = [
     "CoverageTracer",
     "FutureTracer",
     "LazyImportTracer",
     "OptionalChainer",
+    "PipelineTracer",
     "Quasiquoter",
     "QuickLambdaTracer",
 ]
