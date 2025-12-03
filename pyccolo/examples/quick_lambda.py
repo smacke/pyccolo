@@ -14,6 +14,7 @@ import ast
 import copy
 
 import pyccolo as pyc
+from pyccolo.examples.pipeline_tracer import PipelineTracer
 from pyccolo.examples.quasiquote import Quasiquoter, is_macro
 
 
@@ -55,4 +56,6 @@ class QuickLambdaTracer(Quasiquoter):
             f"_{arg_idx}" for arg_idx in range(orig_ctr, orig_ctr + num_lambda_args)
         )
         ast_lambda = pyc.eval(f"q[lambda {lambda_args}: ast_literal[lambda_body]]")
-        return lambda: pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
+        new_globals = dict(frame.f_globals)
+        new_globals[PipelineTracer.ALLOWLIST_BITOR_AS_PIPELINE_OPS_DUNDER_HINT] = True
+        return lambda: pyc.eval(ast_lambda, new_globals, frame.f_locals)
