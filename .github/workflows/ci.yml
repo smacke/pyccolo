@@ -52,10 +52,10 @@ jobs:
         make typecheck
         pytest
     - name: Run typechecking with mypy and unit tests with pytest (including coverage)
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'ubuntu-22.04'
       run: make check_ci
     - name: Upload coverage report
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'ubuntu-22.04'
       uses: codecov/codecov-action@v1
       with:
         token: '${{ secrets.CODECOV_TOKEN }}'
