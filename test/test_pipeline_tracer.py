@@ -21,3 +21,7 @@ if sys.version_info >= (3, 8):  # noqa
                 assert pyc.eval(
                     "(1, 2, 3) |> list |>> result |> f[map(f[_ + 1], _)] |> list |> f[result + _]"
                 ) == [1, 2, 3, 2, 3, 4]
+
+    def test_pipeline_methods():
+        with PipelineTracer:
+            assert pyc.eval("(1, 2, 3) |> list |> !.index(2)") == 1

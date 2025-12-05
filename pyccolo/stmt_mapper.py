@@ -91,6 +91,13 @@ class StatementMapper(ast.NodeVisitor):
             return None
 
     @staticmethod
+    def _get_dot_prefix_col_offset_for(node: ast.AST) -> Optional[int]:
+        if isinstance(node, ast.Attribute):
+            return node.value.col_offset
+        else:
+            return None
+
+    @staticmethod
     def _get_binop_col_offset_for(node: ast.AST) -> Optional[int]:
         if isinstance(node, ast.BinOp):
             return getattr(node.left, "end_col_offset", -2) + 1
@@ -104,8 +111,10 @@ class StatementMapper(ast.NodeVisitor):
             return self._get_prefix_col_offset_for(node)
         elif aug_type == AugmentationType.suffix:
             return self._get_suffix_col_offset_for(node)
-        elif aug_type == AugmentationType.dot:
+        elif aug_type == AugmentationType.dot_suffix:
             return self._get_dot_col_offset_for(node)
+        elif aug_type == AugmentationType.dot_prefix:
+            return self._get_dot_prefix_col_offset_for(node)
         elif aug_type == AugmentationType.binop:
             return self._get_binop_col_offset_for(node)
         else:

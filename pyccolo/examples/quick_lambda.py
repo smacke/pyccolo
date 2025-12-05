@@ -12,6 +12,7 @@ with QuickLambdaTracer:
 """
 import ast
 import copy
+from typing import cast
 
 import pyccolo as pyc
 from pyccolo.examples.pipeline_tracer import PipelineTracer
@@ -55,7 +56,10 @@ class QuickLambdaTracer(Quasiquoter):
         lambda_args = ", ".join(
             f"_{arg_idx}" for arg_idx in range(orig_ctr, orig_ctr + num_lambda_args)
         )
-        ast_lambda = pyc.eval(f"q[lambda {lambda_args}: ast_literal[lambda_body]]")
+        ast_lambda = cast(
+            ast.Expr, ast.parse(f"lambda {lambda_args}: None").body[0]
+        ).value
+        ast_lambda.body = lambda_body
         new_globals = dict(frame.f_globals)
         new_globals[PipelineTracer.ALLOWLIST_BITOR_AS_PIPELINE_OPS_DUNDER_HINT] = True
         return lambda: pyc.eval(ast_lambda, new_globals, frame.f_locals)

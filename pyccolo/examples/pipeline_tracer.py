@@ -27,8 +27,33 @@ with PipelineTracer:
 """
 import ast
 from types import FrameType
+from typing import cast
 
 import pyccolo as pyc
+
+PIPELINE_DOT_OBJ_NAME = "__obj"
+
+
+class HasPipelineDotAugSpec(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self._found = False
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if self._found:
+            return
+        if (
+            PipelineTracer.pipeline_dot_op_spec
+            in PipelineTracer.instance().get_augmentations(id(node))
+        ):
+            self._found = True
+        else:
+            return self.generic_visit(node)  # type: ignore
+
+    def __call__(self, node: ast.AST) -> bool:
+        self.visit(node)
+        ret = self._found
+        self._found = False
+        return ret
 
 
 class PipelineTracer(pyc.BaseTracer):
@@ -43,9 +68,21 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token="|>>", replacement="|"
     )
 
+    pipeline_dot_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.dot_prefix,
+        token="!.",
+        replacement=f"{PIPELINE_DOT_OBJ_NAME}.",
+    )
+
+    pipeline_dot_op_spec_finder = HasPipelineDotAugSpec()
+
     @property
     def syntax_augmentation_specs(self):
-        return [self.pipeline_op_assign_spec, self.pipeline_op_spec]
+        return [
+            self.pipeline_op_assign_spec,
+            self.pipeline_op_spec,
+            self.pipeline_dot_op_spec,
+        ]
 
     @pyc.register_handler(
         pyc.before_binop,
@@ -75,5 +112,21 @@ class PipelineTracer(pyc.BaseTracer):
                 return val
 
             return lambda x, y: assign_globals(x)
+        else:
+            return ret
+
+    @pyc.register_handler(
+        pyc.before_load_complex_symbol,
+        # without this, the trace_lambda can mess up quasiquoting
+        when=lambda node: not isinstance(node, ast.Subscript),
+        reentrant=True,
+    )
+    def handle_method_chain(self, ret, node, frame: FrameType, *_, **__):
+        if self.pipeline_dot_op_spec_finder(node):
+            ret = cast(
+                ast.Expr, ast.parse(f"lambda {PIPELINE_DOT_OBJ_NAME}: None").body[0]
+            ).value
+            ret.body = node
+            return lambda: pyc.eval(ret, frame.f_globals, frame.f_locals)
         else:
             return ret

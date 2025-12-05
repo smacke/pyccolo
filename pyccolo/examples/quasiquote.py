@@ -23,12 +23,13 @@ class _QuasiquoteTransformer(ast.NodeTransformer):
     def __init__(self, global_env, local_env):
         self._global_env = global_env
         self._local_env = local_env
+        self._quoter = Quasiquoter.instance()
 
     def visit_Subscript(self, node: ast.Subscript):
-        if isinstance(
-            node.value, ast.Name
-        ) and node.value.id in Quasiquoter.instance().macros - {"q"}:
-            return pyc.eval(node, self._global_env, self._local_env)
+        if isinstance(node.value, ast.Name) and node.value.id in self._quoter.macros - {
+            "q"
+        }:
+            return self._quoter.eval(node, self._global_env, self._local_env)
         else:
             return node
 
@@ -82,12 +83,12 @@ class Quasiquoter(pyc.BaseTracer):
 
     @pyc.after_subscript_slice(when=is_macro("u"), reentrant=True)
     def unquote_handler(self, ret, *_, **__):
-        return pyc.eval(f"q[{repr(ret)}]")
+        return self.eval(f"q[{repr(ret)}]")
 
     @pyc.after_subscript_slice(when=is_macro("name"), reentrant=True)
     def name_handler(self, ret, *_, **__):
         assert isinstance(ret, str)
-        return pyc.eval(f"q[{ret}]")
+        return self.eval(f"q[{ret}]")
 
     @pyc.after_subscript_slice(when=is_macro("ast_literal"), reentrant=True)
     def ast_literal_handler(self, ret, *_, **__):

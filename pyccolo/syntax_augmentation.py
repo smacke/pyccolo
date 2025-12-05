@@ -16,7 +16,8 @@ if TYPE_CHECKING:
 class AugmentationType(Enum):
     prefix = "prefix"
     suffix = "suffix"
-    dot = "dot"
+    dot_prefix = "dot_prefix"
+    dot_suffix = "dot_suffix"
     binop = "binop"
 
 

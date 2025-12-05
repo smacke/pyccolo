@@ -6,7 +6,7 @@ Example of null coalescing implementing with Pyccolo;
 import pyccolo as pyc
 
 optional_chaining_spec = pyc.AugmentationSpec(
-    aug_type=pyc.AugmentationType.dot, token="?.", replacement="."
+    aug_type=pyc.AugmentationType.dot_suffix, token="?.", replacement="."
 )
 
 

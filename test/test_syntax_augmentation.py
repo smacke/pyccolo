@@ -30,7 +30,7 @@ if sys.version_info >= (3, 8):  # noqa
         assert env["x"] == 105
 
     coalesce_dot_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.dot, token="?.", replacement="."
+        aug_type=pyc.AugmentationType.dot_suffix, token="?.", replacement="."
     )
 
     def test_optional_chaining():
