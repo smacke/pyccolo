@@ -67,42 +67,70 @@ def replace_tokens_and_get_augmented_positions(
     transformed = StringIO()
     match = StringIO()
     cur_match_start = (-1, -1)
+    num_preceding_spaces = 0
 
     def _flush_match(force: bool = False) -> None:
-        if force or not spec.token.startswith(match.getvalue()):
-            transformed.write(match.getvalue())
-            match.seek(0)
-            match.truncate()
-
-    def _write_match(tok: tokenize.TokenInfo) -> None:
         nonlocal cur_match_start
-        if match.getvalue() == "":
-            cur_match_start = tok.start
-        match.write(tok.string)
+        if not force and spec.token.startswith(match.getvalue()):
+            return
+        transformed.write(match.getvalue())
+        cur_match_start = (
+            cur_match_start[0],
+            cur_match_start[1] + len(match.getvalue()),
+        )
+        match.seek(0)
+        match.truncate()
 
-    idx = 0
+    def _write_match(tok: Union[str, tokenize.TokenInfo]) -> None:
+        nonlocal cur_match_start
+        nonlocal num_preceding_spaces
+        if isinstance(tok, tokenize.TokenInfo):
+            if match.getvalue() == "":
+                cur_match_start = tok.start
+            to_write = tok.string
+        else:
+            to_write = tok
+        match.write(to_write)
+        _flush_match()
+        if to_write == " ":
+            num_preceding_spaces += 1
+        elif match.getvalue() == "":
+            num_preceding_spaces = 0
+
     col_offset = 0
     positions = []
     prev = None
-    while idx < len(tokens):
-        cur = tokens[idx]
+    for cur in tokens:
         if prev is not None and prev.end[0] == cur.start[0]:
-            match.write(" " * (cur.start[1] - prev.end[1]))
-            _flush_match()
+            if match.getvalue() == "":
+                cur_match_start = (prev.end[0], prev.end[1] + 1)
+            for _ in range(cur.start[1] - prev.end[1]):
+                _write_match(" ")
         else:
             col_offset = 0
             _flush_match(force=True)
-            match.write(" " * cur.start[1])
+            cur_match_start = (cur.start[0], 0)
+            num_preceding_spaces = cur.start[1]
+            for _ in range(cur.start[1]):
+                _write_match(" ")
         _write_match(cur)
-        _flush_match()
         if spec.token == match.getvalue():
-            positions.append((cur_match_start[0], cur_match_start[1] + col_offset))
+            match_pos_col_offset = cur_match_start[1] + col_offset
+            if spec.aug_type == AugmentationType.binop:
+                # for binop, we use node.left.end_col_offset + 1 to locate the position of the op
+                # can be off if there is more than one space between left operand and op
+                match_pos_col_offset -= num_preceding_spaces - 1
+            positions.append((cur_match_start[0], match_pos_col_offset))
             col_offset += len(spec.replacement) - len(spec.token)
             transformed.write(spec.replacement)
+            cur_match_start = (
+                cur_match_start[0],
+                cur_match_start[1] + len(match.getvalue()),
+            )
             match.seek(0)
             match.truncate()
+            num_preceding_spaces = 0
         prev = cur
-        idx += 1
 
     _flush_match(force=True)
     return transformed.getvalue(), positions
@@ -115,7 +143,7 @@ def make_tokens_by_line(lines: List[str]) -> List[List[tokenize.TokenInfo]]:
 
     The tokens for a multiline Python string or expression are grouped as one
     line. All lines except the last lines should keep their line ending ('\\n',
-    '\\r\\n') for this to properly work. Use `.splitlines(keeplineending=True)`
+    '\\r\\n') for this to properly work. Use `.splitlines(keepends=True)`
     for example when passing block of text to this function.
 
     """

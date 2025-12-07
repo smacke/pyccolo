@@ -70,8 +70,8 @@ class PipelineTracer(pyc.BaseTracer):
 
     pipeline_dot_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.dot_prefix,
-        token="!.",
-        replacement=f"{PIPELINE_DOT_OBJ_NAME}.",
+        token=" .",
+        replacement=f" {PIPELINE_DOT_OBJ_NAME}.",
     )
 
     pipeline_dot_op_spec_finder = HasPipelineDotAugSpec()

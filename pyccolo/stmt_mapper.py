@@ -84,7 +84,7 @@ class StatementMapper(ast.NodeVisitor):
             return None
 
     @staticmethod
-    def _get_dot_col_offset_for(node: ast.AST) -> Optional[int]:
+    def _get_dot_suffix_col_offset_for(node: ast.AST) -> Optional[int]:
         if isinstance(node, ast.Attribute):
             return getattr(node.value, "end_col_offset", -1)
         else:
@@ -112,7 +112,7 @@ class StatementMapper(ast.NodeVisitor):
         elif aug_type == AugmentationType.suffix:
             return self._get_suffix_col_offset_for(node)
         elif aug_type == AugmentationType.dot_suffix:
-            return self._get_dot_col_offset_for(node)
+            return self._get_dot_suffix_col_offset_for(node)
         elif aug_type == AugmentationType.dot_prefix:
             return self._get_dot_prefix_col_offset_for(node)
         elif aug_type == AugmentationType.binop:
@@ -123,12 +123,11 @@ class StatementMapper(ast.NodeVisitor):
     def _handle_augmentations(self, nc: ast.AST) -> None:
         for spec, mod_positions in self.augmented_positions_by_spec.items():
             col_offset = self._get_col_offset_for(spec.aug_type, nc)
-            if col_offset is None:
+            if col_offset is None or (nc.lineno, col_offset) not in mod_positions:  # type: ignore[attr-defined]
                 continue
-            if (nc.lineno, col_offset) in mod_positions:  # type: ignore[attr-defined]
-                for tracer in self._tracers:
-                    if spec in tracer.syntax_augmentation_specs:
-                        tracer.augmented_node_ids_by_spec[spec].add(id(nc))
+            for tracer in self._tracers:
+                if spec in tracer.syntax_augmentation_specs:
+                    tracer.augmented_node_ids_by_spec[spec].add(id(nc))
 
     def __call__(
         self,
