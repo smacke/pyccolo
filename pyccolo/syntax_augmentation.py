@@ -71,15 +71,20 @@ def replace_tokens_and_get_augmented_positions(
 
     def _flush_match(force: bool = False) -> None:
         nonlocal cur_match_start
-        if not force and spec.token.startswith(match.getvalue()):
-            return
-        transformed.write(match.getvalue())
-        cur_match_start = (
-            cur_match_start[0],
-            cur_match_start[1] + len(match.getvalue()),
-        )
-        match.seek(0)
-        match.truncate()
+        num_to_increment = 0
+        while True:
+            # TODO: this is super inefficient
+            cur = match.getvalue()
+            if cur == "" or (not force and spec.token.startswith(cur)):
+                break
+            match.seek(0)
+            transformed.write(match.read(1))
+            num_to_increment += 1
+            remaining = match.read()
+            match.seek(0)
+            match.truncate()
+            match.write(remaining)
+        cur_match_start = (cur_match_start[0], cur_match_start[1] + num_to_increment)
 
     def _write_match(tok: Union[str, tokenize.TokenInfo]) -> None:
         nonlocal cur_match_start

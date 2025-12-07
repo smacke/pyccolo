@@ -25,3 +25,7 @@ if sys.version_info >= (3, 8):  # noqa
     def test_pipeline_methods():
         with PipelineTracer:
             assert pyc.eval("(1, 2, 3) |> list |> .index(2)") == 1
+
+    def test_pipeline_methods_nonstandard_whitespace():
+        with PipelineTracer:
+            assert pyc.eval("(1, 2, 3)   |>     list  |>      .index(2)") == 1
