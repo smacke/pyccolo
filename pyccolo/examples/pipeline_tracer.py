@@ -60,8 +60,16 @@ class PipelineTracer(pyc.BaseTracer):
 
     ALLOWLIST_BITOR_AS_PIPELINE_OPS_DUNDER_HINT = "__allowlist_bitors_as_pipeline_ops__"
 
+    pipeline_tuple_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="*|>", replacement="|"
+    )
+
     pipeline_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="|>", replacement="|"
+    )
+
+    alt_pipeline_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="%>%", replacement="|"
     )
 
     value_first_left_partial_apply_op_spec = pyc.AugmentationSpec(
@@ -72,7 +80,15 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token="<@", replacement="|"
     )
 
+    apply_tuple_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="<|*", replacement="|"
+    )
+
     apply_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="<|", replacement="|"
+    )
+
+    alt_apply_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="@@", replacement="|"
     )
 
@@ -86,20 +102,19 @@ class PipelineTracer(pyc.BaseTracer):
         replacement=f" {PIPELINE_DOT_OBJ_NAME}.",
     )
 
-    alt_pipeline_op_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.binop, token="%>%", replacement="|"
-    )
-
     pipeline_dot_op_spec_finder = HasPipelineDotAugSpec()
 
     @property
     def syntax_augmentation_specs(self):
         return [
+            self.pipeline_tuple_op_spec,
             self.pipeline_op_assign_spec,
             self.pipeline_op_spec,
             self.value_first_left_partial_apply_op_spec,
             self.function_first_left_partial_apply_op_spec,
+            self.apply_tuple_op_spec,
             self.apply_op_spec,
+            self.alt_apply_op_spec,
             self.pipeline_dot_op_spec,
             self.alt_pipeline_op_spec,
         ]
@@ -120,6 +135,8 @@ class PipelineTracer(pyc.BaseTracer):
             self.ALLOWLIST_BITOR_AS_PIPELINE_OPS_DUNDER_HINT, False
         ):
             return lambda x, y: y(x)
+        elif self.pipeline_tuple_op_spec in this_node_augmentations:
+            return lambda x, y: y(*x)
         elif self.pipeline_op_assign_spec in this_node_augmentations:
             rhs: ast.Name = node.right  # type: ignore
             if not isinstance(rhs, ast.Name):
@@ -138,8 +155,10 @@ class PipelineTracer(pyc.BaseTracer):
             return lambda x, y: (lambda *args: y(x, *args))
         elif self.function_first_left_partial_apply_op_spec in this_node_augmentations:
             return lambda x, y: (lambda *args: x(y, *args))
-        elif self.apply_op_spec in this_node_augmentations:
+        elif {self.apply_op_spec, self.alt_apply_op_spec} & this_node_augmentations:
             return lambda x, y: x(y)
+        elif self.apply_tuple_op_spec in this_node_augmentations:
+            return lambda x, y: x(*y)
         else:
             return ret
 

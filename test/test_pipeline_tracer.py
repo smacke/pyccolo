@@ -53,3 +53,11 @@ if sys.version_info >= (3, 8):  # noqa
     def test_pipeline_methods_nonstandard_whitespace():
         with PipelineTracer:
             assert pyc.eval("(1, 2, 3)   |>     list  |>      .index(2)") == 1
+
+    def test_left_tuple_apply():
+        with PipelineTracer:
+            assert pyc.eval("(5, int) *|> isinstance") is True
+
+    def test_right_tuple_apply():
+        with PipelineTracer:
+            assert pyc.eval("isinstance <|* (5, int)") is True
