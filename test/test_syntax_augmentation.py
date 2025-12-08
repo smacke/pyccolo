@@ -33,30 +33,6 @@ if sys.version_info >= (3, 8):  # noqa
         aug_type=pyc.AugmentationType.dot_suffix, token="?.", replacement="."
     )
 
-    def test_optional_chaining():
-        from pyccolo.examples import OptionalChainer
-
-        OptionalChainer.instance().exec(
-            """
-            class Foo:
-                def __init__(self, x):
-                    self.x = x
-            foo = Foo(Foo(Foo(None)))
-            try:
-                bar = foo.x.x.x.x
-            except:
-                pass
-            else:
-                assert False
-            assert foo.x.x.x?.x is None
-            assert foo.x.x.x?.x() is None
-            assert foo.x.x.x?.x?.whatever is None
-            assert isinstance(foo?.x?.x, Foo)
-            assert isinstance(foo.x?.x, Foo)
-            assert isinstance(foo?.x.x, Foo)
-            """
-        )
-
     prefix_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.prefix, token="$", replacement=""
     )

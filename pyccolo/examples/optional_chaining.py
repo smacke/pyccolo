@@ -7,10 +7,6 @@ import ast
 
 import pyccolo as pyc
 
-optional_chaining_spec = pyc.AugmentationSpec(
-    aug_type=pyc.AugmentationType.dot_suffix, token="?.", replacement="."
-)
-
 
 class OptionalChainer(pyc.BaseTracer):
     class ResolvesToNone:
@@ -20,6 +16,20 @@ class OptionalChainer(pyc.BaseTracer):
         def __call__(self, *_, **__):
             return self
 
+    resolves_to_none = ResolvesToNone()
+
+    call_optional_chaining_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.dot_suffix, token="?.(", replacement="("
+    )
+
+    optional_chaining_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.dot_suffix, token="?.", replacement="."
+    )
+
+    permissive_optional_chaining_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.dot_suffix, token="??.", replacement="."
+    )
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._saved_ret_expr = None
@@ -28,11 +38,13 @@ class OptionalChainer(pyc.BaseTracer):
             # TODO: pop this the right number of times if an exception occurs
             self.cur_call_is_none_resolver: bool = False
 
-    resolves_to_none = ResolvesToNone()
-
     @property
     def syntax_augmentation_specs(self):
-        return [optional_chaining_spec]
+        return [
+            self.permissive_optional_chaining_spec,
+            self.call_optional_chaining_spec,
+            self.optional_chaining_spec,
+        ]
 
     @pyc.register_raw_handler(pyc.after_stmt)
     def handle_after_stmt(self, ret, *_, **__):
@@ -48,17 +60,27 @@ class OptionalChainer(pyc.BaseTracer):
 
     @pyc.register_handler(pyc.before_attribute_load)
     def handle_before_attr(self, obj, node: ast.Attribute, *_, **__):
-        if optional_chaining_spec in self.get_augmentations(id(node)) and not hasattr(
-            obj, node.attr
+        if (
+            self.optional_chaining_spec in self.get_augmentations(id(node))
+            and obj is None
         ):
+            return self.resolves_to_none
+        elif self.permissive_optional_chaining_spec in self.get_augmentations(
+            id(node)
+        ) and not hasattr(obj, node.attr):
             return self.resolves_to_none
         else:
             return obj
 
-    @pyc.register_raw_handler(pyc.before_call)
-    def handle_before_call(self, func, *_, **__):
+    @pyc.register_handler(pyc.before_call)
+    def handle_before_call(self, func, node: ast.Call, *_, **__):
+        if func is None and self.call_optional_chaining_spec in self.get_augmentations(
+            id(node.func)
+        ):
+            func = self.resolves_to_none
         with self.lexical_call_stack.push():
             self.cur_call_is_none_resolver = func is self.resolves_to_none
+        return func
 
     @pyc.register_raw_handler(pyc.before_argument)
     def handle_before_arg(self, arg_lambda, *_, **__):
@@ -70,17 +92,6 @@ class OptionalChainer(pyc.BaseTracer):
     @pyc.register_raw_handler(pyc.after_call)
     def handle_after_call(self, *_, **__):
         self.lexical_call_stack.pop()
-
-    @pyc.register_raw_handler(pyc.after_attribute_load)
-    def handle_after_attr(self, ret, node_id, *_, call_context, **__):
-        if (
-            ret is None
-            and optional_chaining_spec in self.get_augmentations(node_id)
-            and call_context
-        ):
-            return self.resolves_to_none
-        else:
-            return ret
 
     @pyc.register_raw_handler(pyc.after_load_complex_symbol)
     def handle_after_load_complex_symbol(self, ret, *_, **__):

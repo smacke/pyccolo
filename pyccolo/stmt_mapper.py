@@ -85,14 +85,18 @@ class StatementMapper(ast.NodeVisitor):
 
     @staticmethod
     def _get_dot_suffix_col_offset_for(node: ast.AST) -> Optional[int]:
-        if isinstance(node, ast.Attribute):
+        if isinstance(node, ast.Name):
+            return getattr(node, "end_col_offset", -1)
+        elif isinstance(node, ast.Attribute):
             return getattr(node.value, "end_col_offset", -1)
         else:
             return None
 
     @staticmethod
     def _get_dot_prefix_col_offset_for(node: ast.AST) -> Optional[int]:
-        if isinstance(node, ast.Attribute):
+        if isinstance(node, ast.Name):
+            return node.col_offset
+        elif isinstance(node, ast.Attribute):
             return node.value.col_offset
         else:
             return None
