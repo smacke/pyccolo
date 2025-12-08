@@ -3,6 +3,8 @@
 Example of null coalescing implementing with Pyccolo;
   e.g., foo?.bar resolves to `None` when `foo` is `None`.
 """
+import ast
+
 import pyccolo as pyc
 
 optional_chaining_spec = pyc.AugmentationSpec(
@@ -12,11 +14,11 @@ optional_chaining_spec = pyc.AugmentationSpec(
 
 class OptionalChainer(pyc.BaseTracer):
     class ResolvesToNone:
-        def __getattr__(self, _item: str) -> None:
-            return None
+        def __getattr__(self, _item: str):
+            return self
 
-        def __call__(self, *_, **__) -> None:
-            return None
+        def __call__(self, *_, **__):
+            return self
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -27,9 +29,6 @@ class OptionalChainer(pyc.BaseTracer):
             self.cur_call_is_none_resolver: bool = False
 
     resolves_to_none = ResolvesToNone()
-
-    def should_instrument_file(self, filename: str) -> bool:
-        return True
 
     @property
     def syntax_augmentation_specs(self):
@@ -47,9 +46,11 @@ class OptionalChainer(pyc.BaseTracer):
         self._saved_ret_expr = None
         return ret
 
-    @pyc.register_raw_handler(pyc.before_attribute_load)
-    def handle_before_attr(self, obj, node_id, *_, **__):
-        if obj is None and optional_chaining_spec in self.get_augmentations(node_id):
+    @pyc.register_handler(pyc.before_attribute_load)
+    def handle_before_attr(self, obj, node: ast.Attribute, *_, **__):
+        if optional_chaining_spec in self.get_augmentations(id(node)) and not hasattr(
+            obj, node.attr
+        ):
             return self.resolves_to_none
         else:
             return obj
@@ -80,3 +81,15 @@ class OptionalChainer(pyc.BaseTracer):
             return self.resolves_to_none
         else:
             return ret
+
+    @pyc.register_raw_handler(pyc.after_load_complex_symbol)
+    def handle_after_load_complex_symbol(self, ret, *_, **__):
+        if isinstance(ret, self.ResolvesToNone):
+            return pyc.Null
+        else:
+            return ret
+
+
+class ScriptOptionalChainer(OptionalChainer):
+    def should_instrument_file(self, filename: str) -> bool:
+        return True
