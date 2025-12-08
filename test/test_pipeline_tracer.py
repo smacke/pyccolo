@@ -10,6 +10,30 @@ if sys.version_info >= (3, 8):  # noqa
         with PipelineTracer:
             assert pyc.eval("(1, 2, 3) |> list") == [1, 2, 3]
 
+    def test_simple_pipeline_alt_op():
+        with PipelineTracer:
+            assert pyc.eval("(1, 2, 3) %>% list") == [1, 2, 3]
+
+    def test_value_first_partial_apply_then_apply():
+        with PipelineTracer:
+            assert pyc.eval("5 @> isinstance @@ int") is True
+
+    def test_function_first_partial_apply_then_apply():
+        with PipelineTracer:
+            assert pyc.eval("isinstance <@ 5 @@ int") is True
+
+    def test_pipe_into_value_first_partial_apply():
+        with PipelineTracer:
+            assert pyc.eval("int |> (5 @> isinstance)") is True
+
+    def test_pipe_into_function_first_partial_apply():
+        with PipelineTracer:
+            assert pyc.eval("int |> (isinstance <@ 5)") is True
+
+    def test_alt_partial_pipeline_op():
+        with PipelineTracer:
+            assert pyc.eval("int %>% (5 @> isinstance)") is True
+
     def test_simple_pipeline_with_quick_lambda_map():
         with PipelineTracer:
             with QuickLambdaTracer:

@@ -64,6 +64,18 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token="|>", replacement="|"
     )
 
+    value_first_left_partial_apply_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="@>", replacement="|"
+    )
+
+    function_first_left_partial_apply_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="<@", replacement="|"
+    )
+
+    apply_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="@@", replacement="|"
+    )
+
     pipeline_op_assign_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="|>>", replacement="|"
     )
@@ -74,6 +86,10 @@ class PipelineTracer(pyc.BaseTracer):
         replacement=f" {PIPELINE_DOT_OBJ_NAME}.",
     )
 
+    alt_pipeline_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="%>%", replacement="|"
+    )
+
     pipeline_dot_op_spec_finder = HasPipelineDotAugSpec()
 
     @property
@@ -81,7 +97,11 @@ class PipelineTracer(pyc.BaseTracer):
         return [
             self.pipeline_op_assign_spec,
             self.pipeline_op_spec,
+            self.value_first_left_partial_apply_op_spec,
+            self.function_first_left_partial_apply_op_spec,
+            self.apply_op_spec,
             self.pipeline_dot_op_spec,
+            self.alt_pipeline_op_spec,
         ]
 
     @pyc.register_handler(
@@ -92,13 +112,15 @@ class PipelineTracer(pyc.BaseTracer):
     def handle_before_binop(
         self, ret: object, node: ast.BinOp, frame: FrameType, *_, **__
     ):
-        if self.pipeline_op_spec in self.get_augmentations(
-            id(node)
-        ) or frame.f_globals.get(
+        this_node_augmentations = self.get_augmentations(id(node))
+        if {
+            self.pipeline_op_spec,
+            self.alt_pipeline_op_spec,
+        } & this_node_augmentations or frame.f_globals.get(
             self.ALLOWLIST_BITOR_AS_PIPELINE_OPS_DUNDER_HINT, False
         ):
             return lambda x, y: y(x)
-        elif self.pipeline_op_assign_spec in self.get_augmentations(id(node)):
+        elif self.pipeline_op_assign_spec in this_node_augmentations:
             rhs: ast.Name = node.right  # type: ignore
             if not isinstance(rhs, ast.Name):
                 raise ValueError(
@@ -112,6 +134,12 @@ class PipelineTracer(pyc.BaseTracer):
                 return val
 
             return lambda x, y: assign_globals(x)
+        elif self.value_first_left_partial_apply_op_spec in this_node_augmentations:
+            return lambda x, y: (lambda *args: y(x, *args))
+        elif self.function_first_left_partial_apply_op_spec in this_node_augmentations:
+            return lambda x, y: (lambda *args: x(y, *args))
+        elif self.apply_op_spec in this_node_augmentations:
+            return lambda x, y: x(y)
         else:
             return ret
 
