@@ -2,7 +2,7 @@
 import sys
 
 import pyccolo as pyc
-from pyccolo.examples import PipelineTracer, QuickLambdaTracer
+from pyccolo.examples import OptionalChainer, PipelineTracer, QuickLambdaTracer
 
 if sys.version_info >= (3, 8):  # noqa
 
@@ -108,3 +108,18 @@ if sys.version_info >= (3, 8):  # noqa
         with PipelineTracer:
             with QuickLambdaTracer:
                 assert pyc.eval("(f[_ * 5] . f[_ + 2])(10)") == 60
+
+    def test_pipeline_inside_quick_lambda():
+        with PipelineTracer:
+            with QuickLambdaTracer:
+                assert pyc.eval("2 |> f[_ |> f[_ + 2]]") == 4
+
+    def test_pipeline_dot_op_with_optional_chain():
+        with PipelineTracer:
+            with OptionalChainer:
+                assert (
+                    pyc.eval(
+                        "(3, 1, 2) |> (list . reversed . sorted) |> .index(2).?foo"
+                    )
+                    is None
+                )

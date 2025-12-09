@@ -36,20 +36,20 @@ PIPELINE_DOT_OBJ_NAME = "__obj"
 
 class HasPipelineDotAugSpec(ast.NodeVisitor):
     def __init__(self) -> None:
+        self._tracer: "PipelineTracer" = None  # type: ignore
         self._found = False
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        if self._found:
-            return
-        if (
-            PipelineTracer.pipeline_dot_op_spec
-            in PipelineTracer.instance().get_augmentations(id(node))
-        ):
+        augmented_nodes = self._tracer.augmented_node_ids_by_spec.get(
+            self._tracer.pipeline_dot_op_spec, set()
+        )
+        if id(node) in augmented_nodes:
             self._found = True
-        else:
-            return self.generic_visit(node)  # type: ignore
+            augmented_nodes.discard(id(node))
+        self.generic_visit(node)  # type: ignore
 
     def __call__(self, node: ast.AST) -> bool:
+        self._tracer = PipelineTracer.instance()
         self.visit(node)
         ret = self._found
         self._found = False

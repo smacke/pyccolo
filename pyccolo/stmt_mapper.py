@@ -128,7 +128,7 @@ class StatementMapper(ast.NodeVisitor):
         else:
             raise NotImplementedError()
 
-    def _handle_augmentations(self, nc: ast.AST) -> None:
+    def _handle_augmentations(self, no: ast.AST, nc: ast.AST) -> None:
         for spec, mod_positions in self.augmented_positions_by_spec.items():
             col_offset = self._get_col_offset_for(spec.aug_type, nc)
             if col_offset is None or (nc.lineno, col_offset) not in mod_positions:  # type: ignore[attr-defined]
@@ -136,6 +136,9 @@ class StatementMapper(ast.NodeVisitor):
             for tracer in self._tracers:
                 if spec in tracer.syntax_augmentation_specs:
                     tracer.augmented_node_ids_by_spec[spec].add(id(nc))
+        for tracer in self._tracers:
+            for spec in tracer.get_augmentations(id(no)):
+                tracer.augmented_node_ids_by_spec[spec].add(id(nc))
 
     def __call__(
         self,
@@ -156,7 +159,7 @@ class StatementMapper(ast.NodeVisitor):
         for no, nc in zip(orig_traversal, copy_traversal):
             orig_to_copy_mapping[id(no)] = nc
             if hasattr(nc, "lineno"):
-                self._handle_augmentations(nc)
+                self._handle_augmentations(no, nc)
         return orig_to_copy_mapping
 
     def visit(self, node: ast.AST) -> None:

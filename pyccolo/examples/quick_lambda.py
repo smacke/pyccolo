@@ -49,6 +49,7 @@ class QuickLambdaTracer(Quasiquoter):
         orig_lambda_body = node.slice
         if isinstance(node.slice, ast.Index):
             orig_lambda_body = orig_lambda_body.value
+        # TODO: propagate augmentations to avoid the globals dunder hint below
         lambda_body = self._arg_replacer.visit(  # noqa: F841
             copy.deepcopy(orig_lambda_body)
         )
