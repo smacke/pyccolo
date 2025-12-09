@@ -64,6 +64,10 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token="*|>", replacement="|"
     )
 
+    pipeline_op_assign_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="|>>", replacement="|"
+    )
+
     pipeline_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="|>", replacement="|"
     )
@@ -80,12 +84,12 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token="@>", replacement="|"
     )
 
-    function_first_left_partial_apply_op_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.binop, token="<@", replacement="|"
-    )
-
     function_first_left_partial_apply_tuple_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="<@*", replacement="|"
+    )
+
+    function_first_left_partial_apply_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="<@", replacement="|"
     )
 
     apply_tuple_op_spec = pyc.AugmentationSpec(
@@ -98,10 +102,6 @@ class PipelineTracer(pyc.BaseTracer):
 
     alt_apply_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="@@", replacement="|"
-    )
-
-    pipeline_op_assign_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.binop, token="|>>", replacement="|"
     )
 
     compose_tuple_op_spec = pyc.AugmentationSpec(
@@ -119,25 +119,6 @@ class PipelineTracer(pyc.BaseTracer):
     )
 
     pipeline_dot_op_spec_finder = HasPipelineDotAugSpec()
-
-    @property
-    def syntax_augmentation_specs(self):
-        return [
-            self.pipeline_tuple_op_spec,
-            self.pipeline_op_assign_spec,
-            self.pipeline_op_spec,
-            self.value_first_left_partial_apply_tuple_op_spec,
-            self.value_first_left_partial_apply_op_spec,
-            self.function_first_left_partial_apply_tuple_op_spec,
-            self.function_first_left_partial_apply_op_spec,
-            self.apply_tuple_op_spec,
-            self.apply_op_spec,
-            self.alt_apply_op_spec,
-            self.compose_tuple_op_spec,
-            self.compose_op_spec,
-            self.pipeline_dot_op_spec,
-            self.alt_pipeline_op_spec,
-        ]
 
     @pyc.register_handler(
         pyc.before_binop,

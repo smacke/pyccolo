@@ -262,7 +262,16 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
 
     @property
     def syntax_augmentation_specs(self) -> List[AugmentationSpec]:
-        return []
+        specs = []
+        for cls in self.__class__.mro():
+            if not issubclass(cls, BaseTracer):
+                continue
+            specs.extend(
+                spec
+                for spec in cls.__dict__.values()
+                if isinstance(spec, AugmentationSpec)
+            )
+        return specs
 
     def get_augmentations(
         self, node_id: Union[ast.AST, int]
