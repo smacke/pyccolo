@@ -38,7 +38,13 @@ if sys.version_info >= (3, 8):  # noqa
                 assert False
 
         with OptionalChainer:
-            pyc.exec("foo = object(); assert foo??.bar is None")
+            pyc.exec("foo = object(); assert foo.?bar is None")
+
+        with OptionalChainer:
+            pyc.exec("foo = object(); assert foo.?bar.baz is None")
+
+        with OptionalChainer:
+            pyc.exec("foo = object(); assert foo.?bar.baz.bam() is None")
 
     def test_call_on_optional():
         with OptionalChainer:

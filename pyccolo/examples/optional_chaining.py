@@ -18,16 +18,16 @@ class OptionalChainer(pyc.BaseTracer):
 
     resolves_to_none = ResolvesToNone()
 
-    permissive_optional_chaining_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.dot_suffix, token="??.", replacement="."
-    )
-
     call_optional_chaining_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.dot_suffix, token="?.(", replacement="("
     )
 
     optional_chaining_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.dot_suffix, token="?.", replacement="."
+    )
+
+    permissive_optional_chaining_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.dot_suffix, token=".?", replacement="."
     )
 
     def __init__(self, *args, **kwargs) -> None:
@@ -37,14 +37,6 @@ class OptionalChainer(pyc.BaseTracer):
         with self.lexical_call_stack.register_stack_state():
             # TODO: pop this the right number of times if an exception occurs
             self.cur_call_is_none_resolver: bool = False
-
-    # @property
-    # def syntax_augmentation_specs(self):
-    #     return [
-    #         self.permissive_optional_chaining_spec,
-    #         self.call_optional_chaining_spec,
-    #         self.optional_chaining_spec,
-    #     ]
 
     @pyc.register_raw_handler(pyc.after_stmt)
     def handle_after_stmt(self, ret, *_, **__):
