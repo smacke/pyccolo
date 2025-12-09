@@ -68,9 +68,11 @@ def replace_tokens_and_get_augmented_positions(
     match = StringIO()
     cur_match_start = (-1, -1)
     num_preceding_spaces = 0
+    col_offset = 0
 
     def _flush_match(force: bool = False) -> None:
         nonlocal cur_match_start
+        nonlocal num_preceding_spaces
         num_to_increment = 0
         while True:
             # TODO: this is super inefficient
@@ -89,6 +91,7 @@ def replace_tokens_and_get_augmented_positions(
     def _write_match(tok: Union[str, tokenize.TokenInfo]) -> None:
         nonlocal cur_match_start
         nonlocal num_preceding_spaces
+        nonlocal col_offset
         if isinstance(tok, tokenize.TokenInfo):
             if match.getvalue() == "":
                 cur_match_start = tok.start
@@ -101,14 +104,33 @@ def replace_tokens_and_get_augmented_positions(
             num_preceding_spaces += 1
         elif match.getvalue() == "":
             num_preceding_spaces = 0
+        if spec.token != match.getvalue():
+            return
+        match_pos_col_offset = cur_match_start[1] + col_offset
+        if spec.aug_type == AugmentationType.binop:
+            # for binop, we use node.left.end_col_offset + 1 to locate the position of the op
+            # can be off if there is more than one space between left operand and op
+            match_pos_col_offset += len(spec.token) - len(spec.token.strip())
+            match_pos_col_offset -= num_preceding_spaces - 1
+        else:
+            match_pos_col_offset += len(spec.token) - len(spec.token.lstrip())
+        positions.append((cur_match_start[0], match_pos_col_offset))
+        col_offset += len(spec.replacement) - len(spec.token)
+        transformed.write(spec.replacement)
+        cur_match_start = (
+            cur_match_start[0],
+            cur_match_start[1] + len(match.getvalue()),
+        )
+        match.seek(0)
+        match.truncate()
+        num_preceding_spaces = 0
 
-    col_offset = 0
-    positions = []
+    positions: List[Tuple[int, int]] = []
     prev = None
     for cur in tokens:
         if prev is not None and prev.end[0] == cur.start[0]:
             if match.getvalue() == "":
-                cur_match_start = (prev.end[0], prev.end[1] + 1)
+                cur_match_start = (prev.end[0], prev.end[1])
             for _ in range(cur.start[1] - prev.end[1]):
                 _write_match(" ")
         else:
@@ -119,22 +141,6 @@ def replace_tokens_and_get_augmented_positions(
             for _ in range(cur.start[1]):
                 _write_match(" ")
         _write_match(cur)
-        if spec.token == match.getvalue():
-            match_pos_col_offset = cur_match_start[1] + col_offset
-            if spec.aug_type == AugmentationType.binop:
-                # for binop, we use node.left.end_col_offset + 1 to locate the position of the op
-                # can be off if there is more than one space between left operand and op
-                match_pos_col_offset -= num_preceding_spaces - 1
-            positions.append((cur_match_start[0], match_pos_col_offset))
-            col_offset += len(spec.replacement) - len(spec.token)
-            transformed.write(spec.replacement)
-            cur_match_start = (
-                cur_match_start[0],
-                cur_match_start[1] + len(match.getvalue()),
-            )
-            match.seek(0)
-            match.truncate()
-            num_preceding_spaces = 0
         prev = cur
 
     _flush_match(force=True)

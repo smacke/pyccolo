@@ -72,12 +72,20 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token="%>%", replacement="|"
     )
 
+    value_first_left_partial_apply_tuple_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="*@>", replacement="|"
+    )
+
     value_first_left_partial_apply_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="@>", replacement="|"
     )
 
     function_first_left_partial_apply_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="<@", replacement="|"
+    )
+
+    function_first_left_partial_apply_tuple_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="<@*", replacement="|"
     )
 
     apply_tuple_op_spec = pyc.AugmentationSpec(
@@ -96,6 +104,14 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token="|>>", replacement="|"
     )
 
+    compose_tuple_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token=".* ", replacement="| "
+    )
+
+    compose_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token=". ", replacement="| "
+    )
+
     pipeline_dot_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.dot_prefix,
         token=" .",
@@ -110,11 +126,15 @@ class PipelineTracer(pyc.BaseTracer):
             self.pipeline_tuple_op_spec,
             self.pipeline_op_assign_spec,
             self.pipeline_op_spec,
+            self.value_first_left_partial_apply_tuple_op_spec,
             self.value_first_left_partial_apply_op_spec,
+            self.function_first_left_partial_apply_tuple_op_spec,
             self.function_first_left_partial_apply_op_spec,
             self.apply_tuple_op_spec,
             self.apply_op_spec,
             self.alt_apply_op_spec,
+            self.compose_tuple_op_spec,
+            self.compose_op_spec,
             self.pipeline_dot_op_spec,
             self.alt_pipeline_op_spec,
         ]
@@ -137,6 +157,24 @@ class PipelineTracer(pyc.BaseTracer):
             return lambda x, y: y(x)
         elif self.pipeline_tuple_op_spec in this_node_augmentations:
             return lambda x, y: y(*x)
+        elif self.compose_op_spec in this_node_augmentations:
+
+            def __pipeline_compose(f, g):
+                def __composed(*args, **kwargs):
+                    return f(g(*args, **kwargs))
+
+                return __composed
+
+            return __pipeline_compose
+        elif self.compose_tuple_op_spec in this_node_augmentations:
+
+            def __pipeline_tuple_compose(f, g):
+                def __tuple_composed(*args, **kwargs):
+                    return f(*g(*args, **kwargs))
+
+                return __tuple_composed
+
+            return __pipeline_tuple_compose
         elif self.pipeline_op_assign_spec in this_node_augmentations:
             rhs: ast.Name = node.right  # type: ignore
             if not isinstance(rhs, ast.Name):
@@ -153,8 +191,17 @@ class PipelineTracer(pyc.BaseTracer):
             return lambda x, y: assign_globals(x)
         elif self.value_first_left_partial_apply_op_spec in this_node_augmentations:
             return lambda x, y: (lambda *args: y(x, *args))
+        elif (
+            self.value_first_left_partial_apply_tuple_op_spec in this_node_augmentations
+        ):
+            return lambda x, y: (lambda *args: y(*x, *args))
         elif self.function_first_left_partial_apply_op_spec in this_node_augmentations:
             return lambda x, y: (lambda *args: x(y, *args))
+        elif (
+            self.function_first_left_partial_apply_tuple_op_spec
+            in this_node_augmentations
+        ):
+            return lambda x, y: (lambda *args: x(*y, *args))
         elif {self.apply_op_spec, self.alt_apply_op_spec} & this_node_augmentations:
             return lambda x, y: x(y)
         elif self.apply_tuple_op_spec in this_node_augmentations:

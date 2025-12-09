@@ -104,7 +104,11 @@ class StatementMapper(ast.NodeVisitor):
     @staticmethod
     def _get_binop_col_offset_for(node: ast.AST) -> Optional[int]:
         if isinstance(node, ast.BinOp):
-            return getattr(node.left, "end_col_offset", -2) + 1
+            left_end_col_offset = getattr(node.left, "end_col_offset", None)
+            if left_end_col_offset is None:
+                return -1
+            else:
+                return node.left.col_offset - node.col_offset + left_end_col_offset + 1
         else:
             return None
 
