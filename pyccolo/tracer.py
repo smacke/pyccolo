@@ -262,7 +262,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
 
     @property
     def syntax_augmentation_specs(self) -> List[AugmentationSpec]:
-        specs = []
+        specs: List[AugmentationSpec] = []
         for cls in self.__class__.mro():
             if not issubclass(cls, BaseTracer):
                 continue
