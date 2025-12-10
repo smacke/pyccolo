@@ -31,17 +31,17 @@ from typing import cast
 
 import pyccolo as pyc
 
-PIPELINE_DOT_OBJ_NAME = "__obj"
+PIPELINE_DOT_PLACEHOLDER_NAME = "__obj"
 
 
-class HasPipelineDotAugSpec(ast.NodeVisitor):
+class HasPipelineDotPlaceholderSpec(ast.NodeVisitor):
     def __init__(self) -> None:
         self._tracer: "PipelineTracer" = None  # type: ignore
         self._found = False
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         augmented_nodes = self._tracer.augmented_node_ids_by_spec.get(
-            self._tracer.pipeline_dot_op_spec, set()
+            self._tracer.pipeline_dot_placeholder_spec, set()
         )
         if id(node) in augmented_nodes:
             self._found = True
@@ -112,13 +112,13 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token=". ", replacement="| "
     )
 
-    pipeline_dot_op_spec = pyc.AugmentationSpec(
+    pipeline_dot_placeholder_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.dot_prefix,
         token=" .",
-        replacement=f" {PIPELINE_DOT_OBJ_NAME}.",
+        replacement=f" {PIPELINE_DOT_PLACEHOLDER_NAME}.",
     )
 
-    pipeline_dot_op_spec_finder = HasPipelineDotAugSpec()
+    pipeline_dot_placeholder_finder = HasPipelineDotPlaceholderSpec()
 
     @pyc.register_handler(
         pyc.before_binop,
@@ -197,9 +197,10 @@ class PipelineTracer(pyc.BaseTracer):
         reentrant=True,
     )
     def handle_method_chain(self, ret, node, frame: FrameType, *_, **__):
-        if self.pipeline_dot_op_spec_finder(node):
+        if self.pipeline_dot_placeholder_finder(node):
             ret = cast(
-                ast.Expr, ast.parse(f"lambda {PIPELINE_DOT_OBJ_NAME}: None").body[0]
+                ast.Expr,
+                ast.parse(f"lambda {PIPELINE_DOT_PLACEHOLDER_NAME}: None").body[0],
             ).value
             ret.body = node
             return lambda: pyc.eval(ret, frame.f_globals, frame.f_locals)
