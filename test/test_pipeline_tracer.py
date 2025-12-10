@@ -16,41 +16,45 @@ if sys.version_info >= (3, 8):  # noqa
 
     def test_value_first_partial_apply_then_apply():
         with PipelineTracer:
-            assert pyc.eval("5 @> isinstance @@ int") is True
+            assert pyc.eval("5 $> isinstance @@ int") is True
+
+    def test_fake_infix():
+        with PipelineTracer:
+            assert pyc.eval("5 $>isinstance<| int") is True
 
     def test_value_first_partial_tuple_apply_then_apply():
         with PipelineTracer:
-            assert pyc.eval("(1, 2) *@> (lambda a, b, c: a + b + c) <| 3") == 6
+            assert pyc.eval("(1, 2) *$> (lambda a, b, c: a + b + c) <| 3") == 6
 
     def test_value_first_partial_tuple_apply_then_apply_quick_lambda():
         with PipelineTracer:
             with QuickLambdaTracer:
-                assert pyc.eval("(1, 2) *@> f[_ + _ + _] <| 3") == 6
+                assert pyc.eval("(1, 2) *$> f[_ + _ + _] <| 3") == 6
 
     def test_function_first_partial_apply_then_apply():
         with PipelineTracer:
-            assert pyc.eval("isinstance <@ 5 @@ int") is True
+            assert pyc.eval("isinstance <$ 5 @@ int") is True
 
     def test_function_first_partial_tuple_apply_then_apply():
         with PipelineTracer:
-            assert pyc.eval("(lambda a, b, c: a + b + c) <@* (1, 2) <| 3") == 6
+            assert pyc.eval("(lambda a, b, c: a + b + c) <$* (1, 2) <| 3") == 6
 
     def test_function_first_partial_tuple_apply_then_apply_quick_lambda():
         with PipelineTracer:
             with QuickLambdaTracer:
-                assert pyc.eval("f[_ + _ + _] <@* (1, 2) <| 3") == 6
+                assert pyc.eval("f[_ + _ + _] <$* (1, 2) <| 3") == 6
 
     def test_pipe_into_value_first_partial_apply():
         with PipelineTracer:
-            assert pyc.eval("int |> (5 @> isinstance)") is True
+            assert pyc.eval("int |> (5 $> isinstance)") is True
 
     def test_pipe_into_function_first_partial_apply():
         with PipelineTracer:
-            assert pyc.eval("int |> (isinstance <@ 5)") is True
+            assert pyc.eval("int |> (isinstance <$ 5)") is True
 
     def test_alt_partial_pipeline_op():
         with PipelineTracer:
-            assert pyc.eval("int %>% (5 @> isinstance)") is True
+            assert pyc.eval("int %>% (5 $> isinstance)") is True
 
     def test_simple_pipeline_with_quick_lambda_map():
         with PipelineTracer:

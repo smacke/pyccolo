@@ -77,19 +77,19 @@ class PipelineTracer(pyc.BaseTracer):
     )
 
     value_first_left_partial_apply_tuple_op_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.binop, token="*@>", replacement="|"
+        aug_type=pyc.AugmentationType.binop, token="*$>", replacement="|"
     )
 
     value_first_left_partial_apply_op_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.binop, token="@>", replacement="|"
+        aug_type=pyc.AugmentationType.binop, token="$>", replacement="|"
     )
 
     function_first_left_partial_apply_tuple_op_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.binop, token="<@*", replacement="|"
+        aug_type=pyc.AugmentationType.binop, token="<$*", replacement="|"
     )
 
     function_first_left_partial_apply_op_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.binop, token="<@", replacement="|"
+        aug_type=pyc.AugmentationType.binop, token="<$", replacement="|"
     )
 
     apply_tuple_op_spec = pyc.AugmentationSpec(
