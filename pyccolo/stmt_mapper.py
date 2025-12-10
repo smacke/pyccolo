@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 from pyccolo import fast
+from pyccolo.emit_event import _TRACER_STACK
 from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
 
 if TYPE_CHECKING:
@@ -17,12 +18,22 @@ logger.setLevel(logging.WARNING)
 class StatementMapper(ast.NodeVisitor):
     def __init__(
         self,
-        tracers: "List[BaseTracer]",
-        augmented_positions_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]],
+        tracers: Optional[List["BaseTracer"]] = None,
+        augmented_positions_by_spec: Optional[
+            Dict[AugmentationSpec, Set[Tuple[int, int]]]
+        ] = None,
     ):
-        self._tracers: "List[BaseTracer]" = tracers
-        self.augmented_positions_by_spec = augmented_positions_by_spec
+        self._tracers: List["BaseTracer"] = (
+            _TRACER_STACK if tracers is None else tracers
+        )
+        self.augmented_positions_by_spec: Dict[
+            AugmentationSpec, Set[Tuple[int, int]]
+        ] = (augmented_positions_by_spec or {})
         self.traversal: List[ast.AST] = []
+
+    @classmethod
+    def augmentation_propagating_copy(cls, node: ast.AST) -> ast.AST:
+        return cls()(node)[id(node)]
 
     @staticmethod
     def _get_prefix_col_offset_for(node: ast.AST) -> Optional[int]:

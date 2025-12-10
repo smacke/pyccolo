@@ -11,30 +11,27 @@ with QuickLambdaTracer:
 ```
 """
 import ast
-import copy
 from typing import cast
 
 import pyccolo as pyc
-from pyccolo.examples.pipeline_tracer import PipelineTracer
 from pyccolo.examples.quasiquote import Quasiquoter, is_macro
+from pyccolo.stmt_mapper import StatementMapper
 
 
-class _ArgReplacer(ast.NodeTransformer):
+class _ArgReplacer(ast.NodeVisitor):
     def __init__(self):
         self.ctr = 0
 
-    def visit_Subscript(self, node: ast.Subscript) -> ast.Subscript:
+    def visit_Subscript(self, node: ast.Subscript) -> None:
         if isinstance(node.value, ast.Name) and node.value.id == "f":
             # defer visiting nested quick lambdas
-            return node
-        else:
-            return self.generic_visit(node)  # type: ignore
+            return
+        self.generic_visit(node)
 
-    def visit_Name(self, node: ast.Name) -> ast.Name:
+    def visit_Name(self, node: ast.Name) -> None:
         if node.id == "_":
             node.id = f"_{self.ctr}"
             self.ctr += 1
-        return node
 
 
 class QuickLambdaTracer(Quasiquoter):
@@ -49,10 +46,8 @@ class QuickLambdaTracer(Quasiquoter):
         orig_lambda_body = node.slice
         if isinstance(node.slice, ast.Index):
             orig_lambda_body = orig_lambda_body.value
-        # TODO: propagate augmentations to avoid the globals dunder hint below
-        lambda_body = self._arg_replacer.visit(  # noqa: F841
-            copy.deepcopy(orig_lambda_body)
-        )
+        lambda_body = StatementMapper.augmentation_propagating_copy(orig_lambda_body)
+        self._arg_replacer.visit(lambda_body)
         num_lambda_args = self._arg_replacer.ctr - orig_ctr
         lambda_args = ", ".join(
             f"_{arg_idx}" for arg_idx in range(orig_ctr, orig_ctr + num_lambda_args)
@@ -61,6 +56,4 @@ class QuickLambdaTracer(Quasiquoter):
             ast.Expr, ast.parse(f"lambda {lambda_args}: None").body[0]
         ).value
         ast_lambda.body = lambda_body
-        new_globals = dict(frame.f_globals)
-        new_globals[PipelineTracer.ALLOWLIST_BITOR_AS_PIPELINE_OPS_DUNDER_HINT] = True
-        return lambda: pyc.eval(ast_lambda, new_globals, frame.f_locals)
+        return lambda: pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)

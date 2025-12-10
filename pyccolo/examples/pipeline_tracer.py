@@ -132,9 +132,7 @@ class PipelineTracer(pyc.BaseTracer):
         if {
             self.pipeline_op_spec,
             self.alt_pipeline_op_spec,
-        } & this_node_augmentations or frame.f_globals.get(
-            self.ALLOWLIST_BITOR_AS_PIPELINE_OPS_DUNDER_HINT, False
-        ):
+        } & this_node_augmentations:
             return lambda x, y: y(x)
         elif self.pipeline_tuple_op_spec in this_node_augmentations:
             return lambda x, y: y(*x)
