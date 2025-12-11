@@ -99,8 +99,10 @@ class TraceEvent(Enum):
     before_lambda_body = "before_lambda_body"
     after_lambda_body = "after_lambda_body"
 
-    left_binop_arg = "left_binop_arg"
-    right_binop_arg = "right_binop_arg"
+    before_left_binop_arg = "before_left_binop_arg"
+    after_left_binop_arg = "after_left_binop_arg"
+    before_right_binop_arg = "before_right_binop_arg"
+    after_right_binop_arg = "after_right_binop_arg"
     before_binop = "before_binop"
     after_binop = "after_binop"
 
@@ -169,9 +171,11 @@ BEFORE_EXPR_EVENTS = {
     TraceEvent.before_for_iter,
     TraceEvent.before_fstring,
     TraceEvent.before_lambda,
+    TraceEvent.before_left_binop_arg,
     TraceEvent.before_list_literal,
     TraceEvent.before_load_complex_symbol,
     TraceEvent.before_return,
+    TraceEvent.before_right_binop_arg,
     TraceEvent.before_set_literal,
     TraceEvent.before_subscript_slice,
     TraceEvent.before_tuple_literal,

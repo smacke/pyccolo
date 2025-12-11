@@ -775,22 +775,25 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         untraced_node = self.orig_to_copy_mapping[id(node)]
         op = node.op
 
-        for attr, operand_evt in [
-            ("left", TraceEvent.left_binop_arg),
-            ("right", TraceEvent.right_binop_arg),
+        for attr, evts in [
+            (
+                "left",
+                (TraceEvent.before_left_binop_arg, TraceEvent.after_left_binop_arg),
+            ),
+            (
+                "right",
+                (TraceEvent.before_right_binop_arg, TraceEvent.after_right_binop_arg),
+            ),
         ]:
             operand_node = getattr(node, attr)
-            if self.handler_predicate_by_event[operand_evt](operand_node):
-                with fast.location_of(operand_node):
-                    setattr(
-                        node,
-                        attr,
-                        self.emit(
-                            operand_evt, operand_node, ret=self.visit(operand_node)
-                        ),
-                    )
-            else:
-                setattr(node, attr, self.visit(operand_node))
+            transformed_node = self.visit(operand_node)
+            for evt in evts:
+                if self.handler_predicate_by_event[evt](operand_node):
+                    with fast.location_of(operand_node):
+                        transformed_node = self.emit(
+                            evt, operand_node, ret=transformed_node
+                        )
+            setattr(node, attr, transformed_node)
 
         ret: Union[ast.BinOp, ast.Call, ast.IfExp] = node
         if self.handler_predicate_by_event[TraceEvent.before_binop](untraced_node):
