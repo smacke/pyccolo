@@ -269,7 +269,7 @@ class PipelineTracer(pyc.BaseTracer):
             self.lexical_call_stack.pop()
 
     @pyc.register_raw_handler((pyc.before_left_binop_arg, pyc.before_right_binop_arg))
-    def maybe_skip_binop_arg(self, ret: object, node_id: int, frame, *_, **__):
+    def maybe_skip_binop_arg(self, ret: object, node_id: int, *_, **__):
         if node_id in self.binop_arg_nodes_to_skip:
             self.binop_arg_nodes_to_skip.remove(node_id)
             return lambda: None
@@ -290,7 +290,7 @@ class PipelineTracer(pyc.BaseTracer):
 
     @pyc.register_handler(
         pyc.before_right_binop_arg,
-        when=pyc.Predicate(parent_is_bitor_op, static=False),
+        when=pyc.Predicate(parent_is_bitor_op, static=True),
         reentrant=True,
     )
     def transform_pipeline_rhs_placeholders(
@@ -339,7 +339,7 @@ class PipelineTracer(pyc.BaseTracer):
 
     @pyc.register_handler(
         pyc.before_binop,
-        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=False),
+        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=True),
         reentrant=True,
     )
     def transform_pipeline_lhs_placeholders(
@@ -368,7 +368,7 @@ class PipelineTracer(pyc.BaseTracer):
 
     @pyc.register_handler(
         pyc.before_binop,
-        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=False),
+        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=True),
         reentrant=True,
     )
     def transform_pipeline_op(
