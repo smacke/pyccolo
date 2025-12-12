@@ -152,3 +152,23 @@ if sys.version_info >= (3, 8):  # noqa
         with PipelineTracer:
             pyc.exec("def add(x, y): return x + y; assert 1 |> add($, y=42) == 43")
             pyc.exec("42 |> print($, end=' ')")
+
+    def test_dict_operators():
+        with PipelineTracer:
+            assert pyc.eval("{'a': 1, 'b': 2} **|> dict") == {"a": 1, "b": 2}
+            assert pyc.eval("{'a': 1, 'b': 2} **$> dict <|** {'c': 3, 'd': 4}") == {
+                "a": 1,
+                "b": 2,
+                "c": 3,
+                "d": 4,
+            }
+            assert pyc.eval("{'a': 1, 'b': 2} **|> (dict <$** {'c': 3, 'd': 4})") == {
+                "a": 1,
+                "b": 2,
+                "c": 3,
+                "d": 4,
+            }
+            assert pyc.eval("[('a',1), ('b', 2)] |> (list . dict .** dict)") == [
+                "a",
+                "b",
+            ]

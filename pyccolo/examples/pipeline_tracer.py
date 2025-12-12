@@ -151,6 +151,10 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
 
 class PipelineTracer(pyc.BaseTracer):
 
+    pipeline_dict_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="**|>", replacement="|"
+    )
+
     pipeline_tuple_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="*|>", replacement="|"
     )
@@ -163,12 +167,20 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token="|>", replacement="|"
     )
 
+    value_first_left_partial_apply_dict_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="**$>", replacement="|"
+    )
+
     value_first_left_partial_apply_tuple_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="*$>", replacement="|"
     )
 
     value_first_left_partial_apply_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="$>", replacement="|"
+    )
+
+    function_first_left_partial_apply_dict_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="<$**", replacement="|"
     )
 
     function_first_left_partial_apply_tuple_op_spec = pyc.AugmentationSpec(
@@ -183,8 +195,16 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token="<|*", replacement="|"
     )
 
+    apply_dict_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="<|**", replacement="|"
+    )
+
     apply_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="<|", replacement="|"
+    )
+
+    compose_dict_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token=".** ", replacement="| "
     )
 
     compose_tuple_op_spec = pyc.AugmentationSpec(
@@ -296,9 +316,11 @@ class PipelineTracer(pyc.BaseTracer):
                 & {
                     self.pipeline_op_spec,
                     self.pipeline_tuple_op_spec,
+                    self.pipeline_dict_op_spec,
                     self.pipeline_op_assign_spec,
                     self.value_first_left_partial_apply_op_spec,
                     self.value_first_left_partial_apply_tuple_op_spec,
+                    self.value_first_left_partial_apply_dict_op_spec,
                 }
             ):
                 return -1
@@ -360,6 +382,8 @@ class PipelineTracer(pyc.BaseTracer):
             return lambda x, y: y(x)
         elif self.pipeline_tuple_op_spec in this_node_augmentations:
             return lambda x, y: y(*x)
+        elif self.pipeline_dict_op_spec in this_node_augmentations:
+            return lambda x, y: y(**x)
         elif self.compose_op_spec in this_node_augmentations:
 
             def __pipeline_compose(f, g):
@@ -378,6 +402,15 @@ class PipelineTracer(pyc.BaseTracer):
                 return __tuple_composed
 
             return __pipeline_tuple_compose
+        elif self.compose_dict_op_spec in this_node_augmentations:
+
+            def __pipeline_dict_compose(f, g):
+                def __tuple_composed(*args, **kwargs):
+                    return f(**g(*args, **kwargs))
+
+                return __tuple_composed
+
+            return __pipeline_dict_compose
         elif self.pipeline_op_assign_spec in this_node_augmentations:
             rhs: ast.Name = node.right  # type: ignore
             if not isinstance(rhs, ast.Name):
@@ -393,21 +426,32 @@ class PipelineTracer(pyc.BaseTracer):
 
             return lambda x, y: assign_globals(x)
         elif self.value_first_left_partial_apply_op_spec in this_node_augmentations:
-            return lambda x, y: (lambda *args: y(x, *args))
+            return lambda x, y: (lambda *args, **kwargs: y(x, *args, **kwargs))
         elif (
             self.value_first_left_partial_apply_tuple_op_spec in this_node_augmentations
         ):
-            return lambda x, y: (lambda *args: y(*x, *args))
+            return lambda x, y: (lambda *args, **kwargs: y(*x, *args, **kwargs))
+        elif (
+            self.value_first_left_partial_apply_dict_op_spec in this_node_augmentations
+        ):
+            return lambda x, y: (lambda *args, **kwargs: y(*args, **x, **kwargs))
         elif self.function_first_left_partial_apply_op_spec in this_node_augmentations:
-            return lambda x, y: (lambda *args: x(y, *args))
+            return lambda x, y: (lambda *args, **kwargs: x(y, *args, **kwargs))
         elif (
             self.function_first_left_partial_apply_tuple_op_spec
             in this_node_augmentations
         ):
-            return lambda x, y: (lambda *args: x(*y, *args))
+            return lambda x, y: (lambda *args, **kwargs: x(*y, *args, **kwargs))
+        elif (
+            self.function_first_left_partial_apply_dict_op_spec
+            in this_node_augmentations
+        ):
+            return lambda x, y: (lambda *args, **kwargs: x(*args, **y, **kwargs))
         elif self.apply_op_spec in this_node_augmentations:
             return lambda x, y: x(y)
         elif self.apply_tuple_op_spec in this_node_augmentations:
             return lambda x, y: x(*y)
+        elif self.apply_dict_op_spec in this_node_augmentations:
+            return lambda x, y: x(**y)
         else:
             return ret
