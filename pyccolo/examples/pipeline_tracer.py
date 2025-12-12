@@ -149,6 +149,11 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             self.mutate = old_mutate
 
 
+def parent_is_bitor_op(node: ast.expr) -> bool:
+    parent = pyc.BaseTracer.containing_ast_by_id.get(id(node))
+    return isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.BitOr)
+
+
 class PipelineTracer(pyc.BaseTracer):
 
     pipeline_dict_op_spec = pyc.AugmentationSpec(
@@ -282,11 +287,6 @@ class PipelineTracer(pyc.BaseTracer):
         return SingletonArgCounterMixin.create_placeholder_lambda(
             orig_ctr, full_node or node, frame_globals
         )
-
-    @staticmethod
-    def parent_is_bitor_op(node: ast.expr) -> bool:
-        parent = pyc.BaseTracer.containing_ast_by_id.get(id(node))
-        return isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.BitOr)
 
     @pyc.register_handler(
         pyc.before_right_binop_arg,
