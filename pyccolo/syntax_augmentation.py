@@ -41,7 +41,7 @@ def fix_positions(
     for line, cols_with_spec in grouped_by_line.items():
         total_offset_by_spec: Dict[AugmentationSpec, int] = Counter()
         offset_by_spec: Dict[AugmentationSpec, int] = Counter()
-        cols_with_spec.sort()
+        cols_with_spec.sort(key=lambda x: x[0])
         for col, spec in cols_with_spec:
             offset = len(spec.token) - len(spec.replacement)
             for prev_applied in spec_order:
