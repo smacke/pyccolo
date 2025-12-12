@@ -49,6 +49,9 @@ class QuickLambdaTracer(Quasiquoter):
             orig_lambda_body = orig_lambda_body.value
         lambda_body = StatementMapper.augmentation_propagating_copy(orig_lambda_body)
         self._arg_replacer.visit(lambda_body)
-        ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(orig_ctr)
+        ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(
+            orig_ctr, lambda_body, frame.f_globals
+        )
         ast_lambda.body = lambda_body
-        return lambda: pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
+        evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
+        return lambda: evaluated_lambda

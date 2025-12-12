@@ -26,13 +26,28 @@ with PipelineTracer:
 ```
 """
 import ast
+import builtins
+import itertools
 from types import FrameType
-from typing import cast
+from typing import Any, Dict, Optional, Set, cast
 
 import pyccolo as pyc
 from pyccolo.stmt_mapper import StatementMapper
 
-PIPELINE_DOT_PLACEHOLDER_NAME = "__obj"
+
+class ExtractNames(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.names: Set[str] = set()
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if node.id != "_":
+            self.names.add(node.id)
+
+    @classmethod
+    def extract_names(cls, node: ast.expr) -> Set[str]:
+        visitor = cls()
+        visitor.visit(node)
+        return visitor.names
 
 
 class SingletonArgCounterMixin:
@@ -47,14 +62,27 @@ class SingletonArgCounterMixin:
         SingletonArgCounterMixin._arg_ctr = new_arg_ctr
 
     @classmethod
-    def create_placeholder_lambda(cls, orig_ctr: int) -> ast.Lambda:
+    def create_placeholder_lambda(
+        cls, orig_ctr: int, lambda_body: ast.expr, frame_globals: Dict[str, Any]
+    ) -> ast.Lambda:
         num_lambda_args = cls._arg_ctr - orig_ctr
-        lambda_args = ", ".join(
-            f"_{arg_idx}" for arg_idx in range(orig_ctr, orig_ctr + num_lambda_args)
+        extra_defaults = ExtractNames.extract_names(lambda_body)
+        lambda_args = []
+        for arg_idx in range(orig_ctr, orig_ctr + num_lambda_args):
+            arg = f"_{arg_idx}"
+            lambda_args.append(arg)
+            extra_defaults.discard(arg)
+        extra_defaults = {
+            arg
+            for arg in extra_defaults
+            if arg not in frame_globals and not hasattr(builtins, arg)
+        }
+        lambda_arg_str = ", ".join(
+            itertools.chain(lambda_args, (f"{arg}={arg}" for arg in extra_defaults))
         )
         return cast(
             ast.Lambda,
-            cast(ast.Expr, ast.parse(f"lambda {lambda_args}: None").body[0]).value,
+            cast(ast.Expr, ast.parse(f"lambda {lambda_arg_str}: None").body[0]).value,
         )
 
 
@@ -64,11 +92,19 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
 
     def visit_Call(self, node: ast.Call) -> None:
         # defer visiting nested calls
-        return
+        self.visit(node.func)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         if isinstance(node.value, ast.Name) and node.value.id == "f":
             # defer visiting nested quick lambdas
+            return
+        self.generic_visit(node)
+
+    def visit_BinOp(self, node: ast.BinOp) -> None:
+        if isinstance(node.op, ast.BitOr) and PipelineTracer.get_augmentations(
+            id(node)
+        ):
+            # defer visiting nested pipeline ops
             return
         self.generic_visit(node)
 
@@ -89,49 +125,31 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             ].discard(id(node))
         self.arg_ctr += 1
 
-    def search(self, node: ast.Call) -> bool:
+    def search(self, node: ast.expr, allow_top_level: bool) -> bool:
         orig_ctr = self.arg_ctr
         try:
-            self.generic_visit(node)
+            if allow_top_level:
+                self.generic_visit(node)
+            else:
+                self.visit(node)
             found = self.arg_ctr > orig_ctr
         finally:
             self.arg_ctr = orig_ctr
         return found
 
-    def rewrite(self, node: ast.Call) -> None:
+    def rewrite(self, node: ast.expr, allow_top_level: bool) -> None:
         old_mutate = self.mutate
         try:
             self.mutate = True
-            self.generic_visit(node)
+            if allow_top_level:
+                self.generic_visit(node)
+            else:
+                self.visit(node)
         finally:
             self.mutate = old_mutate
 
 
-class HasPipelineDotPlaceholderSpec(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self._tracer: "PipelineTracer" = None  # type: ignore
-        self._found = False
-
-    def visit_Attribute(self, node: ast.Attribute) -> None:
-        augmented_nodes = self._tracer.augmented_node_ids_by_spec.get(
-            self._tracer.pipeline_dot_placeholder_spec, set()
-        )
-        if id(node) in augmented_nodes:
-            self._found = True
-            augmented_nodes.discard(id(node))
-        self.generic_visit(node)  # type: ignore
-
-    def __call__(self, node: ast.AST) -> bool:
-        self._tracer = PipelineTracer.instance()
-        self.visit(node)
-        ret = self._found
-        self._found = False
-        return ret
-
-
 class PipelineTracer(pyc.BaseTracer):
-
-    ALLOWLIST_BITOR_AS_PIPELINE_OPS_DUNDER_HINT = "__allowlist_bitors_as_pipeline_ops__"
 
     pipeline_tuple_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="*|>", replacement="|"
@@ -183,18 +201,12 @@ class PipelineTracer(pyc.BaseTracer):
         replacement="_",
     )
 
-    pipeline_dot_placeholder_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.dot_prefix,
-        token=" .",
-        replacement=f" {PIPELINE_DOT_PLACEHOLDER_NAME}.",
-    )
-
-    pipeline_dot_placeholder_finder = HasPipelineDotPlaceholderSpec()
-
     placeholder_replacer = PlaceholderReplacer()
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.binop_arg_nodes_to_skip: Set[int] = set()
+        self.binop_nodes_to_eval: Set[int] = set()
         self.lexical_call_stack: pyc.TraceStack = self.make_stack()
         with self.lexical_call_stack.register_stack_state():
             # TODO: pop this the right number of times if an exception occurs
@@ -204,38 +216,145 @@ class PipelineTracer(pyc.BaseTracer):
     def handle_placeholder_rewrites(
         self, _ret, node: ast.Call, frame: FrameType, *_, **__
     ):
-        if not self.placeholder_replacer.search(node):
+        if not self.placeholder_replacer.search(node, allow_top_level=True):
             return
         with self.lexical_call_stack.push():
             self.cur_call_is_placeholder_lambda = True
         lambda_body = StatementMapper.augmentation_propagating_copy(node)
         assert isinstance(lambda_body, ast.Call)
         orig_ctr = self.placeholder_replacer.arg_ctr
-        self.placeholder_replacer.rewrite(lambda_body)
-        ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(orig_ctr)
+        self.placeholder_replacer.rewrite(lambda_body, allow_top_level=True)
+        ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(
+            orig_ctr, lambda_body, frame.f_globals
+        )
         ast_lambda.body = lambda_body
-        return lambda *_: pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
+        evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
+        return lambda *_, **__: evaluated_lambda
 
     @pyc.register_raw_handler(pyc.before_argument)
-    def handle_before_arg(self, arg_lambda, *_, **__):
+    def handle_before_arg(self, ret: object, *_, **__):
         if self.cur_call_is_placeholder_lambda:
             return lambda: None
         else:
-            return arg_lambda
+            return ret
 
     @pyc.register_raw_handler(pyc.after_argument)
     def handle_after_arg(self, *_, is_last: bool, **__):
         if is_last and self.cur_call_is_placeholder_lambda:
             self.lexical_call_stack.pop()
 
+    @pyc.register_raw_handler((pyc.before_left_binop_arg, pyc.before_right_binop_arg))
+    def maybe_skip_binop_arg(self, ret: object, node_id: int, frame, *_, **__):
+        if node_id in self.binop_arg_nodes_to_skip:
+            self.binop_arg_nodes_to_skip.remove(node_id)
+            return lambda: None
+        else:
+            return ret
+
+    def transform_pipeline_placeholders(
+        self,
+        node: ast.expr,
+        frame_globals: Dict[str, Any],
+        full_node: Optional[ast.expr] = None,
+    ) -> ast.Lambda:
+        orig_ctr = self.placeholder_replacer.arg_ctr
+        self.placeholder_replacer.rewrite(node, allow_top_level=False)
+        return SingletonArgCounterMixin.create_placeholder_lambda(
+            orig_ctr, full_node or node, frame_globals
+        )
+
+    @staticmethod
+    def parent_is_bitor_op(node: ast.expr) -> bool:
+        parent = pyc.BaseTracer.containing_ast_by_id.get(id(node))
+        return isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.BitOr)
+
     @pyc.register_handler(
-        pyc.before_binop,
-        when=lambda node: isinstance(node.op, ast.BitOr),
+        pyc.before_right_binop_arg,
+        when=pyc.Predicate(parent_is_bitor_op, static=True),
         reentrant=True,
     )
-    def handle_pipeline_op(
+    def transform_pipeline_rhs_placeholders(
+        self, ret: object, node: ast.expr, frame: FrameType, *_, **__
+    ):
+        if not self.get_augmentations(id(self.containing_ast_by_id.get(id(node)))):
+            return ret
+        if not self.placeholder_replacer.search(node, allow_top_level=False):
+            return ret
+        transformed = cast(
+            ast.expr, StatementMapper.augmentation_propagating_copy(node)
+        )
+        ast_lambda = self.transform_pipeline_placeholders(transformed, frame.f_globals)
+        ast_lambda.body = transformed
+        evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
+        return lambda: evaluated_lambda
+
+    def search_left_descendant_placeholder(self, node: ast.BinOp) -> int:
+        num_traversals = 0
+        while True:
+            if not (
+                self.get_augmentations(id(node))
+                & {
+                    self.pipeline_op_spec,
+                    self.pipeline_tuple_op_spec,
+                    self.pipeline_op_assign_spec,
+                    self.value_first_left_partial_apply_op_spec,
+                    self.value_first_left_partial_apply_tuple_op_spec,
+                }
+            ):
+                return -1
+            node = node.left  # type: ignore[assignment]
+            num_traversals += 1
+            if (
+                not isinstance(node, ast.BinOp)
+                or not isinstance(node.op, ast.BitOr)
+                or not self.get_augmentations(id(node))
+            ):
+                break
+        if self.placeholder_replacer.search(node, allow_top_level=False):
+            return num_traversals
+        else:
+            return -1
+
+    @pyc.register_handler(
+        pyc.before_binop,
+        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=True),
+        reentrant=True,
+    )
+    def transform_pipeline_lhs_placeholders(
         self, ret: object, node: ast.BinOp, frame: FrameType, *_, **__
     ):
+        num_left_traversals_to_lhs_placeholder_node = (
+            self.search_left_descendant_placeholder(node)
+        )
+        if num_left_traversals_to_lhs_placeholder_node < 0:
+            return ret
+        self.binop_arg_nodes_to_skip.add(id(node.left))
+        self.binop_arg_nodes_to_skip.add(id(node.right))
+        self.binop_nodes_to_eval.add(id(node))
+        transformed = cast(
+            ast.BinOp, StatementMapper.augmentation_propagating_copy(node)
+        )
+        left_arg = transformed
+        for _i in range(num_left_traversals_to_lhs_placeholder_node):
+            left_arg = left_arg.left  # type: ignore[assignment]
+        ast_lambda = self.transform_pipeline_placeholders(
+            left_arg, frame.f_globals, full_node=transformed
+        )
+        ast_lambda.body = transformed
+        evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
+        return lambda *_, **__: evaluated_lambda
+
+    @pyc.register_handler(
+        pyc.before_binop,
+        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=True),
+        reentrant=True,
+    )
+    def transform_pipeline_op(
+        self, ret: object, node: ast.BinOp, frame: FrameType, *_, **__
+    ):
+        if id(node) in self.binop_nodes_to_eval:
+            self.binop_nodes_to_eval.remove(id(node))
+            return ret
         this_node_augmentations = self.get_augmentations(id(node))
         if self.pipeline_op_spec in this_node_augmentations:
             return lambda x, y: y(x)
@@ -290,22 +409,5 @@ class PipelineTracer(pyc.BaseTracer):
             return lambda x, y: x(y)
         elif self.apply_tuple_op_spec in this_node_augmentations:
             return lambda x, y: x(*y)
-        else:
-            return ret
-
-    @pyc.register_handler(
-        pyc.before_load_complex_symbol,
-        # without this, the trace_lambda can mess up quasiquoting
-        when=lambda node: not isinstance(node, ast.Subscript),
-        reentrant=True,
-    )
-    def handle_method_chain(self, ret, node, frame: FrameType, *_, **__):
-        if self.pipeline_dot_placeholder_finder(node):
-            ret = cast(
-                ast.Expr,
-                ast.parse(f"lambda {PIPELINE_DOT_PLACEHOLDER_NAME}: None").body[0],
-            ).value
-            ret.body = node
-            return lambda: pyc.eval(ret, frame.f_globals, frame.f_locals)
         else:
             return ret

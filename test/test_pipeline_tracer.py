@@ -62,11 +62,11 @@ if sys.version_info >= (3, 8):  # noqa
 
     def test_pipeline_methods():
         with PipelineTracer:
-            assert pyc.eval("(1, 2, 3) |> list |> .index(2)") == 1
+            assert pyc.eval("(1, 2, 3) |> list |> $.index(2)") == 1
 
     def test_pipeline_methods_nonstandard_whitespace():
         with PipelineTracer:
-            assert pyc.eval("(1, 2, 3)   |>     list  |>      .index(2)") == 1
+            assert pyc.eval("(1, 2, 3)   |>     list  |>      $.index(2)") == 1
 
     def test_left_tuple_apply():
         with PipelineTracer:
@@ -115,7 +115,40 @@ if sys.version_info >= (3, 8):  # noqa
             with OptionalChainer:
                 assert (
                     pyc.eval(
-                        "(3, 1, 2) |> (list . reversed . sorted) |> .index(2).?foo"
+                        "(3, 1, 2) |> (list . reversed . sorted) |> $.index(2).?foo"
                     )
                     is None
                 )
+
+    def test_function_placeholder():
+        with PipelineTracer:
+            with QuickLambdaTracer:
+                # assert pyc.eval("(add := (lambda x, y: x + y)) and (add1 := add($, 1)) and add1(42)") == 43
+                assert pyc.eval("(add := (lambda x, y: x + y)) and add(42, 1)") == 43
+                pyc.exec(
+                    "(add := (lambda x, y: x + y)); assert (lambda y: add(42, y))(1)"
+                )
+                pyc.exec(
+                    "(add := (lambda x, y: x + y)); assert (lambda y: add(42, y)) <| 1 == 43"
+                )
+                pyc.exec("(add := (lambda x, y: x + y)); assert add(42, $) <| 1 == 43")
+                pyc.exec("(add := f[$ + $]); assert (add($, 1) <| 1) == 2")
+                pyc.exec("(add := f[$ + $]); assert 1 |> add($, 1) == 2")
+                pyc.exec("add = f[$ + $]; add1 = add($, 1); assert add1(42) == 43")
+                pyc.exec("add = f[$ + $]; assert add($, 42) <| 1 == 43")
+                assert pyc.eval("(f[$ + $] |>> add) and add($, 1) <| 1") == 2
+                assert pyc.eval("(f[$ + $] |>> add) and 1 |> add($, 1)") == 2
+
+    def test_tuple_unpack_with_placeholders():
+        with PipelineTracer:
+            with QuickLambdaTracer:
+                assert pyc.eval("($, $) *|> $ + $ <|* (1, 2)") == 3
+                assert pyc.eval("($, $) *|> $ + $ <|* (1, 2) |> $.real") == 3
+                assert pyc.eval("($, $) *|> $ + $ <|* (1, 2) |> $.imag") == 0
+                assert pyc.eval("($, $) *|> $ + $ <|* (1, 2) |> $ + 1") == 4
+                assert pyc.eval("(1, 2) *|> ($, $) *|> $ + $") == 3
+
+    def test_placeholder_with_kwarg():
+        with PipelineTracer:
+            pyc.exec("def add(x, y): return x + y; assert 1 |> add($, y=42) == 43")
+            pyc.exec("42 |> print($, end=' ')")
