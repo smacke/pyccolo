@@ -172,3 +172,24 @@ if sys.version_info >= (3, 8):  # noqa
                 "a",
                 "b",
             ]
+
+    def test_augmentation_spec_order():
+        assert PipelineTracer.syntax_augmentation_specs() == [
+            PipelineTracer.pipeline_dict_op_spec,
+            PipelineTracer.pipeline_tuple_op_spec,
+            PipelineTracer.pipeline_op_assign_spec,
+            PipelineTracer.pipeline_op_spec,
+            PipelineTracer.value_first_left_partial_apply_dict_op_spec,
+            PipelineTracer.value_first_left_partial_apply_tuple_op_spec,
+            PipelineTracer.value_first_left_partial_apply_op_spec,
+            PipelineTracer.function_first_left_partial_apply_dict_op_spec,
+            PipelineTracer.function_first_left_partial_apply_tuple_op_spec,
+            PipelineTracer.function_first_left_partial_apply_op_spec,
+            PipelineTracer.apply_dict_op_spec,
+            PipelineTracer.apply_tuple_op_spec,
+            PipelineTracer.apply_op_spec,
+            PipelineTracer.compose_dict_op_spec,
+            PipelineTracer.compose_tuple_op_spec,
+            PipelineTracer.compose_op_spec,
+            PipelineTracer.arg_placeholder_spec,
+        ]

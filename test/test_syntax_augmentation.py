@@ -11,8 +11,8 @@ if sys.version_info >= (3, 8):  # noqa
 
     def test_augmented_plus():
         class Add42(pyc.BaseTracer):
-            @property
-            def syntax_augmentation_specs(self):
+            @classmethod
+            def syntax_augmentation_specs(cls):
                 return [add_42_spec]
 
             @pyc.after_binop(when=lambda node: isinstance(node.op, ast.Add))
@@ -47,8 +47,8 @@ if sys.version_info >= (3, 8):  # noqa
                 super().__init__(*args, **kwargs)
                 self._delayed_increment = 0
 
-            @property
-            def syntax_augmentation_specs(self):
+            @classmethod
+            def syntax_augmentation_specs(cls):
                 return [suffix_spec, prefix_spec]
 
             @pyc.load_name

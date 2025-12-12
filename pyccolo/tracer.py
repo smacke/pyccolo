@@ -260,15 +260,15 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             evt in self.events_with_registered_handlers for evt in SYS_TRACE_EVENTS
         )
 
-    @property
-    def syntax_augmentation_specs(self) -> List[AugmentationSpec]:
+    @classmethod
+    def syntax_augmentation_specs(cls) -> List[AugmentationSpec]:
         specs: List[AugmentationSpec] = []
-        for cls in self.__class__.mro():
-            if not issubclass(cls, BaseTracer):
+        for clazz in cls.mro():
+            if not issubclass(clazz, BaseTracer):
                 continue
             specs.extend(
                 spec
-                for spec in cls.__dict__.values()
+                for spec in clazz.__dict__.values()
                 if isinstance(spec, AugmentationSpec)
             )
         return specs
@@ -563,7 +563,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     def make_syntax_augmenters(self, ast_rewriter: AstRewriter) -> List[Callable]:
         return [
             make_syntax_augmenter(ast_rewriter, spec)
-            for spec in self.syntax_augmentation_specs
+            for spec in self.syntax_augmentation_specs()
         ]
 
     @contextmanager
@@ -748,8 +748,12 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             code = augmenter(code)
         return code
 
-    def parse(self, code: str, mode="exec") -> Union[ast.Module, ast.Expression]:
-        rewriter = self.make_ast_rewriter(self.make_sandbox_fname())
+    def parse(
+        self, code: str, mode="exec", filename: Optional[str] = None
+    ) -> Union[ast.Module, ast.Expression]:
+        if filename is None:
+            filename = self.make_sandbox_fname()
+        rewriter = self.make_ast_rewriter(filename)
         for tracer in _TRACER_STACK:
             code = tracer.preprocess(code, rewriter)
         return rewriter.visit(ast.parse(code, mode=mode))
@@ -775,7 +779,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         ):
             if isinstance(code, str):
                 code = textwrap.dedent(code).strip()
-                code = self.parse(code)
+                code = self.parse(
+                    code, mode="eval" if do_eval else "exec", filename=filename
+                )
             if instrument:
                 code = self.make_ast_rewriter(path=filename).visit(code)
             code_obj = compile(code, filename, "eval" if do_eval else "exec")
@@ -830,9 +836,13 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             if isinstance(code, str):
                 if instrument:
                     visited = True
-                    code = cast(ast.Expression, self.parse(code, mode="eval"))
+                    code = cast(
+                        ast.Expression, self.parse(code, mode="eval", filename=filename)
+                    )
                 else:
-                    code = cast(ast.Expression, ast.parse(code, mode="eval"))
+                    code = cast(
+                        ast.Expression, ast.parse(code, mode="eval", filename=filename)
+                    )
             if not isinstance(code, ast.Expression):
                 code = ast.Expression(code)
             if instrument and not visited:

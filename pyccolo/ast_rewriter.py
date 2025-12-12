@@ -72,7 +72,7 @@ class AstRewriter(ast.NodeTransformer):
     def _get_order_of_specs_applied(self) -> Tuple[AugmentationSpec, ...]:
         specs = []
         for tracer in self._tracers:
-            for spec in tracer.syntax_augmentation_specs:
+            for spec in tracer.syntax_augmentation_specs():
                 if spec not in specs:
                     specs.append(spec)
         return tuple(specs)
@@ -111,18 +111,18 @@ class AstRewriter(ast.NodeTransformer):
         last_tracer = self._tracers[-1]
         old_bookkeeper = last_tracer.ast_bookkeeper_by_fname.get(self._path)
         module_id = id(node) if self._module_id is None else self._module_id
+
+        # garbage collect any stale references to aug specs once they have been propagated
+        cleanup_bookkeeper = AstBookkeeper.create(self._path, module_id)
+        BookkeepingVisitor(cleanup_bookkeeper).visit(node)
+        last_tracer.remove_bookkeeping(cleanup_bookkeeper, module_id)
+
         new_bookkeeper = last_tracer.ast_bookkeeper_by_fname[self._path] = (
             AstBookkeeper.create(self._path, module_id)
         )
         if old_bookkeeper is not None and self.gc_bookkeeping:
             last_tracer.remove_bookkeeping(old_bookkeeper, module_id)
-        BookkeepingVisitor(
-            new_bookkeeper.ast_node_by_id,
-            new_bookkeeper.containing_ast_by_id,
-            new_bookkeeper.containing_stmt_by_id,
-            new_bookkeeper.parent_stmt_by_id,
-            new_bookkeeper.stmt_by_lineno,
-        ).visit(orig_to_copy_mapping[id(node)])
+        BookkeepingVisitor(new_bookkeeper).visit(orig_to_copy_mapping[id(node)])
         last_tracer.add_bookkeeping(new_bookkeeper, module_id)
         self.orig_to_copy_mapping = orig_to_copy_mapping
         raw_handler_predicates_by_event: DefaultDict[TraceEvent, List[Predicate]] = (

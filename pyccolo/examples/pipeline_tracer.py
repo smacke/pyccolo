@@ -191,12 +191,12 @@ class PipelineTracer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.binop, token="<$", replacement="|"
     )
 
-    apply_tuple_op_spec = pyc.AugmentationSpec(
-        aug_type=pyc.AugmentationType.binop, token="<|*", replacement="|"
-    )
-
     apply_dict_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="<|**", replacement="|"
+    )
+
+    apply_tuple_op_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="<|*", replacement="|"
     )
 
     apply_op_spec = pyc.AugmentationSpec(
@@ -290,7 +290,7 @@ class PipelineTracer(pyc.BaseTracer):
 
     @pyc.register_handler(
         pyc.before_right_binop_arg,
-        when=pyc.Predicate(parent_is_bitor_op, static=True),
+        when=pyc.Predicate(parent_is_bitor_op, static=False),
         reentrant=True,
     )
     def transform_pipeline_rhs_placeholders(
@@ -339,7 +339,7 @@ class PipelineTracer(pyc.BaseTracer):
 
     @pyc.register_handler(
         pyc.before_binop,
-        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=True),
+        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=False),
         reentrant=True,
     )
     def transform_pipeline_lhs_placeholders(
@@ -368,7 +368,7 @@ class PipelineTracer(pyc.BaseTracer):
 
     @pyc.register_handler(
         pyc.before_binop,
-        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=True),
+        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=False),
         reentrant=True,
     )
     def transform_pipeline_op(

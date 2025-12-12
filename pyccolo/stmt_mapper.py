@@ -145,7 +145,7 @@ class StatementMapper(ast.NodeVisitor):
             if col_offset is None or (nc.lineno, col_offset) not in mod_positions:  # type: ignore[attr-defined]
                 continue
             for tracer in self._tracers:
-                if spec in tracer.syntax_augmentation_specs:
+                if spec in tracer.syntax_augmentation_specs():
                     tracer.augmented_node_ids_by_spec[spec].add(id(nc))
         for tracer in self._tracers:
             for spec in tracer.get_augmentations(id(no)):

@@ -52,19 +52,12 @@ class AstBookkeeper(NamedTuple):
 
 
 class BookkeepingVisitor(ast.NodeVisitor):
-    def __init__(
-        self,
-        ast_node_by_id: Dict[int, ast.AST],
-        containing_ast_by_id: Dict[int, ast.AST],
-        containing_stmt_by_id: Dict[int, ast.stmt],
-        parent_stmt_by_id: Dict[int, ast.stmt],
-        stmt_by_lineno: Dict[int, ast.stmt],
-    ):
-        self.ast_node_by_id = ast_node_by_id
-        self.containing_ast_by_id = containing_ast_by_id
-        self.containing_stmt_by_id = containing_stmt_by_id
-        self.parent_stmt_by_id = parent_stmt_by_id
-        self.stmt_by_lineno = stmt_by_lineno
+    def __init__(self, bookkeeper: AstBookkeeper) -> None:
+        self.ast_node_by_id = bookkeeper.ast_node_by_id
+        self.containing_ast_by_id = bookkeeper.containing_ast_by_id
+        self.containing_stmt_by_id = bookkeeper.containing_stmt_by_id
+        self.parent_stmt_by_id = bookkeeper.parent_stmt_by_id
+        self.stmt_by_lineno = bookkeeper.stmt_by_lineno
         self._current_containing_stmt: Optional[ast.stmt] = None
 
     def generic_visit(self, node: ast.AST):
