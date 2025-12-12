@@ -10,13 +10,20 @@ import pyccolo as pyc
 
 class OptionalChainer(pyc.BaseTracer):
     class ResolvesToNone:
+        def __init__(self, eventually: bool) -> None:
+            self.__eventually = eventually
+
         def __getattr__(self, _item: str):
-            return self
+            if self.__eventually:
+                return self
+            else:
+                return None
 
         def __call__(self, *_, **__):
             return self
 
-    resolves_to_none = ResolvesToNone()
+    resolves_to_none_eventually = ResolvesToNone(eventually=True)
+    resolves_to_none_immediately = ResolvesToNone(eventually=False)
 
     call_optional_chaining_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.dot_suffix, token="?.(", replacement="("
@@ -26,7 +33,7 @@ class OptionalChainer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.dot_suffix, token="?.", replacement="."
     )
 
-    permissive_optional_chaining_spec = pyc.AugmentationSpec(
+    permissive_attr_dereference_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.dot_suffix, token=".?", replacement="."
     )
 
@@ -56,11 +63,11 @@ class OptionalChainer(pyc.BaseTracer):
             self.optional_chaining_spec in self.get_augmentations(id(node))
             and obj is None
         ):
-            return self.resolves_to_none
-        elif self.permissive_optional_chaining_spec in self.get_augmentations(
+            return self.resolves_to_none_eventually
+        elif self.permissive_attr_dereference_spec in self.get_augmentations(
             id(node)
         ) and not hasattr(obj, node.attr):
-            return self.resolves_to_none
+            return self.resolves_to_none_immediately
         else:
             return obj
 
@@ -69,9 +76,9 @@ class OptionalChainer(pyc.BaseTracer):
         if func is None and self.call_optional_chaining_spec in self.get_augmentations(
             id(node.func)
         ):
-            func = self.resolves_to_none
+            func = self.resolves_to_none_eventually
         with self.lexical_call_stack.push():
-            self.cur_call_is_none_resolver = func is self.resolves_to_none
+            self.cur_call_is_none_resolver = func is self.resolves_to_none_eventually
         return func
 
     @pyc.register_raw_handler(pyc.before_argument)

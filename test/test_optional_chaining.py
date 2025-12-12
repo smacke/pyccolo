@@ -28,7 +28,7 @@ if sys.version_info >= (3, 8):  # noqa
             """
         )
 
-    def test_permissive_vs_non_permissive_qualifier():
+    def test_permissive_attr_vs_optional_attr_qualifier():
         with OptionalChainer:
             try:
                 pyc.exec("foo = object(); assert foo?.bar is None")
@@ -38,13 +38,21 @@ if sys.version_info >= (3, 8):  # noqa
                 assert False
 
         with OptionalChainer:
+            try:
+                pyc.exec("foo = object(); assert foo.?bar.baz is None")
+            except AttributeError:
+                pass
+            else:
+                assert False
+
+        with OptionalChainer:
             pyc.exec("foo = object(); assert foo.?bar is None")
 
         with OptionalChainer:
-            pyc.exec("foo = object(); assert foo.?bar.baz is None")
+            pyc.exec("foo = object(); assert foo.?bar?.baz is None")
 
         with OptionalChainer:
-            pyc.exec("foo = object(); assert foo.?bar.baz.bam() is None")
+            pyc.exec("foo = object(); assert foo.?bar?.baz.bam() is None")
 
     def test_call_on_optional():
         with OptionalChainer:
