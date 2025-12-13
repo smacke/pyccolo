@@ -57,3 +57,18 @@ if sys.version_info >= (3, 8):  # noqa
     def test_call_on_optional():
         with OptionalChainer:
             pyc.exec("foo = None; assert foo?.() is None")
+
+    def test_nullish_coalescing():
+        with OptionalChainer:
+            pyc.exec("None ?? None")
+            pyc.exec("foo = ''; assert (foo ?? None) == ''")
+            pyc.exec("foo = ''; assert (foo       ?? None) == ''")
+            pyc.exec("foo = ''; assert (foo       ??       None) == ''")
+            pyc.exec("foo = ''; assert (foo ??       None) == ''")
+            assert pyc.eval("'' ?? None") == ""
+            assert pyc.eval("''??None") == ""
+            assert pyc.eval("0 ?? None") == 0
+            assert pyc.eval("None ?? 0 ?? None") == 0
+            assert pyc.eval("None or 0 ?? None") == 0
+            assert pyc.eval("None and 0 ?? None") is None
+            assert pyc.eval("0 or None ?? False") is False

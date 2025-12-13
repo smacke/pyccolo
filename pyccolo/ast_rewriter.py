@@ -23,7 +23,11 @@ from pyccolo.handler import HandlerSpec
 from pyccolo.predicate import CompositePredicate, Predicate
 from pyccolo.stmt_inserter import StatementInserter
 from pyccolo.stmt_mapper import StatementMapper
-from pyccolo.syntax_augmentation import AugmentationSpec, fix_positions
+from pyccolo.syntax_augmentation import (
+    AugmentationSpec,
+    AugmentationType,
+    fix_positions,
+)
 from pyccolo.trace_events import TraceEvent
 
 if TYPE_CHECKING:
@@ -95,18 +99,152 @@ class AstRewriter(ast.NodeTransformer):
     def should_instrument_with_tracer(self, tracer: "BaseTracer") -> bool:
         return self._path is None or tracer._should_instrument_file_impl(self._path)
 
+    @staticmethod
+    def _get_prefix_col_offset_for(node: ast.AST) -> Optional[int]:
+        if isinstance(node, ast.Name):
+            return node.col_offset
+        elif isinstance(node, ast.Attribute):
+            return getattr(node.value, "end_col_offset", -2) + 1
+        elif isinstance(node, ast.FunctionDef):
+            # TODO: can be different if more spaces between 'def' and function name
+            return node.col_offset + 4
+        elif isinstance(node, ast.ClassDef):
+            # TODO: can be different if more spaces between 'class' and class name
+            return node.col_offset + 6
+        elif isinstance(node, ast.AsyncFunctionDef):
+            # TODO: can be different if more spaces between 'async', 'def', and function name
+            return node.col_offset + 10
+        elif isinstance(node, (ast.Import, ast.ImportFrom)) and len(node.names) == 1:
+            # "import " vs "from <base_module> import "
+            base_offset = (
+                7 if isinstance(node, ast.Import) else 13 + len(node.module or "")
+            )
+            name = node.names[0]
+            return (
+                node.col_offset
+                + base_offset
+                + (0 if name.asname is None else len(name.name) + 1)
+            )
+        else:
+            return None
+
+    @staticmethod
+    def _get_suffix_col_offset_for(node: ast.AST) -> Optional[int]:
+        if isinstance(node, ast.Name):
+            return node.col_offset + len(node.id)
+        elif isinstance(node, ast.Attribute):
+            return getattr(node.value, "end_col_offset", -1) + len(node.attr) + 1
+        elif isinstance(node, ast.FunctionDef):
+            # TODO: can be different if more spaces between 'def' and function name
+            return node.col_offset + 4 + len(node.name)
+        elif isinstance(node, ast.ClassDef):
+            # TODO: can be different if more spaces between 'class' and class name
+            return node.col_offset + 6 + len(node.name)
+        elif isinstance(node, ast.AsyncFunctionDef):
+            # TODO: can be different if more spaces between 'async', 'def', and function name
+            return node.col_offset + 10 + len(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)) and len(node.names) == 1:
+            name = node.names[0]
+            # "import " vs "from <base_module> import "
+            base_offset = (
+                7 if isinstance(node, ast.Import) else 13 + len(node.module or "")
+            )
+            col_offset = node.col_offset + base_offset
+            if name.asname is None:
+                col_offset += len(name.name)
+            else:
+                col_offset += len(name.name) + 1 + len(name.asname)
+            return col_offset
+        else:
+            return None
+
+    @staticmethod
+    def _get_dot_suffix_col_offset_for(node: ast.AST) -> Optional[int]:
+        if isinstance(node, ast.Name):
+            return getattr(node, "end_col_offset", -1)
+        elif isinstance(node, ast.Attribute):
+            return getattr(node.value, "end_col_offset", -1)
+        else:
+            return None
+
+    @staticmethod
+    def _get_dot_prefix_col_offset_for(node: ast.AST) -> Optional[int]:
+        if isinstance(node, ast.Name):
+            return node.col_offset
+        elif isinstance(node, ast.Attribute):
+            return node.value.col_offset
+        else:
+            return None
+
+    @staticmethod
+    def _get_binop_col_offset_for(node: ast.AST) -> Optional[int]:
+        if isinstance(node, ast.BinOp):
+            left_end_col_offset = getattr(node.left, "end_col_offset", None)
+            if left_end_col_offset is None:
+                return None
+            else:
+                return node.left.col_offset - node.col_offset + left_end_col_offset + 1
+        else:
+            return None
+
+    def _get_boolop_col_offset_for(self, node: ast.AST) -> Optional[int]:
+        if not hasattr(node, "col_offset"):
+            return None
+        parent = self._tracers[-1].containing_ast_by_id.get(id(node))
+        if not isinstance(parent, ast.BoolOp):
+            return None
+        end_col_offset = getattr(node, "end_col_offset", None)
+        if end_col_offset is None:
+            return None
+        return end_col_offset + 1
+
+    def _get_col_offset_for(
+        self, aug_type: AugmentationType, node: ast.AST
+    ) -> Optional[int]:
+        if aug_type == AugmentationType.prefix:
+            return self._get_prefix_col_offset_for(node)
+        elif aug_type == AugmentationType.suffix:
+            return self._get_suffix_col_offset_for(node)
+        elif aug_type == AugmentationType.dot_suffix:
+            return self._get_dot_suffix_col_offset_for(node)
+        elif aug_type == AugmentationType.dot_prefix:
+            return self._get_dot_prefix_col_offset_for(node)
+        elif aug_type == AugmentationType.binop:
+            return self._get_binop_col_offset_for(node)
+        elif aug_type == AugmentationType.boolop:
+            return self._get_boolop_col_offset_for(node)
+        else:
+            raise NotImplementedError()
+
+    def _handle_augmentations_for_node(
+        self,
+        augmented_positions_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]],
+        nc: ast.AST,
+    ) -> None:
+        for spec, mod_positions in augmented_positions_by_spec.items():
+            col_offset = self._get_col_offset_for(spec.aug_type, nc)
+            if col_offset is None or (nc.lineno, col_offset) not in mod_positions:  # type: ignore[attr-defined]
+                continue
+            for tracer in self._tracers:
+                if spec in tracer.syntax_augmentation_specs():
+                    tracer.augmented_node_ids_by_spec[spec].add(id(nc))
+
+    def _handle_all_augmentations(
+        self, orig_to_copy_mapping: Dict[int, ast.AST]
+    ) -> None:
+        augmented_positions_by_spec = fix_positions(
+            self._augmented_positions_by_spec,
+            spec_order=self._get_order_of_specs_applied(),
+        )
+        for nc in orig_to_copy_mapping.values():
+            self._handle_augmentations_for_node(augmented_positions_by_spec, nc)
+
     def visit(self, node: ast.AST):
         assert isinstance(
             node, (ast.Expression, ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)
         )
         assert self._path is not None
-        mapper = StatementMapper(
-            self._tracers,
-            fix_positions(
-                self._augmented_positions_by_spec,
-                spec_order=self._get_order_of_specs_applied(),
-            ),
-        )
+        mapper = StatementMapper(self._tracers)
         orig_to_copy_mapping = mapper(node)
         last_tracer = self._tracers[-1]
         old_bookkeeper = last_tracer.ast_bookkeeper_by_fname.get(self._path)
@@ -125,6 +263,7 @@ class AstRewriter(ast.NodeTransformer):
         BookkeepingVisitor(new_bookkeeper).visit(orig_to_copy_mapping[id(node)])
         last_tracer.add_bookkeeping(new_bookkeeper, module_id)
         self.orig_to_copy_mapping = orig_to_copy_mapping
+        self._handle_all_augmentations(orig_to_copy_mapping)
         raw_handler_predicates_by_event: DefaultDict[TraceEvent, List[Predicate]] = (
             defaultdict(list)
         )

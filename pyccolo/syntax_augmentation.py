@@ -19,6 +19,7 @@ class AugmentationType(Enum):
     dot_prefix = "dot_prefix"
     dot_suffix = "dot_suffix"
     binop = "binop"
+    boolop = "boolop"
 
 
 class AugmentationSpec(NamedTuple):
@@ -107,8 +108,8 @@ def replace_tokens_and_get_augmented_positions(
         if spec.token != match.getvalue():
             return
         match_pos_col_offset = cur_match_start[1] + col_offset
-        if spec.aug_type == AugmentationType.binop:
-            # for binop, we use node.left.end_col_offset + 1 to locate the position of the op
+        if spec.aug_type in (AugmentationType.binop, AugmentationType.boolop):
+            # for binop / boolop, we use left operand's end_col_offset + 1 to locate the position of the op
             # can be off if there is more than one space between left operand and op
             match_pos_col_offset += len(spec.token) - len(spec.token.strip())
             match_pos_col_offset -= num_preceding_spaces - 1

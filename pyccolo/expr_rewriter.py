@@ -815,7 +815,17 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.BoolOp:
         orig_node = node
         for idx, val in enumerate(node.values):
-            node.values[idx] = self.visit(val)
+            untraced_val = self.orig_to_copy_mapping[id(val)]
+            transformed_val = self.visit(val)
+            for evt in (TraceEvent.before_boolop_arg, TraceEvent.after_boolop_arg):
+                if self.handler_predicate_by_event[evt](untraced_val):
+                    transformed_val = self.emit(
+                        evt,
+                        val,
+                        ret=transformed_val,
+                        is_last=fast.NameConstant(idx == len(node.values) - 1),
+                    )
+            node.values[idx] = transformed_val
         for evt in (TraceEvent.before_boolop, TraceEvent.after_boolop):
             if self.handler_predicate_by_event[evt](orig_node):
                 node = self.emit(evt, orig_node, ret=node)  # type: ignore[assignment]

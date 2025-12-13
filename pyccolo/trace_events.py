@@ -106,6 +106,8 @@ class TraceEvent(Enum):
     before_binop = "before_binop"
     after_binop = "after_binop"
 
+    before_boolop_arg = "before_boolop_arg"
+    after_boolop_arg = "after_boolop_arg"
     before_boolop = "before_boolop"
     after_boolop = "after_boolop"
 
@@ -170,6 +172,7 @@ BEFORE_EXPR_EVENTS = {
     TraceEvent.before_augassign_rhs,
     TraceEvent.before_binop,
     TraceEvent.before_boolop,
+    TraceEvent.before_boolop_arg,
     TraceEvent.before_compare,
     TraceEvent.before_dict_literal,
     TraceEvent.before_for_iter,

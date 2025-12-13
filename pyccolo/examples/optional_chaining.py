@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Example of null coalescing implementing with Pyccolo;
+Example of optional chaining and nullish coalescing implementing with Pyccolo;
   e.g., foo?.bar resolves to `None` when `foo` is `None`.
 """
 import ast
+from typing import Any, Optional
 
 import pyccolo as pyc
+
+
+def parent_is_or_boolop(node_id: int) -> bool:
+    parent = pyc.BaseTracer.containing_ast_by_id.get(node_id)
+    return isinstance(parent, ast.BoolOp) and isinstance(parent.op, ast.Or)
 
 
 class OptionalChainer(pyc.BaseTracer):
@@ -37,6 +43,10 @@ class OptionalChainer(pyc.BaseTracer):
         aug_type=pyc.AugmentationType.dot_suffix, token=".?", replacement="."
     )
 
+    nullish_coalescing_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.boolop, token="??", replacement=" or "
+    )
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._saved_ret_expr = None
@@ -44,6 +54,10 @@ class OptionalChainer(pyc.BaseTracer):
         with self.lexical_call_stack.register_stack_state():
             # TODO: pop this the right number of times if an exception occurs
             self.cur_call_is_none_resolver: bool = False
+        self.lexical_nullish_stack: pyc.TraceStack = self.make_stack()
+        with self.lexical_nullish_stack.register_stack_state():
+            self.cur_boolop_has_nullish_coalescer = False
+            self.coalesced_value: Optional[Any] = None
 
     @pyc.register_raw_handler(pyc.after_stmt)
     def handle_after_stmt(self, ret, *_, **__):
@@ -96,6 +110,47 @@ class OptionalChainer(pyc.BaseTracer):
     def handle_after_load_complex_symbol(self, ret, *_, **__):
         if isinstance(ret, self.ResolvesToNone):
             return pyc.Null
+        else:
+            return ret
+
+    @pyc.register_handler(
+        pyc.before_boolop, when=lambda node: isinstance(node.op, ast.Or)
+    )
+    def before_or_boolop(self, ret, node: ast.BoolOp, *_, **__):
+        with self.lexical_nullish_stack.push():
+            self.cur_boolop_has_nullish_coalescer = any(
+                self.nullish_coalescing_spec in self.get_augmentations(id(val))
+                for val in node.values
+            )
+            self.coalesced_value = None
+        return ret
+
+    @pyc.register_handler(
+        pyc.after_boolop, when=lambda node: isinstance(node.op, ast.Or)
+    )
+    def after_or_boolop(self, *_, **__):
+        self.lexical_nullish_stack.pop()
+
+    def _maybe_compute_nullish_coalesced_value(self, ret, node_id: int) -> None:
+        if self.coalesced_value is not None:
+            return
+        val = ret()
+        if self.nullish_coalescing_spec in self.get_augmentations(node_id):
+            self.coalesced_value = None if val is None else val
+        else:
+            self.coalesced_value = val or None
+
+    @pyc.register_raw_handler(pyc.before_boolop_arg, when=parent_is_or_boolop)
+    def before_or_boolup(self, ret, node_id: int, *_, is_last: bool, **__):
+        if self.cur_boolop_has_nullish_coalescer:
+            if is_last:
+                if self.coalesced_value is None:
+                    return ret
+                else:
+                    return lambda: self.coalesced_value
+            else:
+                self._maybe_compute_nullish_coalesced_value(ret, node_id)
+                return lambda: None
         else:
             return ret
 
