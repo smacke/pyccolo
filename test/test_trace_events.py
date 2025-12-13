@@ -1010,3 +1010,27 @@ def test_exception_handler_types(events):
                 events,
             )
         )
+
+
+@given(events=subsets(pyc.TraceEvent))
+@patch_events_and_emitter
+def test_boolop_events(events):
+    assert _RECORDED_EVENTS == []
+    pyc.BaseTracer().exec("True or False and True", filename=_FILENAME)
+    throw_and_print_diff_if_recorded_not_equal_to(
+        filter_events_to_subset(
+            [
+                pyc.init_module,
+                pyc.before_stmt,
+                pyc.before_boolop,
+                pyc.after_bool,
+                pyc.after_boolop,
+                pyc.after_expr_stmt,
+                pyc.after_stmt,
+                TraceEvent._load_saved_expr_stmt_ret,
+                pyc.after_module_stmt,
+                pyc.exit_module,
+            ],
+            events,
+        )
+    )

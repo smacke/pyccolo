@@ -755,14 +755,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             return node
         orig_node_value = node.value
         node.value = self.visit(node.value)
-        if self.handler_predicate_by_event[TraceEvent.before_return](orig_node_value):
-            node.value = self.emit(
-                TraceEvent.before_return, orig_node_value, ret=node.value
-            )
-        if self.handler_predicate_by_event[TraceEvent.after_return](orig_node_value):
-            node.value = self.emit(
-                TraceEvent.after_return, orig_node_value, ret=node.value
-            )
+        for evt in (TraceEvent.before_return, TraceEvent.after_return):
+            if self.handler_predicate_by_event[evt](orig_node_value):
+                node.value = self.emit(evt, orig_node_value, ret=node.value)
         return node
 
     def visit_Delete(self, node: ast.Delete):
@@ -815,6 +810,16 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             with fast.location_of(node):
                 ret = self.emit(TraceEvent.after_binop, node, ret=ret)
         return ret
+
+    @fast.location_of_arg
+    def visit_BoolOp(self, node: ast.BoolOp) -> ast.BoolOp:
+        orig_node = node
+        for idx, val in enumerate(node.values):
+            node.values[idx] = self.visit(val)
+        for evt in (TraceEvent.before_boolop, TraceEvent.after_boolop):
+            if self.handler_predicate_by_event[evt](orig_node):
+                node = self.emit(evt, orig_node, ret=node)  # type: ignore[assignment]
+        return node
 
     def visit_Compare(
         self, node: ast.Compare
