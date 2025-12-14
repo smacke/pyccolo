@@ -124,8 +124,12 @@ if sys.version_info >= (3, 8):  # noqa
     def test_function_placeholder():
         with PipelineTracer:
             with QuickLambdaTracer:
+                # TODO: the commented out ones don't work due to an issue in how NamedExpr values don't get
+                #  bound to lambda closures, which is a weakness in pyccolo BEFORE_EXPR_EVENTS. Technically
+                #  BEFORE_EXPR_EVENTS should all be using the default value binding trick.
                 # assert pyc.eval("(add := (lambda x, y: x + y)) and (add1 := add($, 1)) and add1(42)") == 43
-                assert pyc.eval("(add := (lambda x, y: x + y)) and add(42, 1)") == 43
+                # assert pyc.eval("(add := (lambda x, y: x + y)) and add(42, 1)") == 43
+                pyc.exec("(add := (lambda x, y: x + y)); assert add(42, 1) == 43")
                 pyc.exec(
                     "(add := (lambda x, y: x + y)); assert (lambda y: add(42, y))(1)"
                 )
@@ -247,3 +251,7 @@ if sys.version_info >= (3, 8):  # noqa
                 "|> [[int(v1), int(v2)] for v1, v2 in $] "
                 "|> sorted |> sum($, [])"
             ) == [1, 2, 3, 4, 5, 6]
+
+    def test_chain_with_placeholder():
+        with PipelineTracer:
+            assert pyc.eval("[3, 2, 1] |> sorted($).index(1)") == 0

@@ -28,10 +28,12 @@ with PipelineTracer:
 import ast
 import builtins
 import itertools
+from contextlib import contextmanager
 from types import FrameType
-from typing import Any, Dict, Optional, Set, Union, cast
+from typing import Any, Callable, Dict, Generator, Optional, Set, Union, cast
 
 import pyccolo as pyc
+from pyccolo.examples.optional_chaining import OptionalChainer
 from pyccolo.stmt_mapper import StatementMapper
 
 
@@ -109,24 +111,41 @@ class SingletonArgCounterMixin:
 class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
     def __init__(self):
         self.mutate = False
+        self.allow_top_level = False
+
+    @contextmanager
+    def disallow_top_level(self) -> Generator[None, None, None]:
+        old_allow_top_level = self.allow_top_level
+        try:
+            self.allow_top_level = False
+            yield
+        finally:
+            self.allow_top_level = old_allow_top_level
 
     def visit_Call(self, node: ast.Call) -> None:
-        # defer visiting nested calls
         self.visit(node.func)
+        if not self.allow_top_level:
+            # defer visiting nested calls
+            return
+        with self.disallow_top_level():
+            for arg in node.args:
+                self.visit(arg)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
-        if isinstance(node.value, ast.Name) and node.value.id == "f":
+        if not self.allow_top_level and isinstance(node.value, ast.Name) and node.value.id == "f":
             # defer visiting nested quick lambdas
             return
-        self.generic_visit(node)
+        with self.disallow_top_level():
+            self.generic_visit(node)
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
-        if isinstance(node.op, ast.BitOr) and PipelineTracer.get_augmentations(
+        if not self.allow_top_level and isinstance(node.op, ast.BitOr) and PipelineTracer.get_augmentations(
             id(node)
         ):
             # defer visiting nested pipeline ops
             return
-        self.generic_visit(node)
+        with self.disallow_top_level():
+            self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
         if node.id != "_":
@@ -148,10 +167,8 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
     def search(self, node: ast.expr, allow_top_level: bool) -> bool:
         orig_ctr = self.arg_ctr
         try:
-            if allow_top_level:
-                self.generic_visit(node)
-            else:
-                self.visit(node)
+            self.allow_top_level = allow_top_level
+            self.visit(node)
             found = self.arg_ctr > orig_ctr
         finally:
             self.arg_ctr = orig_ctr
@@ -161,10 +178,8 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
         old_mutate = self.mutate
         try:
             self.mutate = True
-            if allow_top_level:
-                self.generic_visit(node)
-            else:
-                self.visit(node)
+            self.allow_top_level = allow_top_level
+            self.visit(node)
         finally:
             self.mutate = old_mutate
 
@@ -252,21 +267,22 @@ class PipelineTracer(pyc.BaseTracer):
         super().__init__(*args, **kwargs)
         self.binop_arg_nodes_to_skip: Set[int] = set()
         self.binop_nodes_to_eval: Set[int] = set()
-        self.lexical_call_stack: pyc.TraceStack = self.make_stack()
-        with self.lexical_call_stack.register_stack_state():
-            # TODO: pop this the right number of times if an exception occurs
-            self.cur_call_is_placeholder_lambda: bool = False
+        self.lexical_chain_stack: pyc.TraceStack = self.make_stack()
+        with self.lexical_chain_stack.register_stack_state():
+            self.cur_chain_placeholder_lambda: Optional[Callable[..., Any]] = None
 
-    @pyc.register_handler(pyc.before_call, reentrant=True)
-    def handle_placeholder_rewrites(
-        self, _ret, node: ast.Call, frame: FrameType, *_, **__
+    @pyc.register_handler(pyc.before_load_complex_symbol, reentrant=True)
+    def handle_chain_placeholder_rewrites(
+        self, ret, node: ast.expr, frame: FrameType, *_, **__
     ):
-        if not self.placeholder_replacer.search(node, allow_top_level=True):
-            return
-        with self.lexical_call_stack.push():
-            self.cur_call_is_placeholder_lambda = True
+        with self.lexical_chain_stack.push():
+            self.cur_chain_placeholder_lambda = None
+        if not self.placeholder_replacer.search(
+            node, allow_top_level=isinstance(node, ast.Call)
+        ):
+            return ret
         lambda_body = StatementMapper.augmentation_propagating_copy(node)
-        assert isinstance(lambda_body, ast.Call)
+        assert isinstance(lambda_body, ast.expr)
         orig_ctr = self.placeholder_replacer.arg_ctr
         self.placeholder_replacer.rewrite(lambda_body, allow_top_level=True)
         ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(
@@ -274,19 +290,24 @@ class PipelineTracer(pyc.BaseTracer):
         )
         ast_lambda.body = lambda_body
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
-        return lambda *_, **__: evaluated_lambda
+        self.cur_chain_placeholder_lambda = evaluated_lambda
+        return lambda: OptionalChainer.resolves_to_none_eventually
 
     @pyc.register_raw_handler(pyc.before_argument)
     def handle_before_arg(self, ret: object, *_, **__):
-        if self.cur_call_is_placeholder_lambda:
+        if self.cur_chain_placeholder_lambda:
             return lambda: None
         else:
             return ret
 
-    @pyc.register_raw_handler(pyc.after_argument)
-    def handle_after_arg(self, *_, is_last: bool, **__):
-        if is_last and self.cur_call_is_placeholder_lambda:
-            self.lexical_call_stack.pop()
+    @pyc.register_raw_handler(pyc.after_load_complex_symbol)
+    def handle_after_placeholder_chain(self, ret, *_, **__):
+        override_ret = self.cur_chain_placeholder_lambda
+        self.lexical_chain_stack.pop()
+        if override_ret is None:
+            return ret
+        else:
+            return override_ret
 
     @pyc.register_raw_handler((pyc.before_left_binop_arg, pyc.before_right_binop_arg))
     def maybe_skip_binop_arg(self, ret: object, node_id: int, *_, **__):
