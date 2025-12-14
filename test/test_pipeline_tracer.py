@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import sys
+import textwrap
 
 import pyccolo as pyc
 from pyccolo.examples import OptionalChainer, PipelineTracer, QuickLambdaTracer
@@ -193,3 +194,47 @@ if sys.version_info >= (3, 8):  # noqa
             PipelineTracer.compose_op_spec,
             PipelineTracer.arg_placeholder_spec,
         ]
+
+    def test_multiline_pipeline():
+        with PipelineTracer:
+            pyc.exec(
+                textwrap.dedent(
+                    """
+                    add1 = (
+                        $
+                        |> $ + 1
+                    )
+                    assert 1 |> add1 == 2
+                    """.strip(
+                        "\n"
+                    )
+                )
+            )
+
+    def test_multistep_multiline_pipeline():
+        with PipelineTracer:
+            pyc.exec(
+                textwrap.dedent(
+                    """
+                    add_stuff = $ |> $ + 1 |> $ + 2 |> $ + 3
+                    assert 1 |> add_stuff == 7
+                    """.strip(
+                        "\n"
+                    )
+                )
+            )
+            pyc.exec(
+                textwrap.dedent(
+                    """
+                    add_stuff = (
+                        $
+                        |> $ + 1
+                        |> $ + 2
+                        |> $ + 3
+                    )
+                    assert 1 |> add_stuff == 7
+                    """.strip(
+                        "\n"
+                    )
+                )
+            )

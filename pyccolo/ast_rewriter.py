@@ -100,49 +100,52 @@ class AstRewriter(ast.NodeTransformer):
         return self._path is None or tracer._should_instrument_file_impl(self._path)
 
     @staticmethod
-    def _get_prefix_col_offset_for(node: ast.AST) -> Optional[int]:
+    def _get_prefix_position_for(node: ast.AST) -> Tuple[Optional[int], Optional[int]]:
         if isinstance(node, ast.Name):
-            return node.col_offset
+            return node.lineno, node.col_offset
         elif isinstance(node, ast.Attribute):
-            return getattr(node.value, "end_col_offset", -2) + 1
+            return node.lineno, getattr(node.value, "end_col_offset", -2) + 1
         elif isinstance(node, ast.FunctionDef):
             # TODO: can be different if more spaces between 'def' and function name
-            return node.col_offset + 4
+            return node.lineno, node.col_offset + 4
         elif isinstance(node, ast.ClassDef):
             # TODO: can be different if more spaces between 'class' and class name
-            return node.col_offset + 6
+            return node.lineno, node.col_offset + 6
         elif isinstance(node, ast.AsyncFunctionDef):
             # TODO: can be different if more spaces between 'async', 'def', and function name
-            return node.col_offset + 10
+            return node.lineno, node.col_offset + 10
         elif isinstance(node, (ast.Import, ast.ImportFrom)) and len(node.names) == 1:
             # "import " vs "from <base_module> import "
             base_offset = (
                 7 if isinstance(node, ast.Import) else 13 + len(node.module or "")
             )
             name = node.names[0]
-            return (
+            return node.lineno, (
                 node.col_offset
                 + base_offset
                 + (0 if name.asname is None else len(name.name) + 1)
             )
         else:
-            return None
+            return None, None
 
     @staticmethod
-    def _get_suffix_col_offset_for(node: ast.AST) -> Optional[int]:
+    def _get_suffix_position_for(node: ast.AST) -> Tuple[Optional[int], Optional[int]]:
         if isinstance(node, ast.Name):
-            return node.col_offset + len(node.id)
+            return node.lineno, node.col_offset + len(node.id)
         elif isinstance(node, ast.Attribute):
-            return getattr(node.value, "end_col_offset", -1) + len(node.attr) + 1
+            return (
+                node.lineno,
+                getattr(node.value, "end_col_offset", -1) + len(node.attr) + 1,
+            )
         elif isinstance(node, ast.FunctionDef):
             # TODO: can be different if more spaces between 'def' and function name
-            return node.col_offset + 4 + len(node.name)
+            return node.lineno, node.col_offset + 4 + len(node.name)
         elif isinstance(node, ast.ClassDef):
             # TODO: can be different if more spaces between 'class' and class name
-            return node.col_offset + 6 + len(node.name)
+            return node.lineno, node.col_offset + 6 + len(node.name)
         elif isinstance(node, ast.AsyncFunctionDef):
             # TODO: can be different if more spaces between 'async', 'def', and function name
-            return node.col_offset + 10 + len(node.name)
+            return node.lineno, node.col_offset + 10 + len(node.name)
         elif isinstance(node, (ast.Import, ast.ImportFrom)) and len(node.names) == 1:
             name = node.names[0]
             # "import " vs "from <base_module> import "
@@ -154,65 +157,78 @@ class AstRewriter(ast.NodeTransformer):
                 col_offset += len(name.name)
             else:
                 col_offset += len(name.name) + 1 + len(name.asname)
-            return col_offset
+            return node.lineno, col_offset
         else:
-            return None
+            return None, None
 
     @staticmethod
-    def _get_dot_suffix_col_offset_for(node: ast.AST) -> Optional[int]:
+    def _get_dot_suffix_position_for(
+        node: ast.AST,
+    ) -> Tuple[Optional[int], Optional[int]]:
         if isinstance(node, ast.Name):
-            return getattr(node, "end_col_offset", -1)
+            return getattr(node, "end_lineno", None), getattr(
+                node, "end_col_offset", None
+            )
         elif isinstance(node, ast.Attribute):
-            return getattr(node.value, "end_col_offset", -1)
+            return getattr(node.value, "end_lineno", None), getattr(
+                node.value, "end_col_offset", None
+            )
         else:
-            return None
+            return None, None
 
     @staticmethod
-    def _get_dot_prefix_col_offset_for(node: ast.AST) -> Optional[int]:
+    def _get_dot_prefix_position_for(
+        node: ast.AST,
+    ) -> Tuple[Optional[int], Optional[int]]:
         if isinstance(node, ast.Name):
-            return node.col_offset
+            return node.lineno, node.col_offset
         elif isinstance(node, ast.Attribute):
-            return node.value.col_offset
+            return node.value.lineno, node.value.col_offset
         else:
-            return None
+            return None, None
 
     @staticmethod
-    def _get_binop_col_offset_for(node: ast.AST) -> Optional[int]:
+    def _get_binop_position_for(node: ast.AST) -> Tuple[Optional[int], Optional[int]]:
         if isinstance(node, ast.BinOp):
+            left_end_lineno = getattr(node.left, "end_lineno", None)
             left_end_col_offset = getattr(node.left, "end_col_offset", None)
             if left_end_col_offset is None:
-                return None
+                return None, None
             else:
-                return node.left.col_offset - node.col_offset + left_end_col_offset + 1
+                return (
+                    left_end_lineno,
+                    node.left.col_offset - node.col_offset + left_end_col_offset,
+                )
         else:
-            return None
+            return None, None
 
-    def _get_boolop_col_offset_for(self, node: ast.AST) -> Optional[int]:
+    def _get_boolop_position_for(
+        self, node: ast.AST
+    ) -> Tuple[Optional[int], Optional[int]]:
         if not hasattr(node, "col_offset"):
-            return None
+            return None, None
         parent = self._tracers[-1].containing_ast_by_id.get(id(node))
         if not isinstance(parent, ast.BoolOp):
-            return None
+            return None, None
+        end_lineno = getattr(node, "end_lineno", None)
         end_col_offset = getattr(node, "end_col_offset", None)
-        if end_col_offset is None:
-            return None
-        return end_col_offset + 1
+        return end_lineno, end_col_offset
 
-    def _get_col_offset_for(
+    def _get_position_for(
         self, aug_type: AugmentationType, node: ast.AST
-    ) -> Optional[int]:
+    ) -> Tuple[Optional[int], Optional[int]]:
         if aug_type == AugmentationType.prefix:
-            return self._get_prefix_col_offset_for(node)
+            return self._get_prefix_position_for(node)
         elif aug_type == AugmentationType.suffix:
-            return self._get_suffix_col_offset_for(node)
+            return self._get_suffix_position_for(node)
         elif aug_type == AugmentationType.dot_suffix:
-            return self._get_dot_suffix_col_offset_for(node)
+            return self._get_dot_suffix_position_for(node)
         elif aug_type == AugmentationType.dot_prefix:
-            return self._get_dot_prefix_col_offset_for(node)
+            return self._get_dot_prefix_position_for(node)
         elif aug_type == AugmentationType.binop:
-            return self._get_binop_col_offset_for(node)
+            return self._get_binop_position_for(node)
         elif aug_type == AugmentationType.boolop:
-            return self._get_boolop_col_offset_for(node)
+            return self._get_boolop_position_for(node)
         else:
             raise NotImplementedError()
 
@@ -222,8 +238,10 @@ class AstRewriter(ast.NodeTransformer):
         nc: ast.AST,
     ) -> None:
         for spec, mod_positions in augmented_positions_by_spec.items():
-            col_offset = self._get_col_offset_for(spec.aug_type, nc)
-            if col_offset is None or (nc.lineno, col_offset) not in mod_positions:  # type: ignore[attr-defined]
+            lineno, col_offset = self._get_position_for(spec.aug_type, nc)
+            if lineno is None or col_offset is None:
+                continue
+            if (lineno, col_offset) not in mod_positions:  # type: ignore[attr-defined]
                 continue
             for tracer in self._tracers:
                 if spec in tracer.syntax_augmentation_specs():

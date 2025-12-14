@@ -68,12 +68,12 @@ def replace_tokens_and_get_augmented_positions(
     transformed = StringIO()
     match = StringIO()
     cur_match_start = (-1, -1)
-    num_preceding_spaces = 0
     col_offset = 0
+    token_before_match_start = None
+    token_before_match_start_col_offset = None
 
     def _flush_match(force: bool = False) -> None:
         nonlocal cur_match_start
-        nonlocal num_preceding_spaces
         num_to_increment = 0
         while True:
             # TODO: this is super inefficient
@@ -91,31 +91,41 @@ def replace_tokens_and_get_augmented_positions(
 
     def _write_match(tok: Union[str, tokenize.TokenInfo]) -> None:
         nonlocal cur_match_start
-        nonlocal num_preceding_spaces
         nonlocal col_offset
+        nonlocal token_before_match_start
+        nonlocal token_before_match_start_col_offset
         if isinstance(tok, tokenize.TokenInfo):
             if match.getvalue() == "":
                 cur_match_start = tok.start
+                token_before_match_start = prev_non_whitespace_token
+                token_before_match_start_col_offset = (
+                    prev_non_whitespace_token_col_offset
+                )
             to_write = tok.string
         else:
             to_write = tok
         match.write(to_write)
         _flush_match()
-        if to_write == " ":
-            num_preceding_spaces += 1
-        elif match.getvalue() == "":
-            num_preceding_spaces = 0
         if spec.token != match.getvalue():
             return
-        match_pos_col_offset = cur_match_start[1] + col_offset
         if spec.aug_type in (AugmentationType.binop, AugmentationType.boolop):
-            # for binop / boolop, we use left operand's end_col_offset + 1 to locate the position of the op
-            # can be off if there is more than one space between left operand and op
-            match_pos_col_offset += len(spec.token) - len(spec.token.strip())
-            match_pos_col_offset -= num_preceding_spaces - 1
+            # for binop / boolop, we use left operand's end_col_offset to locate the position of the op
+            if (
+                token_before_match_start is not None
+                and token_before_match_start_col_offset is not None
+            ):
+                positions.append(
+                    (
+                        token_before_match_start.end[0],
+                        token_before_match_start.end[1]
+                        + token_before_match_start_col_offset,
+                    )
+                )
         else:
+            match_pos_col_offset = cur_match_start[1] + col_offset
+            match_pos_col_offset += len(spec.token) - len(spec.token.strip())
             match_pos_col_offset += len(spec.token) - len(spec.token.lstrip())
-        positions.append((cur_match_start[0], match_pos_col_offset))
+            positions.append((cur_match_start[0], match_pos_col_offset))
         col_offset += len(spec.replacement) - len(spec.token)
         transformed.write(spec.replacement)
         cur_match_start = (
@@ -124,10 +134,11 @@ def replace_tokens_and_get_augmented_positions(
         )
         match.seek(0)
         match.truncate()
-        num_preceding_spaces = 0
 
     positions: List[Tuple[int, int]] = []
     prev = None
+    prev_non_whitespace_token = None
+    prev_non_whitespace_token_col_offset = None
     for cur in tokens:
         if prev is not None and prev.end[0] == cur.start[0]:
             if match.getvalue() == "":
@@ -138,11 +149,13 @@ def replace_tokens_and_get_augmented_positions(
             col_offset = 0
             _flush_match(force=True)
             cur_match_start = (cur.start[0], 0)
-            num_preceding_spaces = cur.start[1]
             for _ in range(cur.start[1]):
                 _write_match(" ")
         _write_match(cur)
         prev = cur
+        if cur.string.strip() != "":
+            prev_non_whitespace_token = cur
+            prev_non_whitespace_token_col_offset = col_offset
 
     _flush_match(force=True)
     return transformed.getvalue(), positions
