@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, TypeVar
 
 from pyccolo import fast
 from pyccolo.emit_event import _TRACER_STACK
@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
 
 
+_T = TypeVar("_T", bound=ast.AST)
+
+
 class StatementMapper(ast.NodeVisitor):
     def __init__(self, tracers: Optional[List["BaseTracer"]] = None):
         self._tracers: List["BaseTracer"] = (
@@ -22,8 +25,8 @@ class StatementMapper(ast.NodeVisitor):
         self.traversal: List[ast.AST] = []
 
     @classmethod
-    def augmentation_propagating_copy(cls, node: ast.AST) -> ast.AST:
-        return cls()(node)[id(node)]
+    def augmentation_propagating_copy(cls, node: _T) -> _T:
+        return cls()(node)[id(node)]  # type: ignore[return-value]
 
     def _handle_augmentations(self, no: ast.AST, nc: ast.AST) -> None:
         for tracer in self._tracers:

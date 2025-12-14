@@ -14,7 +14,7 @@ with Quasiquoter:
 """
 import ast
 import copy
-from typing import Callable
+from typing import Callable, Tuple, Union
 
 import pyccolo as pyc
 
@@ -34,11 +34,15 @@ class _QuasiquoteTransformer(ast.NodeTransformer):
             return node
 
 
-def is_macro(name: str) -> Callable[[ast.AST], bool]:
+def is_macro(name_or_names: Union[str, Tuple[str, ...]]) -> Callable[[ast.AST], bool]:
+    if isinstance(name_or_names, tuple):
+        names = name_or_names
+    else:
+        names = (name_or_names,)
     return (
         lambda node: isinstance(node, ast.Subscript)
         and isinstance(node.value, ast.Name)
-        and node.value.id == name
+        and node.value.id in names
     )
 
 
@@ -56,6 +60,7 @@ class Quasiquoter(pyc.BaseTracer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.macros = {"q", "u", "name", "ast_literal", "ast_list"}
+        self._extra_builtins = set()
 
     def enter_tracing_hook(self) -> None:
         import builtins
@@ -63,14 +68,16 @@ class Quasiquoter(pyc.BaseTracer):
         # need to create dummy reference to avoid NameError
         for macro in self.macros:
             if not hasattr(builtins, macro):
+                self._extra_builtins.add(macro)
                 setattr(builtins, macro, None)
 
     def exit_tracing_hook(self) -> None:
         import builtins
 
-        for macro in self.macros:
+        for macro in self._extra_builtins:
             if hasattr(builtins, macro):
                 delattr(builtins, macro)
+        self._extra_builtins.clear()
 
     @pyc.before_subscript_slice(when=is_macro("q"), reentrant=True)
     def quote_handler(self, _ret, node, frame, *_, **__):
@@ -101,7 +108,7 @@ class Quasiquoter(pyc.BaseTracer):
         return ast.List(elts=list(ret))
 
     def is_any_macro(self, node):
-        return any(is_macro(m)(node) for m in self.macros)
+        return is_macro(tuple(self.macros))(node)
 
     @pyc.before_subscript_load(when=is_any_macro, reentrant=True)
     def load_macro_result(self, _ret, *_, **__):

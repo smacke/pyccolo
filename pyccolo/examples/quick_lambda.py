@@ -11,8 +11,11 @@ with QuickLambdaTracer:
 ```
 """
 import ast
+from types import FrameType
+from typing import cast
 
 import pyccolo as pyc
+from pyccolo import fast
 from pyccolo.examples.pipeline_tracer import PipelineTracer, SingletonArgCounterMixin
 from pyccolo.examples.quasiquote import Quasiquoter, is_macro
 from pyccolo.stmt_mapper import StatementMapper
@@ -39,14 +42,17 @@ class QuickLambdaTracer(Quasiquoter):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.macros.add("f")
+        self.macros.add("map")
         self._arg_replacer = _ArgReplacer()
 
     @pyc.before_subscript_slice(when=is_macro("f"), reentrant=True)
-    def handle_quick_lambda(self, _ret, node, frame, *_, **__):
+    def handle_quick_lambda(
+        self, _ret, node: ast.Subscript, frame: FrameType, *_, **__
+    ):
         orig_ctr = self._arg_replacer.arg_ctr
         orig_lambda_body = node.slice
-        if isinstance(node.slice, ast.Index):
-            orig_lambda_body = orig_lambda_body.value
+        if isinstance(orig_lambda_body, ast.Index):
+            orig_lambda_body = orig_lambda_body.value  # type: ignore[attr-defined]
         lambda_body = StatementMapper.augmentation_propagating_copy(orig_lambda_body)
         self._arg_replacer.visit(lambda_body)
         ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(
@@ -54,4 +60,23 @@ class QuickLambdaTracer(Quasiquoter):
         )
         ast_lambda.body = lambda_body
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
+        return lambda: evaluated_lambda
+
+    @pyc.before_subscript_slice(when=is_macro("map"), reentrant=True)
+    def handle_quick_map(self, _ret, node: ast.Subscript, frame: FrameType, *_, **__):
+        orig_map_body = node.slice
+        if isinstance(orig_map_body, ast.Index):
+            orig_map_body = orig_map_body.value  # type: ignore[attr-defined]
+        map_body = StatementMapper.augmentation_propagating_copy(orig_map_body)
+        with fast.location_of(map_body):
+            arg = f"_{self._arg_replacer.arg_ctr}"
+            self._arg_replacer.arg_ctr += 1
+            map_lambda = cast(
+                ast.Lambda,
+                cast(
+                    ast.Expr, fast.parse(f"lambda {arg}: map(None, {arg})").body[0]
+                ).value,
+            )
+        cast(ast.Call, map_lambda.body).args[0] = map_body
+        evaluated_lambda = pyc.eval(map_lambda, frame.f_globals, frame.f_locals)
         return lambda: evaluated_lambda

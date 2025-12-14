@@ -132,15 +132,21 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
                 self.visit(arg)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
-        if not self.allow_top_level and isinstance(node.value, ast.Name) and node.value.id == "f":
+        if (
+            not self.allow_top_level
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "f"
+        ):
             # defer visiting nested quick lambdas
             return
         with self.disallow_top_level():
             self.generic_visit(node)
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
-        if not self.allow_top_level and isinstance(node.op, ast.BitOr) and PipelineTracer.get_augmentations(
-            id(node)
+        if (
+            not self.allow_top_level
+            and isinstance(node.op, ast.BitOr)
+            and PipelineTracer.get_augmentations(id(node))
         ):
             # defer visiting nested pipeline ops
             return
