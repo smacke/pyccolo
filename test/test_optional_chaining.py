@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import sys
+import textwrap
 
 import pyccolo as pyc
 from pyccolo.examples.optional_chaining import ScriptOptionalChainer as OptionalChainer
@@ -72,3 +73,22 @@ if sys.version_info >= (3, 8):  # noqa
             assert pyc.eval("None or 0 ?? None") == 0
             assert pyc.eval("None and 0 ?? None") is None
             assert pyc.eval("0 or None ?? False") is False
+
+    def test_multiline_nullish_coalescing():
+        with OptionalChainer:
+            assert (
+                pyc.eval(
+                    textwrap.dedent(
+                        """
+                    (
+                        ""
+                        ??
+                        None
+                    )
+                    """.strip(
+                            "\n"
+                        )
+                    )
+                )
+                == ""
+            )

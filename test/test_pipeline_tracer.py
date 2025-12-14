@@ -238,3 +238,12 @@ if sys.version_info >= (3, 8):  # noqa
                     )
                 )
             )
+
+    def test_comprehension_placeholder():
+        with PipelineTracer:
+            assert pyc.eval(
+                "'1-2,5-6,3-4'.strip().split(',') "
+                "|> [v.strip().split('-') for v in $] "
+                "|> [[int(v1), int(v2)] for v1, v2 in $] "
+                "|> sorted |> sum($, [])"
+            ) == [1, 2, 3, 4, 5, 6]

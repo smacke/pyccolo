@@ -29,7 +29,7 @@ import ast
 import builtins
 import itertools
 from types import FrameType
-from typing import Any, Dict, Optional, Set, cast
+from typing import Any, Dict, Optional, Set, Union, cast
 
 import pyccolo as pyc
 from pyccolo.stmt_mapper import StatementMapper
@@ -42,6 +42,26 @@ class ExtractNames(ast.NodeVisitor):
     def visit_Name(self, node: ast.Name) -> None:
         if node.id != "_":
             self.names.add(node.id)
+
+    def generic_visit_comprehension(
+        self, node: Union[ast.GeneratorExp, ast.DictComp, ast.ListComp, ast.SetComp]
+    ) -> None:
+        before_names = set(self.names)
+        self.generic_visit(node)
+        after_names = self.names
+        self.names = set()
+        for gen in node.generators:
+            self.visit(gen.target)
+        # need to clear names referenced as targets since these
+        # do not need to be passed externally to any lambdas
+        for name in self.names:
+            if name not in before_names:
+                after_names.discard(name)
+        self.names = after_names
+
+    visit_GeneratorExp = visit_DictComp = visit_ListComp = visit_SetComp = (
+        generic_visit_comprehension
+    )
 
     @classmethod
     def extract_names(cls, node: ast.expr) -> Set[str]:
