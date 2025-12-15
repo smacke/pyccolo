@@ -273,3 +273,13 @@ if sys.version_info >= (3, 8):  # noqa
                     3,
                     7,
                 ]
+
+    def test_quick_reduce():
+        with PipelineTracer:
+            with QuickLambdaTracer:
+                assert pyc.eval("reduce[$ + $]([1, 2, 3, 4])") == 10
+                assert pyc.eval("reduce[f[$ + $]]([1, 2, 3, 4])") == 10
+                assert pyc.eval("reduce[$ + $] <| [1, 2, 3, 4]") == 10
+                assert pyc.eval("reduce[f[$ + $]] <| [1, 2, 3, 4]") == 10
+                assert pyc.eval("reduce[$ + $ |> $] <| [1, 2, 3, 4]") == 10
+                assert pyc.eval("reduce[$ + $ |> 2*$] <| [1, 2, 3, 4]") == 44

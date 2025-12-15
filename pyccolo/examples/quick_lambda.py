@@ -11,6 +11,8 @@ with QuickLambdaTracer:
 ```
 """
 import ast
+import builtins
+from functools import reduce
 from types import FrameType
 from typing import cast
 
@@ -50,13 +52,14 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
 
 
 class QuickLambdaTracer(Quasiquoter):
-    lambda_macros = ("f", "map")  # , "reduce")
+    lambda_macros = ("f", "map", "reduce")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for macro in self.lambda_macros:
             self.macros.add(macro)
         self._arg_replacer = _ArgReplacer()
+        builtins.reduce = reduce
 
     @pyc.before_subscript_slice(when=is_macro(lambda_macros), reentrant=True)
     def handle_quick_lambda(
