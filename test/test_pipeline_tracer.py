@@ -109,7 +109,8 @@ if sys.version_info >= (3, 8):  # noqa
     def test_pipeline_inside_quick_lambda():
         with PipelineTracer:
             with QuickLambdaTracer:
-                assert pyc.eval("2 |> f[_ |> f[_ + 2]]") == 4
+                assert pyc.eval("2 |> f[$ |> $ + 2]") == 4
+                assert pyc.eval("2 |> f[$ |> f[_ + 2]]") == 4
 
     def test_pipeline_dot_op_with_optional_chain():
         with PipelineTracer:

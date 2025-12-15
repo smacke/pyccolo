@@ -73,6 +73,16 @@ class FastAst:
             ast.copy_location(ret, cls._LOCATION_OF_NODE)
         return ret
 
+    @staticmethod
+    def iter_arguments(args: ast.arguments) -> Generator[ast.arg, None, None]:
+        yield from getattr(args, "posonlyargs", [])
+        yield from args.args
+        if args.vararg is not None:
+            yield args.vararg
+        yield from getattr(args, "kwonlyargs", [])
+        if args.kwarg is not None:
+            yield args.kwarg
+
 
 def _make_func(new_name, old_name=None):
     def ctor(*args, **kwargs):

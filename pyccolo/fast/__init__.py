@@ -22,6 +22,7 @@ location_of = FastAst.location_of
 location_of_arg = FastAst.location_of_arg
 kw = FastAst.kw
 kwargs = FastAst.kwargs
+iter_arguments = FastAst.iter_arguments
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
     for name in dir(FastAst):
@@ -41,6 +42,7 @@ __all__ = [
     "location_of_arg",
     "kw",
     "kwargs",
+    "iter_arguments",
 ]
 
 

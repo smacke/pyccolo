@@ -32,17 +32,25 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
         self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
-        if node.id == "_":
-            # quick lambda will interpret this node as placeholder without any aug spec necessary
-            PipelineTracer.augmented_node_ids_by_spec[
-                PipelineTracer.arg_placeholder_spec
-            ].discard(id(node))
-            node.id = f"_{self.arg_ctr}"
-            self.arg_ctr += 1
+        if node.id != "_":
+            return
+        # quick lambda will interpret this node as placeholder without any aug spec necessary
+        PipelineTracer.augmented_node_ids_by_spec[
+            PipelineTracer.arg_placeholder_spec
+        ].discard(id(node))
+        node.id = f"_{self.arg_ctr}"
+        self.arg_ctr += 1
+
+    def visit_BinOp(self, node: ast.BinOp) -> None:
+        if isinstance(node.op, ast.BitOr) and PipelineTracer.get_augmentations(
+            id(node)
+        ):
+            return
+        self.generic_visit(node)
 
 
 class QuickLambdaTracer(Quasiquoter):
-    lambda_macros = ("f", "map")
+    lambda_macros = ("f", "map")  # , "reduce")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -50,7 +58,7 @@ class QuickLambdaTracer(Quasiquoter):
             self.macros.add(macro)
         self._arg_replacer = _ArgReplacer()
 
-    @pyc.before_subscript_slice(when=is_macro(("f", "map")), reentrant=True)
+    @pyc.before_subscript_slice(when=is_macro(lambda_macros), reentrant=True)
     def handle_quick_lambda(
         self, _ret, node: ast.Subscript, frame: FrameType, *_, **__
     ):
@@ -67,14 +75,16 @@ class QuickLambdaTracer(Quasiquoter):
                 orig_ctr, lambda_body, frame.f_globals
             )
             ast_lambda.body = lambda_body
-        if cast(ast.Name, node.value).id == "map":
+        func = cast(ast.Name, node.value).id
+        if func in ("map", "reduce"):
             with fast.location_of(ast_lambda):
                 arg = f"_{self._arg_replacer.arg_ctr}"
                 self._arg_replacer.arg_ctr += 1
                 map_lambda = cast(
                     ast.Lambda,
                     cast(
-                        ast.Expr, fast.parse(f"lambda {arg}: map(None, {arg})").body[0]
+                        ast.Expr,
+                        fast.parse(f"lambda {arg}: {func}(None, {arg})").body[0],
                     ).value,
                 )
             cast(ast.Call, map_lambda.body).args[0] = ast_lambda

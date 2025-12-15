@@ -33,6 +33,7 @@ from types import FrameType
 from typing import Any, Callable, Dict, Generator, Optional, Set, Union, cast
 
 import pyccolo as pyc
+import pyccolo.fast as fast
 from pyccolo.examples.optional_chaining import OptionalChainer
 from pyccolo.stmt_mapper import StatementMapper
 
@@ -40,6 +41,13 @@ from pyccolo.stmt_mapper import StatementMapper
 class ExtractNames(ast.NodeVisitor):
     def __init__(self) -> None:
         self.names: Set[str] = set()
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        before_names = set(self.names)
+        self.generic_visit(node.body)
+        for arg in fast.iter_arguments(node.args):
+            if arg.arg not in before_names:
+                self.names.discard(arg.arg)
 
     def visit_Name(self, node: ast.Name) -> None:
         if node.id != "_":
@@ -123,14 +131,7 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             self.allow_top_level = old_allow_top_level
 
     def visit_Call(self, node: ast.Call) -> None:
-        from pyccolo.examples.quick_lambda import QuickLambdaTracer
-
-        if (
-            not isinstance(node.func, ast.Subscript)
-            or not isinstance(node.func.value, ast.Name)
-            or node.func.value.id not in QuickLambdaTracer.lambda_macros
-        ):
-            self.visit(node.func)
+        self.visit(node.func)
         if not self.allow_top_level:
             # defer visiting nested calls
             return
@@ -142,14 +143,12 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
         from pyccolo.examples.quick_lambda import QuickLambdaTracer
 
         if (
-            not self.allow_top_level
-            and isinstance(node.value, ast.Name)
+            isinstance(node.value, ast.Name)
             and node.value.id in QuickLambdaTracer.lambda_macros
         ):
             # defer visiting nested quick lambdas
             return
-        with self.disallow_top_level():
-            self.generic_visit(node)
+        self.generic_visit(node)
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         if (
@@ -292,9 +291,7 @@ class PipelineTracer(pyc.BaseTracer):
     ):
         with self.lexical_chain_stack.push():
             self.cur_chain_placeholder_lambda = None
-        if not self.placeholder_replacer.search(
-            node, allow_top_level=isinstance(node, ast.Call)
-        ):
+        if not self.placeholder_replacer.search(node, allow_top_level=True):
             return ret
         lambda_body = StatementMapper.augmentation_propagating_copy(node)
         assert isinstance(lambda_body, ast.expr)
@@ -336,10 +333,11 @@ class PipelineTracer(pyc.BaseTracer):
         self,
         node: ast.expr,
         frame_globals: Dict[str, Any],
+        allow_top_level: bool,
         full_node: Optional[ast.expr] = None,
     ) -> ast.Lambda:
         orig_ctr = self.placeholder_replacer.arg_ctr
-        self.placeholder_replacer.rewrite(node, allow_top_level=False)
+        self.placeholder_replacer.rewrite(node, allow_top_level=allow_top_level)
         return SingletonArgCounterMixin.create_placeholder_lambda(
             orig_ctr, full_node or node, frame_globals
         )
@@ -354,12 +352,17 @@ class PipelineTracer(pyc.BaseTracer):
     ):
         if not self.get_augmentations(id(self.containing_ast_by_id.get(id(node)))):
             return ret
-        if not self.placeholder_replacer.search(node, allow_top_level=False):
+        allow_top_level = not isinstance(node, ast.BinOp) or not self.get_augmentations(
+            id(node)
+        )
+        if not self.placeholder_replacer.search(node, allow_top_level=allow_top_level):
             return ret
         transformed = cast(
             ast.expr, StatementMapper.augmentation_propagating_copy(node)
         )
-        ast_lambda = self.transform_pipeline_placeholders(transformed, frame.f_globals)
+        ast_lambda = self.transform_pipeline_placeholders(
+            transformed, frame.f_globals, allow_top_level=allow_top_level
+        )
         ast_lambda.body = transformed
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
         return lambda: evaluated_lambda
@@ -416,7 +419,7 @@ class PipelineTracer(pyc.BaseTracer):
         for _i in range(num_left_traversals_to_lhs_placeholder_node):
             left_arg = left_arg.left  # type: ignore[assignment]
         ast_lambda = self.transform_pipeline_placeholders(
-            left_arg, frame.f_globals, full_node=transformed
+            left_arg, frame.f_globals, allow_top_level=False, full_node=transformed
         )
         ast_lambda.body = transformed
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
