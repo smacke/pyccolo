@@ -138,6 +138,8 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
         with self.disallow_top_level():
             for arg in node.args:
                 self.visit(arg)
+            for kw in node.keywords:
+                self.visit(kw.value)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         from pyccolo.examples.quick_lambda import QuickLambdaTracer

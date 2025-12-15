@@ -159,6 +159,12 @@ if sys.version_info >= (3, 8):  # noqa
             pyc.exec("def add(x, y): return x + y; assert 1 |> add($, y=42) == 43")
             pyc.exec("42 |> print($, end=' ')")
 
+    def test_keyword_placeholder():
+        with PipelineTracer:
+            pyc.exec(
+                "func = sorted([1, 3, 2], reverse=$); assert func(False) == [1, 2, 3]; assert func(True) == [3, 2, 1]"
+            )
+
     def test_dict_operators():
         with PipelineTracer:
             assert pyc.eval("{'a': 1, 'b': 2} **|> dict") == {"a": 1, "b": 2}
