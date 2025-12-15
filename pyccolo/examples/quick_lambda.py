@@ -55,7 +55,7 @@ class QuickLambdaTracer(Quasiquoter):
         self, _ret, node: ast.Subscript, frame: FrameType, *_, **__
     ):
         orig_ctr = self._arg_replacer.arg_ctr
-        orig_lambda_body = node.slice
+        orig_lambda_body: ast.expr = node.slice
         if isinstance(orig_lambda_body, ast.Index):
             orig_lambda_body = orig_lambda_body.value  # type: ignore[attr-defined]
         lambda_body = StatementMapper.augmentation_propagating_copy(orig_lambda_body)
