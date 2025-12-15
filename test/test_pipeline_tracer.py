@@ -255,3 +255,12 @@ if sys.version_info >= (3, 8):  # noqa
     def test_chain_with_placeholder():
         with PipelineTracer:
             assert pyc.eval("[3, 2, 1] |> sorted($).index(1)") == 0
+
+    def test_quick_maps():
+        with PipelineTracer:
+            with QuickLambdaTracer:
+                assert pyc.eval("['1', '2', '3'] |> map[int] |> list") == [1, 2, 3]
+                assert pyc.eval("['1', '2', '3'] |> map[int($)] |> list") == [1, 2, 3]
+                assert pyc.eval(
+                    "['1', '2', '3'] |> map[int] |> map[$ % 2==0] |> list"
+                ) == [False, True, False]

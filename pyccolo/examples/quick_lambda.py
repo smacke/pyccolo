@@ -23,7 +23,10 @@ from pyccolo.stmt_mapper import StatementMapper
 
 class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
     def visit_Subscript(self, node: ast.Subscript) -> None:
-        if isinstance(node.value, ast.Name) and node.value.id == "f":
+        if (
+            isinstance(node.value, ast.Name)
+            and node.value.id in QuickLambdaTracer.lambda_macros
+        ):
             # defer visiting nested quick lambdas
             return
         self.generic_visit(node)
@@ -39,13 +42,15 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
 
 
 class QuickLambdaTracer(Quasiquoter):
+    lambda_macros = ("f", "map")
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.macros.add("f")
-        self.macros.add("map")
+        for macro in self.lambda_macros:
+            self.macros.add(macro)
         self._arg_replacer = _ArgReplacer()
 
-    @pyc.before_subscript_slice(when=is_macro("f"), reentrant=True)
+    @pyc.before_subscript_slice(when=is_macro(("f", "map")), reentrant=True)
     def handle_quick_lambda(
         self, _ret, node: ast.Subscript, frame: FrameType, *_, **__
     ):
@@ -55,28 +60,24 @@ class QuickLambdaTracer(Quasiquoter):
             orig_lambda_body = orig_lambda_body.value  # type: ignore[attr-defined]
         lambda_body = StatementMapper.augmentation_propagating_copy(orig_lambda_body)
         self._arg_replacer.visit(lambda_body)
-        ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(
-            orig_ctr, lambda_body, frame.f_globals
-        )
-        ast_lambda.body = lambda_body
-        evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
-        return lambda: evaluated_lambda
-
-    @pyc.before_subscript_slice(when=is_macro("map"), reentrant=True)
-    def handle_quick_map(self, _ret, node: ast.Subscript, frame: FrameType, *_, **__):
-        orig_map_body = node.slice
-        if isinstance(orig_map_body, ast.Index):
-            orig_map_body = orig_map_body.value  # type: ignore[attr-defined]
-        map_body = StatementMapper.augmentation_propagating_copy(orig_map_body)
-        with fast.location_of(map_body):
-            arg = f"_{self._arg_replacer.arg_ctr}"
-            self._arg_replacer.arg_ctr += 1
-            map_lambda = cast(
-                ast.Lambda,
-                cast(
-                    ast.Expr, fast.parse(f"lambda {arg}: map(None, {arg})").body[0]
-                ).value,
+        if self._arg_replacer.arg_ctr == orig_ctr:
+            ast_lambda = lambda_body
+        else:
+            ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(
+                orig_ctr, lambda_body, frame.f_globals
             )
-        cast(ast.Call, map_lambda.body).args[0] = map_body
-        evaluated_lambda = pyc.eval(map_lambda, frame.f_globals, frame.f_locals)
+            ast_lambda.body = lambda_body
+        if cast(ast.Name, node.value).id == "map":
+            with fast.location_of(ast_lambda):
+                arg = f"_{self._arg_replacer.arg_ctr}"
+                self._arg_replacer.arg_ctr += 1
+                map_lambda = cast(
+                    ast.Lambda,
+                    cast(
+                        ast.Expr, fast.parse(f"lambda {arg}: map(None, {arg})").body[0]
+                    ).value,
+                )
+            cast(ast.Call, map_lambda.body).args[0] = ast_lambda
+            ast_lambda = map_lambda
+        evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
         return lambda: evaluated_lambda

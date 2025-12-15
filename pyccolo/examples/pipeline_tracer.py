@@ -132,10 +132,12 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
                 self.visit(arg)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
+        from pyccolo.examples.quick_lambda import QuickLambdaTracer
+
         if (
             not self.allow_top_level
             and isinstance(node.value, ast.Name)
-            and node.value.id == "f"
+            and node.value.id in QuickLambdaTracer.lambda_macros
         ):
             # defer visiting nested quick lambdas
             return
