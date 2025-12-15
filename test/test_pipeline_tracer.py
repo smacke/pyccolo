@@ -264,3 +264,11 @@ if sys.version_info >= (3, 8):  # noqa
                 assert pyc.eval(
                     "['1', '2', '3'] |> map[int] |> map[$ % 2==0] |> list"
                 ) == [False, True, False]
+
+    def test_pipeline_map_with_quick_lambda_applied():
+        with PipelineTracer:
+            with QuickLambdaTracer:
+                assert pyc.eval("[[1, 2], [3, 4]] |> map[f[$ + $](*$)] |> list") == [
+                    3,
+                    7,
+                ]

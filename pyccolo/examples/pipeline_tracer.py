@@ -123,7 +123,14 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             self.allow_top_level = old_allow_top_level
 
     def visit_Call(self, node: ast.Call) -> None:
-        self.visit(node.func)
+        from pyccolo.examples.quick_lambda import QuickLambdaTracer
+
+        if (
+            not isinstance(node.func, ast.Subscript)
+            or not isinstance(node.func.value, ast.Name)
+            or node.func.value.id not in QuickLambdaTracer.lambda_macros
+        ):
+            self.visit(node.func)
         if not self.allow_top_level:
             # defer visiting nested calls
             return
