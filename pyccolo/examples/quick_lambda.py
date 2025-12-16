@@ -104,14 +104,14 @@ class QuickLambdaTracer(Quasiquoter):
             with fast.location_of(ast_lambda):
                 arg = f"_{self._arg_replacer.arg_ctr}"
                 self._arg_replacer.arg_ctr += 1
-                map_lambda = cast(
+                functor_lambda = cast(
                     ast.Lambda,
                     cast(
                         ast.Expr,
                         fast.parse(f"lambda {arg}: {func}(None, {arg})").body[0],
                     ).value,
                 )
-            cast(ast.Call, map_lambda.body).args[0] = ast_lambda
-            ast_lambda = map_lambda
+            cast(ast.Call, functor_lambda.body).args[0] = ast_lambda
+            ast_lambda = functor_lambda
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
         return lambda: evaluated_lambda
