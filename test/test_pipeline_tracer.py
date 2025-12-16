@@ -263,6 +263,10 @@ if sys.version_info >= (3, 8):  # noqa
         with PipelineTracer:
             assert pyc.eval("[3, 2, 1] |> sorted($).index(1)") == 0
 
+    def test_immediately_evaluated_placeholder():
+        with PipelineTracer:
+            assert pyc.eval("sorted($, reverse=True)([2, 1, 3])") == [3, 2, 1]
+
     def test_quick_maps():
         with PipelineTracer:
             with QuickLambdaTracer:

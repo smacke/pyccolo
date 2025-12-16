@@ -30,7 +30,7 @@ import builtins
 import itertools
 from contextlib import contextmanager
 from types import FrameType
-from typing import Any, Callable, Dict, Generator, Optional, Set, Union, cast
+from typing import Any, Callable, Dict, Generator, Optional, Sequence, Set, Union, cast
 
 import pyccolo as pyc
 import pyccolo.fast as fast
@@ -180,7 +180,14 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             ].discard(id(node))
         self.arg_ctr += 1
 
-    def search(self, node: ast.expr, allow_top_level: bool) -> bool:
+    def search(
+        self, node: Union[ast.AST, Sequence[ast.AST]], allow_top_level: bool
+    ) -> bool:
+        if isinstance(node, list):
+            return any(
+                self.search(inner, allow_top_level=allow_top_level) for inner in node
+            )
+        assert isinstance(node, ast.AST)
         orig_ctr = self.arg_ctr
         try:
             self.allow_top_level = allow_top_level
@@ -295,16 +302,35 @@ class PipelineTracer(pyc.BaseTracer):
             self.cur_chain_placeholder_lambda = None
         if not self.placeholder_replacer.search(node, allow_top_level=True):
             return ret
-        lambda_body = StatementMapper.augmentation_propagating_copy(node)
-        assert isinstance(lambda_body, ast.expr)
+        node_copy = StatementMapper.augmentation_propagating_copy(node)
+        assert isinstance(node_copy, ast.expr)
         orig_ctr = self.placeholder_replacer.arg_ctr
+        lambda_body_parent_call = None
+        lambda_body = node_copy
+        while (
+            isinstance(lambda_body, ast.Call)
+            and isinstance(lambda_body.func, ast.Call)
+            and not self.placeholder_replacer.search(
+                cast(Sequence[ast.AST], lambda_body.args + lambda_body.keywords),
+                allow_top_level=True,
+            )
+        ):
+            lambda_body_parent_call = lambda_body
+            lambda_body = lambda_body.func
         self.placeholder_replacer.rewrite(lambda_body, allow_top_level=True)
         ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(
             orig_ctr, lambda_body, frame.f_globals
         )
         ast_lambda.body = lambda_body
-        evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
-        self.cur_chain_placeholder_lambda = evaluated_lambda
+        if lambda_body_parent_call is None:
+            node_to_eval: ast.expr = ast_lambda
+        else:
+            lambda_body_parent_call.func = ast_lambda
+            node_to_eval = node_copy
+        evaluated_placeholder_chain = pyc.eval(
+            node_to_eval, frame.f_globals, frame.f_locals
+        )
+        self.cur_chain_placeholder_lambda = evaluated_placeholder_chain
         return lambda: OptionalChainer.resolves_to_none_eventually
 
     @pyc.register_raw_handler(pyc.before_argument)
