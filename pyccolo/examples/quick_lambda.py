@@ -14,7 +14,7 @@ import ast
 import builtins
 from functools import reduce
 from types import FrameType
-from typing import cast
+from typing import Set, cast
 
 import pyccolo as pyc
 from pyccolo import fast
@@ -24,6 +24,10 @@ from pyccolo.stmt_mapper import StatementMapper
 
 
 class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
+    def __init__(self) -> None:
+        super().__init__()
+        self.placeholder_names: Set[str] = set()
+
     def visit_Subscript(self, node: ast.Subscript) -> None:
         if (
             isinstance(node.value, ast.Name)
@@ -34,14 +38,26 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
         self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
-        if node.id != "_":
+        if (
+            node.id != "_"
+            and id(node)
+            not in PipelineTracer.augmented_node_ids_by_spec[
+                PipelineTracer.arg_placeholder_spec
+            ]
+        ):
             return
         # quick lambda will interpret this node as placeholder without any aug spec necessary
         PipelineTracer.augmented_node_ids_by_spec[
             PipelineTracer.arg_placeholder_spec
         ].discard(id(node))
-        node.id = f"_{self.arg_ctr}"
-        self.arg_ctr += 1
+        assert node.id.startswith("_")
+        if node.id == "_":
+            node.id = f"_{self.arg_ctr}"
+            self.arg_ctr += 1
+        else:
+            if node.id[1].isalpha():
+                node.id = node.id[1:]
+            self.placeholder_names.add(node.id)
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         if isinstance(node.op, ast.BitOr) and PipelineTracer.get_augmentations(
@@ -49,6 +65,11 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
         ):
             return
         self.generic_visit(node)
+
+    def get_placeholder_names(self, node: ast.AST) -> Set[str]:
+        self.placeholder_names.clear()
+        self.visit(node)
+        return self.placeholder_names
 
 
 class QuickLambdaTracer(Quasiquoter):
@@ -70,12 +91,12 @@ class QuickLambdaTracer(Quasiquoter):
         if isinstance(orig_lambda_body, ast.Index):
             orig_lambda_body = orig_lambda_body.value  # type: ignore[attr-defined]
         lambda_body = StatementMapper.augmentation_propagating_copy(orig_lambda_body)
-        self._arg_replacer.visit(lambda_body)
-        if self._arg_replacer.arg_ctr == orig_ctr:
+        placeholder_names = self._arg_replacer.get_placeholder_names(lambda_body)
+        if self._arg_replacer.arg_ctr == orig_ctr and len(placeholder_names) == 0:
             ast_lambda = lambda_body
         else:
             ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(
-                orig_ctr, lambda_body, frame.f_globals
+                placeholder_names, orig_ctr, lambda_body, frame.f_globals
             )
             ast_lambda.body = lambda_body
         func = cast(ast.Name, node.value).id

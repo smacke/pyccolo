@@ -50,7 +50,13 @@ class ExtractNames(ast.NodeVisitor):
                 self.names.discard(arg.arg)
 
     def visit_Name(self, node: ast.Name) -> None:
-        if node.id != "_":
+        if (
+            node.id != "_"
+            and id(node)
+            not in PipelineTracer.augmented_node_ids_by_spec[
+                PipelineTracer.arg_placeholder_spec
+            ]
+        ):
             self.names.add(node.id)
 
     def generic_visit_comprehension(
@@ -93,15 +99,20 @@ class SingletonArgCounterMixin:
 
     @classmethod
     def create_placeholder_lambda(
-        cls, orig_ctr: int, lambda_body: ast.expr, frame_globals: Dict[str, Any]
+        cls,
+        placeholder_names: Set[str],
+        orig_ctr: int,
+        lambda_body: ast.expr,
+        frame_globals: Dict[str, Any],
     ) -> ast.Lambda:
         num_lambda_args = cls._arg_ctr - orig_ctr
-        extra_defaults = ExtractNames.extract_names(lambda_body)
         lambda_args = []
+        extra_defaults = ExtractNames.extract_names(lambda_body) - placeholder_names
         for arg_idx in range(orig_ctr, orig_ctr + num_lambda_args):
             arg = f"_{arg_idx}"
             lambda_args.append(arg)
             extra_defaults.discard(arg)
+        lambda_args.extend(sorted(placeholder_names))
         extra_defaults = {
             arg
             for arg in extra_defaults
@@ -117,9 +128,10 @@ class SingletonArgCounterMixin:
 
 
 class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
-    def __init__(self):
+    def __init__(self) -> None:
         self.mutate = False
         self.allow_top_level = False
+        self.placeholder_names: Set[str] = set()
 
     @contextmanager
     def disallow_top_level(self) -> Generator[None, None, None]:
@@ -164,8 +176,6 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
-        if node.id != "_":
-            return
         if (
             id(node)
             not in PipelineTracer.augmented_node_ids_by_spec[
@@ -173,12 +183,21 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             ]
         ):
             return
-        if self.mutate:
-            node.id = f"_{self.arg_ctr}"
-            PipelineTracer.augmented_node_ids_by_spec[
-                PipelineTracer.arg_placeholder_spec
-            ].discard(id(node))
-        self.arg_ctr += 1
+        assert node.id.startswith("_")
+        arg_ctr = self.arg_ctr
+        if node.id == "_":
+            self.arg_ctr += 1
+        else:
+            self.placeholder_names.add(node.id[1:])
+        if not self.mutate:
+            return
+        if node.id == "_":
+            node.id = f"_{arg_ctr}"
+        else:
+            node.id = node.id[1:]
+        PipelineTracer.augmented_node_ids_by_spec[
+            PipelineTracer.arg_placeholder_spec
+        ].discard(id(node))
 
     def search(
         self, node: Union[ast.AST, Sequence[ast.AST]], allow_top_level: bool
@@ -192,19 +211,23 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
         try:
             self.allow_top_level = allow_top_level
             self.visit(node)
-            found = self.arg_ctr > orig_ctr
+            found = self.arg_ctr > orig_ctr or len(self.placeholder_names) > 0
         finally:
             self.arg_ctr = orig_ctr
+            self.placeholder_names.clear()
         return found
 
-    def rewrite(self, node: ast.expr, allow_top_level: bool) -> None:
+    def rewrite(self, node: ast.expr, allow_top_level: bool) -> Set[str]:
         old_mutate = self.mutate
         try:
             self.mutate = True
             self.allow_top_level = allow_top_level
             self.visit(node)
+            ret = self.placeholder_names
         finally:
             self.mutate = old_mutate
+            self.placeholder_names = set()
+        return ret
 
 
 def parent_is_bitor_op(node: ast.expr) -> bool:
@@ -317,9 +340,11 @@ class PipelineTracer(pyc.BaseTracer):
         ):
             lambda_body_parent_call = lambda_body
             lambda_body = lambda_body.func
-        self.placeholder_replacer.rewrite(lambda_body, allow_top_level=True)
+        placeholder_names = self.placeholder_replacer.rewrite(
+            lambda_body, allow_top_level=True
+        )
         ast_lambda = SingletonArgCounterMixin.create_placeholder_lambda(
-            orig_ctr, lambda_body, frame.f_globals
+            placeholder_names, orig_ctr, lambda_body, frame.f_globals
         )
         ast_lambda.body = lambda_body
         if lambda_body_parent_call is None:
@@ -365,9 +390,11 @@ class PipelineTracer(pyc.BaseTracer):
         full_node: Optional[ast.expr] = None,
     ) -> ast.Lambda:
         orig_ctr = self.placeholder_replacer.arg_ctr
-        self.placeholder_replacer.rewrite(node, allow_top_level=allow_top_level)
+        placeholder_names = self.placeholder_replacer.rewrite(
+            node, allow_top_level=allow_top_level
+        )
         return SingletonArgCounterMixin.create_placeholder_lambda(
-            orig_ctr, full_node or node, frame_globals
+            placeholder_names, orig_ctr, full_node or node, frame_globals
         )
 
     @pyc.register_handler(

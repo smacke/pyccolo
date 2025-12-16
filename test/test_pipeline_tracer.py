@@ -165,6 +165,48 @@ if sys.version_info >= (3, 8):  # noqa
                 "func = sorted([1, 3, 2], reverse=$); assert func(False) == [1, 2, 3]; assert func(True) == [3, 2, 1]"
             )
 
+    def test_named_placeholders_simple():
+        with PipelineTracer:
+            with QuickLambdaTracer:
+                assert pyc.eval("reduce[$x + $y]([1, 2, 3])") == 6
+                assert pyc.eval("sorted($lst, reverse=True)([1, 2, 3])") == [3, 2, 1]
+
+    def test_named_placeholders_complex():
+        with PipelineTracer:
+            with QuickLambdaTracer:
+                assert (
+                    pyc.eval(
+                        "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
+                        "|> map[$ *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$op], $row)] "
+                        "|> sum"
+                    )
+                    == 45
+                )
+                assert (
+                    pyc.eval(
+                        "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
+                        "|> map[$ *|> reduce({'*': f[$x * $y], '+': f[$x + $y]}[$op], $row)] "
+                        "|> sum"
+                    )
+                    == 45
+                )
+                assert (
+                    pyc.eval(
+                        "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
+                        "|> map[$ *|> ($op, $row) *|> reduce({'*': f[$x * $y], '+': f[$x + $y]}[$op], $row)] "
+                        "|> sum"
+                    )
+                    == 45
+                )
+                assert (
+                    pyc.eval(
+                        "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
+                        "|> map[$ *|> ($op, $row) *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$op], $row)] "
+                        "|> sum"
+                    )
+                    == 45
+                )
+
     def test_dict_operators():
         with PipelineTracer:
             assert pyc.eval("{'a': 1, 'b': 2} **|> dict") == {"a": 1, "b": 2}
