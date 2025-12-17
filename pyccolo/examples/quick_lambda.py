@@ -73,7 +73,7 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
 
 
 class QuickLambdaTracer(Quasiquoter):
-    lambda_macros = ("f", "map", "reduce")
+    lambda_macros = ("f", "map", "imap", "reduce")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -100,18 +100,38 @@ class QuickLambdaTracer(Quasiquoter):
             )
             ast_lambda.body = lambda_body
         func = cast(ast.Name, node.value).id
-        if func in ("map", "reduce"):
+        if func in ("map", "imap", "reduce"):
             with fast.location_of(ast_lambda):
                 arg = f"_{self._arg_replacer.arg_ctr}"
                 self._arg_replacer.arg_ctr += 1
-                functor_lambda = cast(
-                    ast.Lambda,
+                inner_func = func
+                if func == "imap":
+                    inner_func = "map"
+                lambda_body_str = f"{inner_func}(None, {arg})"
+                functor_lambda_body = cast(
+                    ast.Call,
                     cast(
                         ast.Expr,
-                        fast.parse(f"lambda {arg}: {func}(None, {arg})").body[0],
+                        fast.parse(lambda_body_str).body[0],
                     ).value,
                 )
-            cast(ast.Call, functor_lambda.body).args[0] = ast_lambda
+                functor_lambda_body.args[0] = ast_lambda
+                if func == "map":
+                    lambda_body_str = f"type({arg})(None)"
+                    functor_lambda_outer_body = cast(
+                        ast.Call,
+                        cast(
+                            ast.Expr,
+                            fast.parse(lambda_body_str).body[0],
+                        ).value,
+                    )
+                    functor_lambda_outer_body.args[0] = functor_lambda_body
+                    functor_lambda_body = functor_lambda_outer_body
+                functor_lambda = cast(
+                    ast.Lambda,
+                    cast(ast.Expr, fast.parse(f"lambda {arg}: None").body[0]).value,
+                )
+                functor_lambda.body = functor_lambda_body
             ast_lambda = functor_lambda
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
         return lambda: evaluated_lambda

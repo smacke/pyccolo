@@ -177,7 +177,7 @@ if sys.version_info >= (3, 8):  # noqa
                 assert (
                     pyc.eval(
                         "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
-                        "|> map[$ *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$op], $row)] "
+                        "|> imap[$ *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$op], $row)] "
                         "|> sum"
                     )
                     == 45
@@ -185,7 +185,7 @@ if sys.version_info >= (3, 8):  # noqa
                 assert (
                     pyc.eval(
                         "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
-                        "|> map[$ *|> reduce({'*': f[$x * $y], '+': f[$x + $y]}[$op], $row)] "
+                        "|> imap[$ *|> reduce({'*': f[$x * $y], '+': f[$x + $y]}[$op], $row)] "
                         "|> sum"
                     )
                     == 45
@@ -193,7 +193,7 @@ if sys.version_info >= (3, 8):  # noqa
                 assert (
                     pyc.eval(
                         "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
-                        "|> map[$ *|> ($op, $row) *|> reduce({'*': f[$x * $y], '+': f[$x + $y]}[$op], $row)] "
+                        "|> imap[$ *|> ($op, $row) *|> reduce({'*': f[$x * $y], '+': f[$x + $y]}[$op], $row)] "
                         "|> sum"
                     )
                     == 45
@@ -201,7 +201,7 @@ if sys.version_info >= (3, 8):  # noqa
                 assert (
                     pyc.eval(
                         "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
-                        "|> map[$ *|> ($op, $row) *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$op], $row)] "
+                        "|> imap[$ *|> ($op, $row) *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$op], $row)] "
                         "|> sum"
                     )
                     == 45
@@ -312,15 +312,17 @@ if sys.version_info >= (3, 8):  # noqa
     def test_quick_maps():
         with PipelineTracer:
             with QuickLambdaTracer:
-                assert pyc.eval("['1', '2', '3'] |> map[int] |> list") == [1, 2, 3]
-                assert pyc.eval("['1', '2', '3'] |> map[int($)] |> list") == [1, 2, 3]
-                assert pyc.eval(
-                    "['1', '2', '3'] |> map[int] |> map[$ % 2==0] |> list"
-                ) == [False, True, False]
+                assert pyc.eval("['1', '2', '3'] |> map[int]") == [1, 2, 3]
+                assert pyc.eval("['1', '2', '3'] |> map[int($)]") == [1, 2, 3]
+                assert pyc.eval("['1', '2', '3'] |> map[int] |> map[$ % 2==0]") == [
+                    False,
+                    True,
+                    False,
+                ]
                 assert (
                     pyc.eval(
                         "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
-                        "|> map[$ *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$], $)] "
+                        "|> imap[$ *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$], $)] "
                         "|> sum"
                     )
                     == 45
@@ -329,7 +331,7 @@ if sys.version_info >= (3, 8):  # noqa
     def test_pipeline_map_with_quick_lambda_applied():
         with PipelineTracer:
             with QuickLambdaTracer:
-                assert pyc.eval("[[1, 2], [3, 4]] |> map[f[$ + $](*$)] |> list") == [
+                assert pyc.eval("[[1, 2], [3, 4]] |> map[f[$ + $](*$)]") == [
                     3,
                     7,
                 ]
