@@ -118,7 +118,9 @@ class QuickLambdaTracer(Quasiquoter):
                 )
                 functor_lambda_body.args[0] = ast_lambda
                 if func == "map":
-                    lambda_body_str = f"type({arg})(None)"
+                    id_arg = f"_{self._arg_replacer.arg_ctr}"
+                    self._arg_replacer.arg_ctr += 1
+                    lambda_body_str = f"(type({arg}) if isinstance({arg}, list) else lambda {id_arg}: {id_arg})(None)"
                     functor_lambda_outer_body = cast(
                         ast.Call,
                         cast(

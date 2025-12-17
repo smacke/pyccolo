@@ -177,7 +177,7 @@ if sys.version_info >= (3, 8):  # noqa
                 assert (
                     pyc.eval(
                         "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
-                        "|> imap[$ *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$op], $row)] "
+                        "|> map[$ *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$op], $row)] "
                         "|> sum"
                     )
                     == 45
@@ -185,7 +185,7 @@ if sys.version_info >= (3, 8):  # noqa
                 assert (
                     pyc.eval(
                         "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
-                        "|> imap[$ *|> reduce({'*': f[$x * $y], '+': f[$x + $y]}[$op], $row)] "
+                        "|> map[$ *|> reduce({'*': f[$x * $y], '+': f[$x + $y]}[$op], $row)] "
                         "|> sum"
                     )
                     == 45
@@ -193,7 +193,7 @@ if sys.version_info >= (3, 8):  # noqa
                 assert (
                     pyc.eval(
                         "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
-                        "|> imap[$ *|> ($op, $row) *|> reduce({'*': f[$x * $y], '+': f[$x + $y]}[$op], $row)] "
+                        "|> map[$ *|> ($op, $row) *|> reduce({'*': f[$x * $y], '+': f[$x + $y]}[$op], $row)] "
                         "|> sum"
                     )
                     == 45
@@ -201,7 +201,7 @@ if sys.version_info >= (3, 8):  # noqa
                 assert (
                     pyc.eval(
                         "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
-                        "|> imap[$ *|> ($op, $row) *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$op], $row)] "
+                        "|> map[$ *|> ($op, $row) *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$op], $row)] "
                         "|> sum"
                     )
                     == 45
@@ -322,7 +322,7 @@ if sys.version_info >= (3, 8):  # noqa
                 assert (
                     pyc.eval(
                         "zip(['*', '+', '+'], [[2, 3, 4], [1, 2, 3], [4, 5, 6]]) "
-                        "|> imap[$ *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$], $)] "
+                        "|> map[$ *|> reduce({'*': f[$ * $], '+': f[$ + $]}[$], $)] "
                         "|> sum"
                     )
                     == 45
