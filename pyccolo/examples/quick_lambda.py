@@ -81,6 +81,7 @@ class QuickLambdaTracer(Quasiquoter):
             self.macros.add(macro)
         self._arg_replacer = _ArgReplacer()
         builtins.reduce = reduce
+        builtins.imap = map
 
     @pyc.before_subscript_slice(when=is_macro(lambda_macros), reentrant=True)
     def handle_quick_lambda(
