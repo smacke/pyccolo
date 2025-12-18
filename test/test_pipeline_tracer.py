@@ -345,3 +345,11 @@ if sys.version_info >= (3, 8):  # noqa
                 assert pyc.eval("reduce[f[$ + $]] <| [1, 2, 3, 4]") == 10
                 assert pyc.eval("reduce[$ + $ |> $] <| [1, 2, 3, 4]") == 10
                 assert pyc.eval("reduce[$ + $ |> 2*$] <| [1, 2, 3, 4]") == 44
+
+    def test_quick_filter():
+        with PipelineTracer:
+            with QuickLambdaTracer:
+                assert pyc.eval("filter[$ % 2 == 0]([1, 2, 3, 4, 5])") == [2, 4]
+                assert pyc.eval("filter[$ % 2 == 1]([1, 2, 3, 4, 5])") == [1, 3, 5]
+                assert pyc.eval("filter[$ % 2 == 0](range(5)) |> list") == [0, 2, 4]
+                assert pyc.eval("filter[$ % 2 == 1](range(5)) |> list") == [1, 3]

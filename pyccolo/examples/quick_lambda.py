@@ -73,7 +73,7 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
 
 
 class QuickLambdaTracer(Quasiquoter):
-    lambda_macros = ("f", "map", "imap", "reduce")
+    lambda_macros = ("f", "filter", "ifilter", "map", "imap", "reduce")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -101,12 +101,14 @@ class QuickLambdaTracer(Quasiquoter):
             )
             ast_lambda.body = lambda_body
         func = cast(ast.Name, node.value).id
-        if func in ("map", "imap", "reduce"):
+        if func in ("filter", "ifilter", "map", "imap", "reduce"):
             with fast.location_of(ast_lambda):
                 arg = f"_{self._arg_replacer.arg_ctr}"
                 self._arg_replacer.arg_ctr += 1
                 inner_func = func
-                if func == "imap":
+                if func == "ifilter":
+                    inner_func = "filter"
+                elif func == "imap":
                     inner_func = "map"
                 lambda_body_str = f"{inner_func}(None, {arg})"
                 functor_lambda_body = cast(
@@ -117,10 +119,10 @@ class QuickLambdaTracer(Quasiquoter):
                     ).value,
                 )
                 functor_lambda_body.args[0] = ast_lambda
-                if func == "map":
+                if func in ("filter", "map"):
                     id_arg = f"_{self._arg_replacer.arg_ctr}"
                     self._arg_replacer.arg_ctr += 1
-                    lambda_body_str = f"(type({arg}) if isinstance({arg}, list) else lambda {id_arg}: {id_arg})(None)"
+                    lambda_body_str = f"(list if type({arg}) is list else lambda {id_arg}: {id_arg})(None)"
                     functor_lambda_outer_body = cast(
                         ast.Call,
                         cast(
