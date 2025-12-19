@@ -87,6 +87,7 @@ class QuickLambdaTracer(Quasiquoter):
     def handle_quick_lambda(
         self, _ret, node: ast.Subscript, frame: FrameType, *_, **__
     ):
+        __hide_pyccolo_frame__ = True
         orig_ctr = self._arg_replacer.arg_ctr
         orig_lambda_body: ast.expr = node.slice  # type: ignore[assignment]
         if isinstance(orig_lambda_body, ast.Index):
@@ -139,4 +140,4 @@ class QuickLambdaTracer(Quasiquoter):
                 functor_lambda.body = functor_lambda_body
             ast_lambda = functor_lambda
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
-        return lambda: evaluated_lambda
+        return lambda: __hide_pyccolo_frame__ and evaluated_lambda
