@@ -60,7 +60,7 @@ except ImportError:
     orig_find_node_ipython_cloned = None  # type: ignore[assignment]
 
 
-_frame_to_node_mapping: weakref.WeakValueDictionary[Tuple[str, int], ast.AST] = (
+_frame_to_node_mapping: "weakref.WeakValueDictionary[Tuple[str, int], ast.AST]" = (
     weakref.WeakValueDictionary()
 )
 
