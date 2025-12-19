@@ -82,7 +82,9 @@ Pass = object()
 Skip = object()
 
 
+HIDE_PYCCOLO_FRAME = "__hide_pyccolo_frame__"
 PYCCOLO_DEV_MODE_ENV_VAR = "PYCCOLO_DEV_MODE"
+TRACED_LAMBDA_NAME = "<traced_lambda>"
 
 
 def register_tracer_state_machine(tracer_cls: "Type[BaseTracer]") -> None:
@@ -417,7 +419,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                         new_ret = None
                 except Exception as exc:
                     if self.should_propagate_handler_exception(event, exc):
-                        raise exc
+                        raise exc from None
                     elif self._is_dev_mode:
                         logger.exception("An exception while handling evt %s", event)
                     new_ret = None
@@ -939,7 +941,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         code: CodeType = lam.__code__
         assert code.co_name == "<lambda>"
         if sys.version_info >= (3, 8):
-            lam.__code__ = code.replace(co_name="<traced_lambda>")
+            lam.__code__ = code.replace(co_name=TRACED_LAMBDA_NAME)
         else:
             # replace(...) not available for older python but CodeType
             # constructor is stable at least
@@ -954,7 +956,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 code.co_names,
                 code.co_varnames,
                 code.co_filename,
-                "<traced_lambda>",
+                TRACED_LAMBDA_NAME,
                 code.co_firstlineno,
                 code.co_lnotab,
                 code.co_freevars,

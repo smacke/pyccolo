@@ -28,14 +28,57 @@ with PipelineTracer:
 import ast
 import builtins
 import itertools
+import weakref
 from contextlib import contextmanager
 from types import FrameType
-from typing import Any, Callable, Dict, Generator, Optional, Sequence, Set, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
+
+from executing.executing import find_node_ipython as orig_find_node_ipython
 
 import pyccolo as pyc
 import pyccolo.fast as fast
 from pyccolo.examples.optional_chaining import OptionalChainer
 from pyccolo.stmt_mapper import StatementMapper
+from pyccolo.trace_events import TraceEvent
+from pyccolo.utils import clone_function
+
+orig_find_node_ipython_cloned = clone_function(orig_find_node_ipython)  # type: ignore[arg-type]
+
+
+_frame_to_node_mapping: weakref.WeakValueDictionary[Tuple[str, int], ast.AST] = (
+    weakref.WeakValueDictionary()
+)
+
+
+def find_node_ipython(frame, last_i, stmts, source):
+    decorator, node = orig_find_node_ipython_cloned(frame, last_i, stmts, source)
+    if decorator is None and node is None:
+        return None, _frame_to_node_mapping.get(
+            (frame.f_code.co_filename, frame.f_lineno)
+        )
+    else:
+        return decorator, node
+
+
+def patch_find_node_ipython():
+    orig_find_node_ipython.__code__ = find_node_ipython.__code__
+    orig_find_node_ipython.__globals__["orig_find_node_ipython_cloned"] = (
+        orig_find_node_ipython_cloned
+    )
+    orig_find_node_ipython.__globals__["_frame_to_node_mapping"] = (
+        _frame_to_node_mapping
+    )
 
 
 class ExtractNames(ast.NodeVisitor):
@@ -143,7 +186,10 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             self.allow_top_level = old_allow_top_level
 
     def visit_Call(self, node: ast.Call) -> None:
-        self.visit(node.func)
+        if not isinstance(node.func, ast.BinOp) or not PipelineTracer.get_augmentations(
+            id(node.func)
+        ):
+            self.visit(node.func)
         if not self.allow_top_level:
             # defer visiting nested calls
             return
@@ -314,8 +360,10 @@ class PipelineTracer(pyc.BaseTracer):
         self.binop_arg_nodes_to_skip: Set[int] = set()
         self.binop_nodes_to_eval: Set[int] = set()
         self.lexical_chain_stack: pyc.TraceStack = self.make_stack()
+        self.exc_to_propagate: Optional[Exception] = None
         with self.lexical_chain_stack.register_stack_state():
             self.cur_chain_placeholder_lambda: Optional[Callable[..., Any]] = None
+        patch_find_node_ipython()
 
     @pyc.register_handler(pyc.before_load_complex_symbol, reentrant=True)
     def handle_chain_placeholder_rewrites(
@@ -325,6 +373,8 @@ class PipelineTracer(pyc.BaseTracer):
             self.cur_chain_placeholder_lambda = None
         if not self.placeholder_replacer.search(node, allow_top_level=True):
             return ret
+        __hide_pyccolo_frame__ = True
+        _frame_to_node_mapping[frame.f_code.co_filename, frame.f_lineno] = node
         node_copy = StatementMapper.augmentation_propagating_copy(node)
         assert isinstance(node_copy, ast.expr)
         orig_ctr = self.placeholder_replacer.arg_ctr
@@ -352,10 +402,9 @@ class PipelineTracer(pyc.BaseTracer):
         else:
             lambda_body_parent_call.func = ast_lambda
             node_to_eval = node_copy
-        evaluated_placeholder_chain = pyc.eval(
+        self.cur_chain_placeholder_lambda = lambda: __hide_pyccolo_frame__ and pyc.eval(
             node_to_eval, frame.f_globals, frame.f_locals
         )
-        self.cur_chain_placeholder_lambda = evaluated_placeholder_chain
         return lambda: OptionalChainer.resolves_to_none_eventually
 
     @pyc.register_raw_handler(pyc.before_argument)
@@ -367,12 +416,24 @@ class PipelineTracer(pyc.BaseTracer):
 
     @pyc.register_raw_handler(pyc.after_load_complex_symbol)
     def handle_after_placeholder_chain(self, ret, *_, **__):
+        __hide_pyccolo_frame__ = True
         override_ret = self.cur_chain_placeholder_lambda
         self.lexical_chain_stack.pop()
         if override_ret is None:
             return ret
-        else:
-            return override_ret
+        try:
+            return __hide_pyccolo_frame__ and override_ret()
+        except Exception as e:
+            self.exc_to_propagate = e
+            raise e from None
+
+    def should_propagate_handler_exception(
+        self, _evt: TraceEvent, exc: Exception
+    ) -> bool:
+        if exc is self.exc_to_propagate:
+            self.exc_to_propagate = None
+            return True
+        return False
 
     @pyc.register_raw_handler((pyc.before_left_binop_arg, pyc.before_right_binop_arg))
     def maybe_skip_binop_arg(self, ret: object, node_id: int, *_, **__):
@@ -407,6 +468,8 @@ class PipelineTracer(pyc.BaseTracer):
     ):
         if not self.get_augmentations(id(self.containing_ast_by_id.get(id(node)))):
             return ret
+        __hide_pyccolo_frame__ = True
+        _frame_to_node_mapping[frame.f_code.co_filename, frame.f_lineno] = node
         allow_top_level = not isinstance(node, ast.BinOp) or not self.get_augmentations(
             id(node)
         )
@@ -420,7 +483,7 @@ class PipelineTracer(pyc.BaseTracer):
         )
         ast_lambda.body = transformed
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
-        return lambda: evaluated_lambda
+        return lambda: __hide_pyccolo_frame__ and evaluated_lambda
 
     def search_left_descendant_placeholder(self, node: ast.BinOp) -> int:
         num_traversals = 0
@@ -464,6 +527,8 @@ class PipelineTracer(pyc.BaseTracer):
         )
         if num_left_traversals_to_lhs_placeholder_node < 0:
             return ret
+        __hide_pyccolo_frame__ = True
+        _frame_to_node_mapping[frame.f_code.co_filename, frame.f_lineno] = node
         self.binop_arg_nodes_to_skip.add(id(node.left))
         self.binop_arg_nodes_to_skip.add(id(node.right))
         self.binop_nodes_to_eval.add(id(node))
@@ -478,7 +543,7 @@ class PipelineTracer(pyc.BaseTracer):
         )
         ast_lambda.body = transformed
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
-        return lambda *_, **__: evaluated_lambda
+        return lambda *_, **__: __hide_pyccolo_frame__ and evaluated_lambda
 
     @pyc.register_handler(
         pyc.before_binop,
@@ -491,18 +556,20 @@ class PipelineTracer(pyc.BaseTracer):
         if id(node) in self.binop_nodes_to_eval:
             self.binop_nodes_to_eval.remove(id(node))
             return ret
+        __hide_pyccolo_frame__ = True
+        _frame_to_node_mapping[frame.f_code.co_filename, frame.f_lineno] = node.left
         this_node_augmentations = self.get_augmentations(id(node))
         if self.pipeline_op_spec in this_node_augmentations:
-            return lambda x, y: y(x)
+            return lambda x, y: __hide_pyccolo_frame__ and y(x)
         elif self.pipeline_tuple_op_spec in this_node_augmentations:
-            return lambda x, y: y(*x)
+            return lambda x, y: __hide_pyccolo_frame__ and y(*x)
         elif self.pipeline_dict_op_spec in this_node_augmentations:
-            return lambda x, y: y(**x)
+            return lambda x, y: __hide_pyccolo_frame__ and y(**x)
         elif self.compose_op_spec in this_node_augmentations:
 
             def __pipeline_compose(f, g):
                 def __composed(*args, **kwargs):
-                    return f(g(*args, **kwargs))
+                    return __hide_pyccolo_frame__ and f(g(*args, **kwargs))
 
                 return __composed
 
@@ -536,36 +603,52 @@ class PipelineTracer(pyc.BaseTracer):
 
             def assign_globals(val):
                 frame.f_globals[rhs.id] = val
-                return val
+                return __hide_pyccolo_frame__ and val
 
-            return lambda x, y: assign_globals(x)
+            return lambda x, y: __hide_pyccolo_frame__ and assign_globals(x)
         elif self.value_first_left_partial_apply_op_spec in this_node_augmentations:
-            return lambda x, y: (lambda *args, **kwargs: y(x, *args, **kwargs))
+            return lambda x, y: __hide_pyccolo_frame__ and (
+                lambda *args, **kwargs: __hide_pyccolo_frame__ and y(x, *args, **kwargs)
+            )
         elif (
             self.value_first_left_partial_apply_tuple_op_spec in this_node_augmentations
         ):
-            return lambda x, y: (lambda *args, **kwargs: y(*x, *args, **kwargs))
+            return lambda x, y: __hide_pyccolo_frame__ and (
+                lambda *args, **kwargs: __hide_pyccolo_frame__
+                and y(*x, *args, **kwargs)
+            )
         elif (
             self.value_first_left_partial_apply_dict_op_spec in this_node_augmentations
         ):
-            return lambda x, y: (lambda *args, **kwargs: y(*args, **x, **kwargs))
+            return lambda x, y: __hide_pyccolo_frame__ and (
+                lambda *args, **kwargs: __hide_pyccolo_frame__
+                and y(*args, **x, **kwargs)
+            )
         elif self.function_first_left_partial_apply_op_spec in this_node_augmentations:
-            return lambda x, y: (lambda *args, **kwargs: x(y, *args, **kwargs))
+            return lambda x, y: __hide_pyccolo_frame__ and (
+                lambda *args, **kwargs: __hide_pyccolo_frame__ and x(y, *args, **kwargs)
+            )
         elif (
             self.function_first_left_partial_apply_tuple_op_spec
             in this_node_augmentations
         ):
-            return lambda x, y: (lambda *args, **kwargs: x(*y, *args, **kwargs))
+            return lambda x, y: __hide_pyccolo_frame__ and (
+                lambda *args, **kwargs: __hide_pyccolo_frame__
+                and x(*y, *args, **kwargs)
+            )
         elif (
             self.function_first_left_partial_apply_dict_op_spec
             in this_node_augmentations
         ):
-            return lambda x, y: (lambda *args, **kwargs: x(*args, **y, **kwargs))
+            return lambda x, y: __hide_pyccolo_frame__ and (
+                lambda *args, **kwargs: __hide_pyccolo_frame__
+                and x(*args, **y, **kwargs)
+            )
         elif self.apply_op_spec in this_node_augmentations:
-            return lambda x, y: x(y)
+            return lambda x, y: __hide_pyccolo_frame__ and x(y)
         elif self.apply_tuple_op_spec in this_node_augmentations:
-            return lambda x, y: x(*y)
+            return lambda x, y: __hide_pyccolo_frame__ and x(*y)
         elif self.apply_dict_op_spec in this_node_augmentations:
-            return lambda x, y: x(**y)
+            return lambda x, y: __hide_pyccolo_frame__ and x(**y)
         else:
             return ret
