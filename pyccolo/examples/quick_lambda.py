@@ -14,13 +14,14 @@ import ast
 import builtins
 from functools import reduce
 from types import FrameType
-from typing import Set, cast
+from typing import Any, Dict, Set, Tuple, cast
 
 import pyccolo as pyc
 from pyccolo import fast
 from pyccolo.examples.pipeline_tracer import PipelineTracer, SingletonArgCounterMixin
 from pyccolo.examples.quasiquote import Quasiquoter, is_macro
 from pyccolo.stmt_mapper import StatementMapper
+from pyccolo.trace_events import TraceEvent
 
 
 class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
@@ -82,11 +83,18 @@ class QuickLambdaTracer(Quasiquoter):
         self._arg_replacer = _ArgReplacer()
         builtins.reduce = reduce
         builtins.imap = map
+        self.lambda_cache: Dict[Tuple[int, int, TraceEvent], Any] = {}
+
+    _not_found = object()
 
     @pyc.before_subscript_slice(when=is_macro(lambda_macros), reentrant=True)
     def handle_quick_lambda(
-        self, _ret, node: ast.Subscript, frame: FrameType, *_, **__
+        self, _ret, node: ast.Subscript, frame: FrameType, evt: TraceEvent, *_, **__
     ):
+        lambda_cache_key = (id(node), id(frame), evt)
+        cached_lambda = self.lambda_cache.get(lambda_cache_key, self._not_found)
+        if cached_lambda is not self._not_found:
+            return cached_lambda
         __hide_pyccolo_frame__ = True
         orig_ctr = self._arg_replacer.arg_ctr
         orig_lambda_body: ast.expr = node.slice  # type: ignore[assignment]
@@ -140,4 +148,6 @@ class QuickLambdaTracer(Quasiquoter):
                 functor_lambda.body = functor_lambda_body
             ast_lambda = functor_lambda
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
-        return lambda: __hide_pyccolo_frame__ and evaluated_lambda
+        ret = lambda: __hide_pyccolo_frame__ and evaluated_lambda  # noqa: E731
+        self.lambda_cache[lambda_cache_key] = ret
+        return ret
