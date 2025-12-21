@@ -76,18 +76,20 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
 class QuickLambdaTracer(Quasiquoter):
     lambda_macros = ("f", "filter", "ifilter", "map", "imap", "reduce")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         for macro in self.lambda_macros:
             self.macros.add(macro)
         self._arg_replacer = _ArgReplacer()
-        builtins.reduce = reduce
-        builtins.imap = map
+        builtins.reduce = reduce  # type: ignore[attr-defined]
+        builtins.imap = map  # type: ignore[attr-defined]
         self.lambda_cache: Dict[Tuple[int, int, TraceEvent], Any] = {}
 
     _not_found = object()
 
-    @pyc.before_subscript_slice(when=is_macro(lambda_macros), reentrant=True)
+    @pyc.before_subscript_slice(
+        when=is_macro(lambda_macros), reentrant=True, static=True
+    )
     def handle_quick_lambda(
         self, _ret, node: ast.Subscript, frame: FrameType, evt: TraceEvent, *_, **__
     ):

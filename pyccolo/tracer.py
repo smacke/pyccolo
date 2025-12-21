@@ -1029,6 +1029,7 @@ def register_handler(
     ],
     when: Optional[Union[Callable[..., bool], Predicate]] = None,
     reentrant: bool = False,
+    static: bool = False,
     use_raw_node_id: bool = False,
     guard: Optional[Callable[[ast.AST], str]] = None,
     exempt_from_guards: bool = False,
@@ -1042,7 +1043,8 @@ def register_handler(
     if isinstance(when, Predicate):
         pred: Predicate = when
     else:
-        pred = Predicate(when, use_raw_node_id=use_raw_node_id)  # type: ignore
+        pred = Predicate(when, static=static, use_raw_node_id=use_raw_node_id)  # type: ignore
+    pred.static = pred.static or static
     pred.use_raw_node_id = use_raw_node_id
 
     if TraceEvent.opcode in events and sys.version_info < (3, 7):

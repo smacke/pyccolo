@@ -282,9 +282,43 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
         return ret
 
 
-def parent_is_bitor_op(node: ast.expr) -> bool:
-    parent = pyc.BaseTracer.containing_ast_by_id.get(id(node))
+def parent_is_bitor_op(node_or_id: Union[ast.expr, int]) -> bool:
+    node_id = node_or_id if isinstance(node_or_id, int) else id(node_or_id)
+    parent = pyc.BaseTracer.containing_ast_by_id.get(node_id)
     return isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.BitOr)
+
+
+@contextmanager
+def allow_pipelines_in_loops_and_calls() -> Generator[None, None, None]:
+    yield
+
+
+def is_outer_or_allowlisted(node_or_id: Union[ast.AST, int]):
+    node_id = node_or_id if isinstance(node_or_id, int) else id(node_or_id)
+    if pyc.is_outer_stmt(node_id):
+        return True
+    containing_stmt = pyc.BaseTracer.containing_stmt_by_id.get(node_id)
+    parent_stmt = pyc.BaseTracer.parent_stmt_by_id.get(
+        node_id if containing_stmt is None else id(containing_stmt)
+    )
+    while parent_stmt is not None:
+        if isinstance(parent_stmt, ast.With):
+            context_expr = parent_stmt.items[0].context_expr
+            if (
+                isinstance(context_expr, ast.Call)
+                and isinstance(context_expr.func, ast.Name)
+                and context_expr.func.id == allow_pipelines_in_loops_and_calls.__name__
+            ):
+                return True
+        elif isinstance(parent_stmt, (ast.AsyncFunctionDef, ast.FunctionType)):
+            if any(
+                isinstance(deco, ast.Name)
+                and deco.id == allow_pipelines_in_loops_and_calls.__name__
+                for deco in parent_stmt.decorator_list
+            ):
+                return True
+        parent_stmt = pyc.BaseTracer.parent_stmt_by_id.get(id(parent_stmt))
+    return False
 
 
 class PipelineTracer(pyc.BaseTracer):
@@ -370,8 +404,23 @@ class PipelineTracer(pyc.BaseTracer):
         with self.lexical_chain_stack.register_stack_state():
             self.cur_chain_placeholder_lambda: Optional[Callable[..., Any]] = None
         patch_find_node_ipython()
+        allow_pipelines_name = allow_pipelines_in_loops_and_calls.__name__
+        setattr(builtins, allow_pipelines_name, allow_pipelines_in_loops_and_calls)
+        try:
+            from IPython import get_ipython
 
-    @pyc.register_handler(pyc.before_load_complex_symbol, reentrant=True)
+            shell = get_ipython()
+            if shell is not None:
+                shell.user_ns[allow_pipelines_name] = allow_pipelines_in_loops_and_calls
+        except ImportError:
+            pass
+
+    @pyc.register_handler(
+        pyc.before_load_complex_symbol,
+        when=is_outer_or_allowlisted,
+        reentrant=True,
+        static=True,
+    )
     def handle_chain_placeholder_rewrites(
         self, ret, node: ast.expr, frame: FrameType, *_, **__
     ):
@@ -413,14 +462,18 @@ class PipelineTracer(pyc.BaseTracer):
         )
         return lambda: OptionalChainer.resolves_to_none_eventually
 
-    @pyc.register_raw_handler(pyc.before_argument)
+    @pyc.register_raw_handler(
+        pyc.before_argument, when=is_outer_or_allowlisted, static=True
+    )
     def handle_before_arg(self, ret: object, *_, **__):
         if self.cur_chain_placeholder_lambda:
             return lambda: None
         else:
             return ret
 
-    @pyc.register_raw_handler(pyc.after_load_complex_symbol)
+    @pyc.register_raw_handler(
+        pyc.after_load_complex_symbol, when=is_outer_or_allowlisted, static=True
+    )
     def handle_after_placeholder_chain(self, ret, *_, **__):
         __hide_pyccolo_frame__ = True
         override_ret = self.cur_chain_placeholder_lambda
@@ -441,7 +494,11 @@ class PipelineTracer(pyc.BaseTracer):
             return True
         return False
 
-    @pyc.register_raw_handler((pyc.before_left_binop_arg, pyc.before_right_binop_arg))
+    @pyc.register_raw_handler(
+        (pyc.before_left_binop_arg, pyc.before_right_binop_arg),
+        when=lambda node: parent_is_bitor_op(node) and is_outer_or_allowlisted(node),
+        static=True,
+    )
     def maybe_skip_binop_arg(self, ret: object, node_id: int, *_, **__):
         if node_id in self.binop_arg_nodes_to_skip:
             self.binop_arg_nodes_to_skip.remove(node_id)
@@ -466,8 +523,9 @@ class PipelineTracer(pyc.BaseTracer):
 
     @pyc.register_handler(
         pyc.before_right_binop_arg,
-        when=pyc.Predicate(parent_is_bitor_op, static=True),
+        when=lambda node: parent_is_bitor_op(node) and is_outer_or_allowlisted(node),
         reentrant=True,
+        static=True,
     )
     def transform_pipeline_rhs_placeholders(
         self, ret: object, node: ast.expr, frame: FrameType, *_, **__
@@ -522,8 +580,10 @@ class PipelineTracer(pyc.BaseTracer):
 
     @pyc.register_handler(
         pyc.before_binop,
-        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=True),
+        when=lambda node: isinstance(node.op, ast.BitOr)
+        and is_outer_or_allowlisted(node),
         reentrant=True,
+        static=True,
     )
     def transform_pipeline_lhs_placeholders(
         self, ret: object, node: ast.BinOp, frame: FrameType, *_, **__
@@ -553,8 +613,10 @@ class PipelineTracer(pyc.BaseTracer):
 
     @pyc.register_handler(
         pyc.before_binop,
-        when=pyc.Predicate(lambda node: isinstance(node.op, ast.BitOr), static=True),
+        when=lambda node: isinstance(node.op, ast.BitOr)
+        and is_outer_or_allowlisted(node),
         reentrant=True,
+        static=True,
     )
     def transform_pipeline_op(
         self, ret: object, node: ast.BinOp, frame: FrameType, *_, **__
