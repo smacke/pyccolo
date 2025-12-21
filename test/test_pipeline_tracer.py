@@ -353,3 +353,16 @@ if sys.version_info >= (3, 8):  # noqa
                 assert pyc.eval("filter[$ % 2 == 1]([1, 2, 3, 4, 5])") == [1, 3, 5]
                 assert pyc.eval("filter[$ % 2 == 0](range(5)) |> list") == [0, 2, 4]
                 assert pyc.eval("filter[$ % 2 == 1](range(5)) |> list") == [1, 3]
+
+    def test_named_unpack():
+        with PipelineTracer:
+            with QuickLambdaTracer:
+                assert pyc.eval(
+                    "'a: b c d' |> $.strip().split(': ') *|> ($, $.split())"
+                ) == ("a", ["b", "c", "d"])
+                assert pyc.eval(
+                    "'a: b c d' |> $.strip().split(': ') *|> ($node, $adj.split())"
+                ) == ("a", ["b", "c", "d"])
+                assert pyc.eval(
+                    "'a: b c d' |> $.strip().split(': ') *|> ($node, $adj.split()) *|> ($adj, $node)"
+                ) == (["b", "c", "d"], "a")

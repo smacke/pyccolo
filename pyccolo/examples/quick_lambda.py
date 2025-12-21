@@ -14,7 +14,7 @@ import ast
 import builtins
 from functools import reduce
 from types import FrameType
-from typing import Any, Dict, Set, Tuple, cast
+from typing import Any, Dict, List, Tuple, cast
 
 import pyccolo as pyc
 from pyccolo import fast
@@ -27,7 +27,7 @@ from pyccolo.trace_events import TraceEvent
 class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
     def __init__(self) -> None:
         super().__init__()
-        self.placeholder_names: Set[str] = set()
+        self.placeholder_names: Dict[str, None] = {}
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         if (
@@ -58,7 +58,7 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
         else:
             if node.id[1].isalpha():
                 node.id = node.id[1:]
-            self.placeholder_names.add(node.id)
+            self.placeholder_names[node.id] = None
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         if isinstance(node.op, ast.BitOr) and PipelineTracer.get_augmentations(
@@ -67,10 +67,10 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             return
         self.generic_visit(node)
 
-    def get_placeholder_names(self, node: ast.AST) -> Set[str]:
+    def get_placeholder_names(self, node: ast.AST) -> List[str]:
         self.placeholder_names.clear()
         self.visit(node)
-        return self.placeholder_names
+        return list(self.placeholder_names)
 
 
 class QuickLambdaTracer(Quasiquoter):

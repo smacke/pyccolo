@@ -36,6 +36,7 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
     Sequence,
     Set,
@@ -149,19 +150,21 @@ class SingletonArgCounterMixin:
     @classmethod
     def create_placeholder_lambda(
         cls,
-        placeholder_names: Set[str],
+        placeholder_names: List[str],
         orig_ctr: int,
         lambda_body: ast.expr,
         frame_globals: Dict[str, Any],
     ) -> ast.Lambda:
         num_lambda_args = cls._arg_ctr - orig_ctr
         lambda_args = []
-        extra_defaults = ExtractNames.extract_names(lambda_body) - placeholder_names
+        extra_defaults = ExtractNames.extract_names(lambda_body) - set(
+            placeholder_names
+        )
         for arg_idx in range(orig_ctr, orig_ctr + num_lambda_args):
             arg = f"_{arg_idx}"
             lambda_args.append(arg)
             extra_defaults.discard(arg)
-        lambda_args.extend(sorted(placeholder_names))
+        lambda_args.extend(placeholder_names)
         extra_defaults = {
             arg
             for arg in extra_defaults
@@ -180,7 +183,7 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
     def __init__(self) -> None:
         self.mutate = False
         self.allow_top_level = False
-        self.placeholder_names: Set[str] = set()
+        self.placeholder_names: Dict[str, None] = {}
 
     @contextmanager
     def disallow_top_level(self) -> Generator[None, None, None]:
@@ -240,7 +243,7 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
         if node.id == "_":
             self.arg_ctr += 1
         else:
-            self.placeholder_names.add(node.id[1:])
+            self.placeholder_names[node.id[1:]] = None
         if not self.mutate:
             return
         if node.id == "_":
@@ -269,7 +272,7 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             self.placeholder_names.clear()
         return found
 
-    def rewrite(self, node: ast.expr, allow_top_level: bool) -> Set[str]:
+    def rewrite(self, node: ast.expr, allow_top_level: bool) -> List[str]:
         old_mutate = self.mutate
         try:
             self.mutate = True
@@ -278,8 +281,8 @@ class PlaceholderReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
             ret = self.placeholder_names
         finally:
             self.mutate = old_mutate
-            self.placeholder_names = set()
-        return ret
+            self.placeholder_names = {}
+        return list(ret.keys())
 
 
 def parent_is_bitor_op(node_or_id: Union[ast.expr, int]) -> bool:
@@ -400,6 +403,7 @@ class PipelineTracer(pyc.BaseTracer):
         self.binop_arg_nodes_to_skip: Set[int] = set()
         self.binop_nodes_to_eval: Set[int] = set()
         self.lexical_chain_stack: pyc.TraceStack = self.make_stack()
+        self.placeholder_arg_position_cache: Dict[int, List[str]] = {}
         self.exc_to_propagate: Optional[Exception] = None
         with self.lexical_chain_stack.register_stack_state():
             self.cur_chain_placeholder_lambda: Optional[Callable[..., Any]] = None
@@ -506,9 +510,28 @@ class PipelineTracer(pyc.BaseTracer):
         else:
             return ret
 
+    def reorder_placeholder_names_for_prior_positions(
+        self, node: ast.expr, placeholder_names: List[str]
+    ) -> List[str]:
+        if not isinstance(node, ast.BinOp):
+            return placeholder_names
+        prev_placeholders = self.placeholder_arg_position_cache.get(id(node))
+        if prev_placeholders is None:
+            return placeholder_names
+        index_by_name = {
+            name: (
+                prev_placeholders.index(name)
+                if name in prev_placeholders
+                else float("inf")
+            )
+            for name in placeholder_names
+        }
+        return sorted(placeholder_names, key=lambda name: index_by_name[name])
+
     def transform_pipeline_placeholders(
         self,
         node: ast.expr,
+        parent: ast.BinOp,
         frame_globals: Dict[str, Any],
         allow_top_level: bool,
         full_node: Optional[ast.expr] = None,
@@ -517,6 +540,12 @@ class PipelineTracer(pyc.BaseTracer):
         placeholder_names = self.placeholder_replacer.rewrite(
             node, allow_top_level=allow_top_level
         )
+        placeholder_names = self.reorder_placeholder_names_for_prior_positions(
+            parent.left, placeholder_names
+        )
+        self.placeholder_arg_position_cache[id(parent)] = [
+            name for name in placeholder_names if not name[1].isdigit()
+        ]
         return SingletonArgCounterMixin.create_placeholder_lambda(
             placeholder_names, orig_ctr, full_node or node, frame_globals
         )
@@ -530,7 +559,8 @@ class PipelineTracer(pyc.BaseTracer):
     def transform_pipeline_rhs_placeholders(
         self, ret: object, node: ast.expr, frame: FrameType, *_, **__
     ):
-        if not self.get_augmentations(id(self.containing_ast_by_id.get(id(node)))):
+        parent: ast.BinOp = self.containing_ast_by_id.get(id(node))  # type: ignore[assignment]
+        if not self.get_augmentations(id(parent)):
             return ret
         __hide_pyccolo_frame__ = True
         _frame_to_node_mapping[frame.f_code.co_filename, frame.f_lineno] = node
@@ -543,7 +573,7 @@ class PipelineTracer(pyc.BaseTracer):
             ast.expr, StatementMapper.augmentation_propagating_copy(node)
         )
         ast_lambda = self.transform_pipeline_placeholders(
-            transformed, frame.f_globals, allow_top_level=allow_top_level
+            transformed, parent, frame.f_globals, allow_top_level=allow_top_level
         )
         ast_lambda.body = transformed
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
@@ -605,7 +635,11 @@ class PipelineTracer(pyc.BaseTracer):
         for _i in range(num_left_traversals_to_lhs_placeholder_node):
             left_arg = left_arg.left  # type: ignore[assignment]
         ast_lambda = self.transform_pipeline_placeholders(
-            left_arg, frame.f_globals, allow_top_level=False, full_node=transformed
+            left_arg,
+            node,
+            frame.f_globals,
+            allow_top_level=False,
+            full_node=transformed,
         )
         ast_lambda.body = transformed
         evaluated_lambda = pyc.eval(ast_lambda, frame.f_globals, frame.f_locals)
