@@ -296,7 +296,7 @@ def allow_pipelines_in_loops_and_calls() -> Generator[None, None, None]:
     yield
 
 
-def is_outer_or_allowlisted(node_or_id: Union[ast.AST, int]):
+def is_outer_or_allowlisted(node_or_id: Union[ast.AST, int]) -> bool:
     node_id = node_or_id if isinstance(node_or_id, int) else id(node_or_id)
     if pyc.is_outer_stmt(node_id):
         return True
@@ -313,7 +313,7 @@ def is_outer_or_allowlisted(node_or_id: Union[ast.AST, int]):
                 and context_expr.func.id == allow_pipelines_in_loops_and_calls.__name__
             ):
                 return True
-        elif isinstance(parent_stmt, (ast.AsyncFunctionDef, ast.FunctionType)):
+        elif isinstance(parent_stmt, (ast.AsyncFunctionDef, ast.FunctionDef)):
             if any(
                 isinstance(deco, ast.Name)
                 and deco.id == allow_pipelines_in_loops_and_calls.__name__
