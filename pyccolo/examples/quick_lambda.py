@@ -87,9 +87,7 @@ class QuickLambdaTracer(Quasiquoter):
 
     _not_found = object()
 
-    @pyc.before_subscript_slice(
-        when=is_macro(lambda_macros), reentrant=True, static=True
-    )
+    @pyc.before_subscript_slice(when=is_macro(lambda_macros), reentrant=True)
     def handle_quick_lambda(
         self, _ret, node: ast.Subscript, frame: FrameType, evt: TraceEvent, *_, **__
     ):

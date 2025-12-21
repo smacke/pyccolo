@@ -423,7 +423,6 @@ class PipelineTracer(pyc.BaseTracer):
         pyc.before_load_complex_symbol,
         when=is_outer_or_allowlisted,
         reentrant=True,
-        static=True,
     )
     def handle_chain_placeholder_rewrites(
         self, ret, node: ast.expr, frame: FrameType, *_, **__
@@ -466,9 +465,7 @@ class PipelineTracer(pyc.BaseTracer):
         )
         return lambda: OptionalChainer.resolves_to_none_eventually
 
-    @pyc.register_raw_handler(
-        pyc.before_argument, when=is_outer_or_allowlisted, static=True
-    )
+    @pyc.register_raw_handler(pyc.before_argument, when=is_outer_or_allowlisted)
     def handle_before_arg(self, ret: object, *_, **__):
         if self.cur_chain_placeholder_lambda:
             return lambda: None
@@ -476,7 +473,7 @@ class PipelineTracer(pyc.BaseTracer):
             return ret
 
     @pyc.register_raw_handler(
-        pyc.after_load_complex_symbol, when=is_outer_or_allowlisted, static=True
+        pyc.after_load_complex_symbol, when=is_outer_or_allowlisted
     )
     def handle_after_placeholder_chain(self, ret, *_, **__):
         __hide_pyccolo_frame__ = True
@@ -501,7 +498,6 @@ class PipelineTracer(pyc.BaseTracer):
     @pyc.register_raw_handler(
         (pyc.before_left_binop_arg, pyc.before_right_binop_arg),
         when=lambda node: parent_is_bitor_op(node) and is_outer_or_allowlisted(node),
-        static=True,
     )
     def maybe_skip_binop_arg(self, ret: object, node_id: int, *_, **__):
         if node_id in self.binop_arg_nodes_to_skip:
@@ -554,7 +550,6 @@ class PipelineTracer(pyc.BaseTracer):
         pyc.before_right_binop_arg,
         when=lambda node: parent_is_bitor_op(node) and is_outer_or_allowlisted(node),
         reentrant=True,
-        static=True,
     )
     def transform_pipeline_rhs_placeholders(
         self, ret: object, node: ast.expr, frame: FrameType, *_, **__
@@ -613,7 +608,6 @@ class PipelineTracer(pyc.BaseTracer):
         when=lambda node: isinstance(node.op, ast.BitOr)
         and is_outer_or_allowlisted(node),
         reentrant=True,
-        static=True,
     )
     def transform_pipeline_lhs_placeholders(
         self, ret: object, node: ast.BinOp, frame: FrameType, *_, **__
@@ -650,7 +644,6 @@ class PipelineTracer(pyc.BaseTracer):
         when=lambda node: isinstance(node.op, ast.BitOr)
         and is_outer_or_allowlisted(node),
         reentrant=True,
-        static=True,
     )
     def transform_pipeline_op(
         self, ret: object, node: ast.BinOp, frame: FrameType, *_, **__
