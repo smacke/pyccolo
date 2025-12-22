@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.74 (2025-12-22)
+-------------------
+* Add PipelineTracer and requisite event / library changes;
+
 0.0.73 (2025-11-21)
 -------------------
 * convenience events for before / after assert;
