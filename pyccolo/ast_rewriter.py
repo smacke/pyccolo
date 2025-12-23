@@ -294,7 +294,7 @@ class AstRewriter(ast.NodeTransformer):
                 continue
             for evt in tracer.events_with_registered_handlers:
                 # this is to deal with the tests in test_trace_events.py,
-                # which patch events_with_registered_handlers but not _event_handlers
+                # which patch events_with_registered_handlers but do not add them to _event_handlers
                 handler_data = tracer._event_handlers.get(
                     evt, [HandlerSpec.empty()]  # type: ignore
                 )

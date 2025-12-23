@@ -1,9 +1,11 @@
 History
 =======
 
-0.0.74 (2025-12-22)
+0.0.75 (2025-12-22)
 -------------------
+* Optimization for subscript slice when `before_subscript_` events not used;
 * Add PipelineTracer and requisite event / library changes;
+* Optimize PipelineTracer / QuickLambdaTracer by turning off global guards;
 
 0.0.73 (2025-11-21)
 -------------------

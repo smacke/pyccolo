@@ -1041,11 +1041,11 @@ def register_handler(
         when = make_assert_evt_when(when)
     when = Predicate.TRUE if when is None else when
     if isinstance(when, Predicate):
-        pred: Predicate = when
+        pred: Predicate = when.clone()
+        pred.static = pred.static or static
+        pred.use_raw_node_id = use_raw_node_id
     else:
         pred = Predicate(when, static=static, use_raw_node_id=use_raw_node_id)  # type: ignore
-    pred.static = pred.static or static
-    pred.use_raw_node_id = use_raw_node_id
 
     if TraceEvent.opcode in events and sys.version_info < (3, 7):
         raise ValueError("can't trace opcodes on Python < 3.7")
@@ -1131,7 +1131,9 @@ class BaseTracer(_InternalBaseTracer):
             TraceEvent.before_subscript_store,
             TraceEvent.before_subscript_del,
         ),
+        when=Predicate.FALSE,
         reentrant=True,
+        static=True,
     )
     def _save_slice_for_later(self, *_, attr_or_subscript: Any, **__):
         self._saved_slice = attr_or_subscript

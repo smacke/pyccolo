@@ -43,6 +43,9 @@ class Predicate:
         self.use_raw_node_id = use_raw_node_id
         self.static = static
 
+    def clone(self) -> "Predicate":
+        return self.__class__(self.condition, self.use_raw_node_id, self.static)
+
     def __call__(self, node: Union[ast.AST, int]) -> bool:
         node_or_id = (
             id(node) if self.use_raw_node_id and isinstance(node, ast.AST) else node

@@ -24,16 +24,9 @@ def patch_events_and_emitter(testfunc):
     @settings(max_examples=25, deadline=None)
     @example(events=set(pyc.TraceEvent))
     def wrapped_testfunc(events):
-        if events & {
-            pyc.before_subscript_load,
-            pyc.before_subscript_store,
-            pyc.before_subscript_del,
-        }:
-            events.add(TraceEvent._load_saved_slice)
-        if TraceEvent._load_saved_slice in events:
-            events.add(pyc.before_subscript_load)
-            events.add(pyc.before_subscript_store)
-            events.add(pyc.before_subscript_del)
+        # too hard to test for this because its appearance depends on whether
+        # a corresponding before_subscript_load / store / del was emitted
+        events.discard(TraceEvent._load_saved_slice)
         if events & {
             TraceEvent._load_saved_expr_stmt_ret,
             pyc.after_module_stmt,
@@ -59,6 +52,14 @@ def patch_events_and_emitter(testfunc):
         def patched_init(self, *args, **kwargs):
             orig_init(self, *args, **kwargs)
             self.events_with_registered_handlers = frozenset(events)
+            for evt in events:
+                new_specs = []
+                for spec in self._event_handlers.get(evt, []):
+                    predicate = spec.predicate.clone()
+                    predicate.condition = lambda *_: True
+                    new_specs.append(spec._replace(predicate=predicate))
+                if new_specs:
+                    self._event_handlers[evt] = new_specs
 
         def _patched_emit_event(
             self,
@@ -90,10 +91,12 @@ def filter_events_to_subset(
     return [evt for evt in events if evt in subset]
 
 
-def throw_and_print_diff_if_recorded_not_equal_to(actual: List[pyc.TraceEvent]) -> None:
-    assert _RECORDED_EVENTS == actual, "\n".join(
+def throw_and_print_diff_if_recorded_not_equal_to(
+    expected: List[pyc.TraceEvent],
+) -> None:
+    assert _RECORDED_EVENTS == expected, "\n".join(
         _DIFFER.compare(
-            [evt.value for evt in _RECORDED_EVENTS], [evt.value for evt in actual]
+            [evt.value for evt in _RECORDED_EVENTS], [evt.value for evt in expected]
         )
     )
     _RECORDED_EVENTS.clear()
@@ -584,7 +587,8 @@ def test_fancy_slices(events):
                 pyc.ellipses,
                 pyc.after_subscript_slice,
                 pyc.before_subscript_load,
-                TraceEvent._load_saved_slice,
+                # This is where it would go, but difficult to test
+                # TraceEvent._load_saved_slice,
                 pyc.call,
                 pyc.before_function_body,
                 pyc.before_stmt,

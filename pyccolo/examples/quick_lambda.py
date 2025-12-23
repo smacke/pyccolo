@@ -74,6 +74,9 @@ class _ArgReplacer(ast.NodeVisitor, SingletonArgCounterMixin):
 
 
 class QuickLambdaTracer(Quasiquoter):
+
+    global_guards_enabled = False
+
     lambda_macros = ("f", "filter", "ifilter", "map", "imap", "reduce")
 
     def __init__(self, *args, **kwargs) -> None:

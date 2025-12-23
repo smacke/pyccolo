@@ -326,6 +326,8 @@ def is_outer_or_allowlisted(node_or_id: Union[ast.AST, int]) -> bool:
 
 class PipelineTracer(pyc.BaseTracer):
 
+    global_guards_enabled = False
+
     pipeline_dict_op_spec = pyc.AugmentationSpec(
         aug_type=pyc.AugmentationType.binop, token="**|>", replacement="|"
     )
