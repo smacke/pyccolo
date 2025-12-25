@@ -214,6 +214,15 @@ class AstRewriter(ast.NodeTransformer):
         end_col_offset = getattr(node, "end_col_offset", None)
         return end_lineno, end_col_offset
 
+    def _get_call_position_for(
+        self, node: ast.AST
+    ) -> Tuple[Optional[int], Optional[int]]:
+        if not isinstance(node, ast.Call):
+            return None, None
+        end_lineno = getattr(node.func, "end_lineno", None)
+        end_col_offset = getattr(node.func, "end_col_offset", None)
+        return end_lineno, end_col_offset
+
     def _get_position_for(
         self, aug_type: AugmentationType, node: ast.AST
     ) -> Tuple[Optional[int], Optional[int]]:
@@ -229,6 +238,8 @@ class AstRewriter(ast.NodeTransformer):
             return self._get_binop_position_for(node)
         elif aug_type == AugmentationType.boolop:
             return self._get_boolop_position_for(node)
+        elif aug_type == AugmentationType.call:
+            return self._get_call_position_for(node)
         else:
             raise NotImplementedError()
 

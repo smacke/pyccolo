@@ -20,6 +20,7 @@ class AugmentationType(Enum):
     dot_suffix = "dot_suffix"
     binop = "binop"
     boolop = "boolop"
+    call = "call"
 
 
 class AugmentationSpec(NamedTuple):

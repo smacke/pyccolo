@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.76 (2025-12-25)
+-------------------
+* Add call augmentation spec type;
+
 0.0.75 (2025-12-22)
 -------------------
 * Optimization for subscript slice when `before_subscript_` events not used;
