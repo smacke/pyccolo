@@ -435,7 +435,7 @@ class PipelineTracer(pyc.BaseTracer):
             return ret
         __hide_pyccolo_frame__ = True
         _frame_to_node_mapping[frame.f_code.co_filename, frame.f_lineno] = node
-        node_copy = StatementMapper.augmentation_propagating_copy(node)
+        node_copy = StatementMapper.bookkeeping_propagating_copy(node)
         assert isinstance(node_copy, ast.expr)
         orig_ctr = self.placeholder_replacer.arg_ctr
         lambda_body_parent_call = None
@@ -566,9 +566,7 @@ class PipelineTracer(pyc.BaseTracer):
         )
         if not self.placeholder_replacer.search(node, allow_top_level=allow_top_level):
             return ret
-        transformed = cast(
-            ast.expr, StatementMapper.augmentation_propagating_copy(node)
-        )
+        transformed = cast(ast.expr, StatementMapper.bookkeeping_propagating_copy(node))
         ast_lambda = self.transform_pipeline_placeholders(
             transformed, parent, frame.f_globals, allow_top_level=allow_top_level
         )
@@ -625,7 +623,7 @@ class PipelineTracer(pyc.BaseTracer):
         self.binop_arg_nodes_to_skip.add(id(node.right))
         self.binop_nodes_to_eval.add(id(node))
         transformed = cast(
-            ast.BinOp, StatementMapper.augmentation_propagating_copy(node)
+            ast.BinOp, StatementMapper.bookkeeping_propagating_copy(node)
         )
         left_arg = transformed
         for _i in range(num_left_traversals_to_lhs_placeholder_node):

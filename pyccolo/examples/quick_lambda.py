@@ -103,7 +103,7 @@ class QuickLambdaTracer(Quasiquoter):
         orig_lambda_body: ast.expr = node.slice  # type: ignore[assignment]
         if isinstance(orig_lambda_body, ast.Index):
             orig_lambda_body = orig_lambda_body.value  # type: ignore[attr-defined]
-        lambda_body = StatementMapper.augmentation_propagating_copy(orig_lambda_body)
+        lambda_body = StatementMapper.bookkeeping_propagating_copy(orig_lambda_body)
         placeholder_names = self._arg_replacer.get_placeholder_names(lambda_body)
         if self._arg_replacer.arg_ctr == orig_ctr and len(placeholder_names) == 0:
             ast_lambda = lambda_body

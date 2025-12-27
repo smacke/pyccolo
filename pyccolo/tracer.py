@@ -170,6 +170,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     parent_stmt_by_id: Dict[int, ast.stmt] = {}
     stmt_by_lineno_by_module_id: Dict[int, Dict[int, ast.stmt]] = defaultdict(dict)
     augmented_node_ids_by_spec: Dict[AugmentationSpec, Set[int]] = defaultdict(set)
+    additional_ast_bookkeeping: Dict[str, Union[Dict[int, Any], Set[int]]] = {}
 
     current_module: List[Optional[ast.Module]] = [None]
 
@@ -237,6 +238,8 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             )
         for spec, node_ids in cls.augmented_node_ids_by_spec.items():
             clear_keys(node_ids, bookkeeper.ast_node_by_id)
+        for extra_bookkeeping in cls.additional_ast_bookkeeping.values():
+            clear_keys(extra_bookkeeping, bookkeeper.ast_node_by_id)
 
     @classmethod
     def add_bookkeeping(cls, bookkeeper: AstBookkeeper, module_id: int) -> None:
@@ -255,6 +258,17 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         cls.stmt_by_lineno_by_module_id.clear()
         for node_ids in cls.augmented_node_ids_by_spec.values():
             node_ids.clear()
+        for extra_bookkeeping in cls.additional_ast_bookkeeping.values():
+            extra_bookkeeping.clear()
+
+    @contextmanager
+    def register_additional_ast_bookkeeping(self):
+        original_state = set(self.__dict__.keys())
+        yield
+        for additional_item_name in set(self.__dict__.keys() - original_state):
+            self.additional_ast_bookkeeping[additional_item_name] = self.__dict__[
+                additional_item_name
+            ]
 
     @property
     def has_sys_trace_events(self):

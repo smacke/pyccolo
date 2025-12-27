@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.77 (2025-12-26)
+-------------------
+* Add mechanism to register additional AST bookkeeping fields;
+
 0.0.76 (2025-12-25)
 -------------------
 * Add call augmentation spec type;

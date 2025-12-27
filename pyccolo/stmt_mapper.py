@@ -25,7 +25,7 @@ class StatementMapper(ast.NodeVisitor):
         self.traversal: List[ast.AST] = []
 
     @classmethod
-    def augmentation_propagating_copy(cls, node: _T) -> _T:
+    def bookkeeping_propagating_copy(cls, node: _T) -> _T:
         return cls()(node)[id(node)]  # type: ignore[return-value]
 
     def _handle_augmentations(self, no: ast.AST, nc: ast.AST) -> None:
@@ -49,10 +49,23 @@ class StatementMapper(ast.NodeVisitor):
         self.visit(copy_node or fast.copy_ast(node))
         copy_traversal = self.traversal
         orig_to_copy_mapping = {}
+        if len(self._tracers) > 0:
+            tracer = self._tracers[-1]
+        else:
+            tracer = None
         for no, nc in zip(orig_traversal, copy_traversal):
             orig_to_copy_mapping[id(no)] = nc
             if hasattr(nc, "lineno"):
                 self._handle_augmentations(no, nc)
+            if tracer is None:
+                continue
+            for extra_bookkeeping in tracer.additional_ast_bookkeeping.values():
+                if id(no) not in extra_bookkeeping:
+                    continue
+                if isinstance(extra_bookkeeping, set):
+                    extra_bookkeeping.add(id(nc))
+                else:
+                    extra_bookkeeping[id(nc)] = extra_bookkeeping[id(no)]
         return orig_to_copy_mapping
 
     def visit(self, node: ast.AST) -> None:
