@@ -1,7 +1,7 @@
 History
 =======
 
-0.0.78 (2025-01-03)
+0.0.78 (2026-01-03)
 -------------------
 * Bugfix to ensure complex symbol events are emitted in more contexts;
 
