@@ -82,7 +82,7 @@ class Quasiquoter(pyc.BaseTracer):
     @pyc.before_subscript_slice(when=is_macro("q"), reentrant=True)
     def quote_handler(self, _ret, node, frame, *_, **__):
         to_visit = node.slice
-        if isinstance(node.slice, ast.Index):
+        if isinstance(node.slice, getattr(ast, "Index", type(None))):
             to_visit = to_visit.value
         return lambda: _QuasiquoteTransformer(frame.f_globals, frame.f_locals).visit(
             copy.deepcopy(to_visit)

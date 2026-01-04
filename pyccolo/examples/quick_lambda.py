@@ -101,7 +101,7 @@ class QuickLambdaTracer(Quasiquoter):
         __hide_pyccolo_frame__ = True
         orig_ctr = self._arg_replacer.arg_ctr
         orig_lambda_body: ast.expr = node.slice  # type: ignore[assignment]
-        if isinstance(orig_lambda_body, ast.Index):
+        if isinstance(orig_lambda_body, getattr(ast, "Index", type(None))):
             orig_lambda_body = orig_lambda_body.value  # type: ignore[attr-defined]
         lambda_body = StatementMapper.bookkeeping_propagating_copy(orig_lambda_body)
         placeholder_names = self._arg_replacer.get_placeholder_names(lambda_body)

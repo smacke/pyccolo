@@ -69,7 +69,7 @@ class FutureUnwrapper(ast.NodeTransformer):
                     self._future_by_name_and_version[node.id, current_version]
                 )
             with fast.location_of(node):
-                slc: Union[ast.Tuple, ast.Index] = fast.Tuple(
+                slc: "Union[ast.Tuple, ast.Index]" = fast.Tuple(
                     elts=[fast.Str(node.id), fast.Num(current_version)],
                     ctx=ast.Load(),
                 )

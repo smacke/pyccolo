@@ -86,7 +86,7 @@ def make_composite_condition(
 
 
 def subscript_to_slice(node: ast.Subscript) -> ast.expr:
-    if isinstance(node.slice, ast.Index):
+    if isinstance(node.slice, getattr(ast, "Index", type(None))):
         return node.slice.value  # type: ignore
     else:
         return node.slice  # type: ignore
@@ -215,7 +215,7 @@ class EmitterMixin:
                 or kwargs_ret.func.id != TRACE_LAMBDA
             ):
                 kwargs["ret"] = self.make_lambda(kwargs_ret)
-        local_guard_makers = self.handler_guards_by_event.get(evt, None)
+        local_guard_makers = self.handler_guards_by_event.get(evt)
         local_guards = {}
         if local_guard_makers is not None:
             for spec, maker in local_guard_makers:
