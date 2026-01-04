@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.78 (2025-01-03)
+-------------------
+* Bugfix to ensure complex symbol events are emitted in more contexts;
+
 0.0.77 (2025-12-26)
 -------------------
 * Add mechanism to register additional AST bookkeeping fields;
