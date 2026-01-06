@@ -7,6 +7,10 @@ import warnings
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Callable, Generator, List, Optional
 
+from typing_extensions import TypeVar
+
+T = TypeVar("T", bound=ast.AST)
+
 
 class FastAst:
     _LOCATION_OF_NODE: Optional[ast.AST] = None
@@ -41,9 +45,9 @@ class FastAst:
             FastAst._LOCATION_OF_NODE = old_location_of_node
 
     @classmethod
-    def location_of_arg(cls, func: Callable[..., ast.AST]) -> Callable[..., ast.AST]:
+    def location_of_arg(cls, func: Callable[..., T]) -> Callable[..., T]:
         @functools.wraps(func)
-        def wrapped_node_transform(*args) -> ast.AST:
+        def wrapped_node_transform(*args) -> T:
             with cls.location_of(args[-1]):
                 return func(*args)
 
