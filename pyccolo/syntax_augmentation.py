@@ -2,7 +2,6 @@
 import itertools
 import tokenize
 import warnings
-from collections import Counter, defaultdict
 from enum import Enum
 from io import StringIO
 from typing import TYPE_CHECKING, Callable, Dict, List, NamedTuple, Set, Tuple, Union
@@ -33,29 +32,33 @@ def fix_positions(
     pos_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]],
     spec_order: Tuple[AugmentationSpec, ...],
 ) -> Dict[AugmentationSpec, Set[Tuple[int, int]]]:
-    grouped_by_line: Dict[int, List[Tuple[int, AugmentationSpec]]] = defaultdict(list)
+    col_by_spec_by_line: Dict[int, Dict[AugmentationSpec, List[int]]] = {}
     fixed_pos_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]] = {}
     for spec, positions in pos_by_spec.items():
-        fixed_pos_by_spec[spec] = set()
-        for line, col in positions:
-            grouped_by_line[line].append((col, spec))
-
-    for line, cols_with_spec in grouped_by_line.items():
-        total_offset_by_spec: Dict[AugmentationSpec, int] = Counter()
-        offset_by_spec: Dict[AugmentationSpec, int] = Counter()
-        cols_with_spec.sort(key=lambda x: x[0])
-        for col, spec in cols_with_spec:
-            offset = len(spec.token) - len(spec.replacement)
-            for prev_applied in spec_order:
-                # the offsets will only be messed up for specs that
-                # were applied earlier
-                total_offset_by_spec[prev_applied] += offset
-                if prev_applied == spec:
+        for line, col in sorted(positions):
+            col_by_spec_by_line.setdefault(line, {}).setdefault(spec, []).append(col)
+    for line, col_by_spec in col_by_spec_by_line.items():
+        for spec_to_apply in spec_order:
+            spec_to_apply_cols = col_by_spec.get(spec_to_apply)
+            if spec_to_apply_cols is None:
+                continue
+            offset = len(spec_to_apply.token) - len(spec_to_apply.replacement)
+            for spec_to_fix in spec_order:
+                if spec_to_apply == spec_to_fix:
                     break
-            offset_by_spec[spec] += offset
-            new_col = col - (total_offset_by_spec[spec] - offset_by_spec[spec])
-            fixed_pos_by_spec[spec].add((line, new_col))
-
+                spec_to_fix_cols = col_by_spec.get(spec_to_fix)
+                if spec_to_fix_cols is None:
+                    continue
+                for j in range(len(spec_to_fix_cols)):
+                    for i, col in enumerate(spec_to_apply_cols):
+                        if col + offset <= spec_to_fix_cols[j]:
+                            spec_to_fix_cols[j] -= offset
+                        else:
+                            break
+        for spec, cols in col_by_spec.items():
+            fixed_pos_by_spec.setdefault(spec, set())
+            for col in cols:
+                fixed_pos_by_spec[spec].add((line, col))
     return fixed_pos_by_spec
 
 

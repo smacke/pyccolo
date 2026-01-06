@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.79 (2026-01-05)
+-------------------
+* Bugfix for computing multiple syntax augmentation position offsets;
+
 0.0.78 (2026-01-03)
 -------------------
 * Bugfix to ensure complex symbol events are emitted in more contexts;
