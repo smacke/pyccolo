@@ -895,7 +895,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             sandbox_args = "**__"
         env_name = f"{PYCCOLO_BUILTIN_PREFIX}_pyccolo_local_env"
         fun_name = f"{PYCCOLO_BUILTIN_PREFIX}_pyccolo_sandbox"
-        sandboxed_code: Union[ast.Module, str] = textwrap.dedent(
+        sandboxed_raw_code = textwrap.dedent(
             f"""
             {env_name} = dict(locals())
             def {fun_name}({sandbox_args}):
@@ -905,7 +905,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             {env_name}.pop("builtins", None)
             """
         ).strip("\n")
-        sandboxed_code = ast.parse(sandboxed_code, filename, "exec")
+        sandboxed_code = cast(
+            ast.Module, ast.parse(sandboxed_raw_code, filename, "exec")
+        )
         with (
             self.tracing_context(
                 disabled=self._is_tracing_hard_disabled,
