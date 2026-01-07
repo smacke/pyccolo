@@ -856,9 +856,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                         ast.Expression, self.parse(code, mode="eval", filename=filename)
                     )
                 else:
-                    code = cast(
-                        ast.Expression, ast.parse(code, mode="eval", filename=filename)
-                    )
+                    code = ast.parse(code, mode="eval", filename=filename)
             if not isinstance(code, ast.Expression):
                 code = ast.Expression(code)
             if instrument and not visited:
@@ -874,7 +872,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
 
     def exec(
         self,
-        code: Union[str, ast.Module, ast.stmt],
+        code: Union[str, ast.Module, ast.stmt, ast.Expression],
         global_env: Optional[dict] = None,
         local_env: Optional[dict] = None,
         *,
@@ -906,8 +904,8 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             {env_name}.pop("__", None)
             {env_name}.pop("builtins", None)
             """
-        ).strip()
-        sandboxed_code = ast.parse(cast(str, sandboxed_code), filename, "exec")
+        ).strip("\n")
+        sandboxed_code = ast.parse(sandboxed_code, filename, "exec")
         with (
             self.tracing_context(
                 disabled=self._is_tracing_hard_disabled,
@@ -921,9 +919,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 code = textwrap.dedent(code).strip()
                 if instrument:
                     visited = True
-                    code = cast(ast.Module, self.parse(code))
+                    code = cast(ast.Expression, self.parse(code))
                 else:
-                    code = cast(ast.Module, ast.parse(code))
+                    code = ast.parse(code)
             if not isinstance(code, ast.Module):
                 assert isinstance(code, ast.stmt)
                 if sys.version_info < (3, 8):
