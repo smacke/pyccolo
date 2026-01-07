@@ -1,9 +1,9 @@
 History
 =======
 
-0.0.79 (2026-01-05)
+0.0.80 (2026-01-06)
 -------------------
-* Bugfix for computing multiple syntax augmentation position offsets;
+* Bugfix to ensure event handler predicates use bookkeeping AST nodes;
 
 0.0.78 (2026-01-03)
 -------------------

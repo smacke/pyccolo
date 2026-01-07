@@ -69,7 +69,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         if not isinstance(node.ctx, ast.Load):
             return node
         orig_node = node
-        if self.handler_predicate_by_event[TraceEvent.load_name](orig_node):
+        if self.handler_predicate_by_event[TraceEvent.load_name](
+            self.orig_to_copy_mapping[id(node)]
+        ):
             with fast.location_of(orig_node):
                 node = self.emit(TraceEvent.load_name, orig_node, ret=node)  # type: ignore
         return node
@@ -156,20 +158,23 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
 
     def visit_Subscript(self, node: ast.Subscript, call_context=False):
         evt_to_use = self._get_attrsub_event(node)
+        untraced_node = self.orig_to_copy_mapping[id(node)]
         with self.attrsub_context(None):
             with fast.location_of(
                 node.slice if hasattr(node.slice, "lineno") else node.value
             ):
                 slc = self._maybe_convert_ast_subscript(node.slice)
                 if self.handler_predicate_by_event[TraceEvent.before_subscript_slice](
-                    node
+                    untraced_node
                 ):
                     slc = self.emit(TraceEvent.before_subscript_slice, node, ret=slc)
                 if self.handler_predicate_by_event[TraceEvent.after_subscript_slice](
-                    node
+                    untraced_node
                 ):
                     slc = self.emit(TraceEvent.after_subscript_slice, node, ret=slc)
-                if self.handler_predicate_by_event[evt_to_use](node.slice):
+                if self.handler_predicate_by_event[evt_to_use](
+                    self.orig_to_copy_mapping[id(node.slice)]
+                ):
                     replacement_slice: ast.expr = self.emit(
                         TraceEvent._load_saved_slice, node.slice
                     )
@@ -199,10 +204,11 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         if not is_load:
             return node
 
+        untraced_node = self.orig_to_copy_mapping[orig_node_id]
         with fast.location_of(node):
             extra_kwargs = dict(call_context=fast.NameConstant(call_context))
             if self.handler_predicate_by_event[TraceEvent.before_load_complex_symbol](
-                orig_node
+                untraced_node
             ):
                 node = self.emit(
                     TraceEvent.before_load_complex_symbol,
@@ -211,7 +217,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     **extra_kwargs,
                 )
             if self.handler_predicate_by_event[TraceEvent.after_load_complex_symbol](
-                orig_node
+                untraced_node
             ):
                 node = self.emit(
                     TraceEvent.after_load_complex_symbol,
@@ -231,9 +237,10 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     ):
         orig_node = node
         orig_node_id = id(orig_node)
+        untraced_node = self.orig_to_copy_mapping[orig_node_id]
         with fast.location_of(node.value):
             is_subscript = isinstance(node, ast.Subscript)
-            should_emit_evt = self.handler_predicate_by_event[evt_to_use](orig_node)
+            should_emit_evt = self.handler_predicate_by_event[evt_to_use](untraced_node)
             with self.attrsub_context(node):
                 assert self._top_level_node_for_symbol is not None
                 extra_keywords: Dict[str, ast.AST] = {}
@@ -272,7 +279,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 if is_subscript
                 else TraceEvent.after_attribute_load
             )
-            if self.handler_predicate_by_event[after_evt](orig_node):
+            if self.handler_predicate_by_event[after_evt](untraced_node):
                 with fast.location_of(node):
                     node = self.emit(  # type: ignore
                         after_evt,
@@ -298,11 +305,12 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 key = getattr(arg, "arg")
             else:
                 key = None
+            untraced_maybe_kwarg = self.orig_to_copy_mapping[id(maybe_kwarg)]
             with fast.location_of(maybe_kwarg):
                 with self.attrsub_context(None):
                     new_arg_value = self.visit(maybe_kwarg)
                 for arg_evt in (TraceEvent.before_argument, TraceEvent.after_argument):
-                    if self.handler_predicate_by_event[arg_evt](maybe_kwarg):
+                    if self.handler_predicate_by_event[arg_evt](untraced_maybe_kwarg):
                         with self.attrsub_context(None):
                             new_arg_value = cast(
                                 ast.expr,
@@ -366,7 +374,8 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         #
         # This effectively rewrites function calls as follows:
         # f(a, b, ..., c) -> trace(f, 'enter argument list')(a, b, ..., c)
-        if self.handler_predicate_by_event[TraceEvent.before_call](node):
+        untraced_node = self.orig_to_copy_mapping[orig_node_id]
+        if self.handler_predicate_by_event[TraceEvent.before_call](untraced_node):
             with fast.location_of(ret_as_call.func):
                 ret_as_call.func = self.emit(
                     TraceEvent.before_call,
@@ -376,7 +385,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 )
 
         # f(a, b, ..., c) -> trace(f(a, b, ..., c), 'exit argument list')
-        if self.handler_predicate_by_event[TraceEvent.after_call](node):
+        if self.handler_predicate_by_event[TraceEvent.after_call](untraced_node):
             with fast.location_of(ret):
                 ret = self.emit(
                     TraceEvent.after_call,
@@ -393,7 +402,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     @fast.location_of_arg
     def visit_Expr(self, node: ast.Expr) -> ast.Expr:
         node.value = self.visit(node.value)
-        if self.handler_predicate_by_event[TraceEvent.after_expr_stmt](node):
+        if self.handler_predicate_by_event[TraceEvent.after_expr_stmt](
+            self.orig_to_copy_mapping[id(node)]
+        ):
             node.value = self.emit(TraceEvent.after_expr_stmt, node, ret=node.value)
         return node
 
@@ -416,6 +427,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             node.target = self.visit(node.target)
         orig_value = node.value
         orig_value_id = id(orig_value)
+        untraced_value = self.orig_to_copy_mapping[orig_value_id]
         if isinstance(node, (ast.AnnAssign, ast.Assign)):
             before_evt = TraceEvent.before_assign_rhs
             after_evt = TraceEvent.after_assign_rhs
@@ -424,9 +436,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             after_evt = TraceEvent.after_augassign_rhs
         with fast.location_of(node.value):
             node.value = self.visit(node.value)
-            if self.handler_predicate_by_event[before_evt](orig_value):
+            if self.handler_predicate_by_event[before_evt](untraced_value):
                 node.value = self.emit(before_evt, orig_value_id, ret=node.value)
-            if self.handler_predicate_by_event[after_evt](orig_value):
+            if self.handler_predicate_by_event[after_evt](untraced_value):
                 node.value = self.emit(after_evt, orig_value_id, ret=node.value)
         return node
 
@@ -437,7 +449,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             node.test = self.visit(node.test)
             node.body = [self.visit(stmt) for stmt in node.body]
             node.orelse = [self.visit(stmt) for stmt in node.orelse]
-            if self.handler_predicate_by_event[TraceEvent.after_if_test](node):
+            if self.handler_predicate_by_event[TraceEvent.after_if_test](
+                self.orig_to_copy_mapping[id(node)]
+            ):
                 node.test = self.emit(TraceEvent.after_if_test, node, ret=node.test)
             return node
 
@@ -482,17 +496,17 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def visit_While(self, node: ast.While):
         for name, field in ast.iter_fields(node):
             if name == "test":
-                loop_node_copy = cast(ast.While, self.orig_to_copy_mapping[id(node)])
+                untraced_node = cast(ast.While, self.orig_to_copy_mapping[id(node)])
                 with fast.location_of(node):
                     visited_test = self.visit(field)
                     if self.handler_predicate_by_event[TraceEvent.after_while_test](
-                        node
+                        untraced_node
                     ):
                         visited_test = self.emit(
                             TraceEvent.after_while_test, node, ret=visited_test
                         )
                     if self.global_guards_enabled:
-                        loop_guard = make_guard_name(loop_node_copy)
+                        loop_guard = make_guard_name(untraced_node)
                         self.register_guard(loop_guard)
                         node.test = fast.IfExp(
                             test=make_composite_condition(
@@ -502,7 +516,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                                 ]
                             ),
                             body=visited_test,
-                            orelse=loop_node_copy.test,
+                            orelse=untraced_node.test,
                         )
                     else:
                         node.test = visited_test
@@ -514,16 +528,17 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
 
     def visit_For_or_Async_For(self, node: Union[ast.For, ast.AsyncFor]):
         orig_node_iter = node.iter
+        untraced_node_iter = self.orig_to_copy_mapping[id(orig_node_iter)]
         with fast.location_of(node):
             node.iter = self.visit(node.iter)
             if self.handler_predicate_by_event[TraceEvent.before_for_iter](
-                orig_node_iter
+                untraced_node_iter
             ):
                 node.iter = self.emit(
                     TraceEvent.before_for_iter, orig_node_iter, ret=node.iter
                 )
             if self.handler_predicate_by_event[TraceEvent.after_for_iter](
-                orig_node_iter
+                untraced_node_iter
             ):
                 node.iter = self.emit(
                     TraceEvent.after_for_iter, orig_node_iter, ret=node.iter
@@ -673,7 +688,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     traced_elts.append(self.visit(elt))
                     continue
                 elif not is_load or not self.handler_predicate_by_event[elt_trace_evt](
-                    node
+                    self.orig_to_copy_mapping[id(node)]
                 ):
                     traced_elts.append(self.visit(elt))
                     continue
@@ -704,7 +719,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             else:
                 with fast.location_of(k):
                     traced_key = self.visit(k)
-                    if self.handler_predicate_by_event[TraceEvent.dict_key](k):
+                    if self.handler_predicate_by_event[TraceEvent.dict_key](
+                        self.orig_to_copy_mapping[id(k)]
+                    ):
                         traced_key = self.emit(
                             TraceEvent.dict_key,
                             k,
@@ -720,7 +737,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 else:
                     key_node_id_ast = self.get_copy_id_ast(k)
                 traced_value = self.visit(v)
-                if self.handler_predicate_by_event[TraceEvent.dict_value](v):
+                if self.handler_predicate_by_event[TraceEvent.dict_value](
+                    self.orig_to_copy_mapping[id(v)]
+                ):
                     traced_value = self.emit(
                         TraceEvent.dict_value,
                         v,
@@ -741,7 +760,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             self.visit(elt)
         new_decorator_list = []
         for idx, decorator in enumerate(node.decorator_list):
-            if not self.handler_predicate_by_event[TraceEvent.decorator](decorator):
+            if not self.handler_predicate_by_event[TraceEvent.decorator](
+                self.orig_to_copy_mapping[id(decorator)]
+            ):
                 new_decorator_list.append(self.visit(decorator))
                 continue
             with fast.location_of(decorator):
@@ -764,9 +785,10 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         if node.value is None:
             return node
         orig_node_value = node.value
+        untraced_node_value = self.orig_to_copy_mapping[id(orig_node_value)]
         node.value = self.visit(node.value)
         for evt in (TraceEvent.before_return, TraceEvent.after_return):
-            if self.handler_predicate_by_event[evt](orig_node_value):
+            if self.handler_predicate_by_event[evt](untraced_node_value):
                 node.value = self.emit(evt, orig_node_value, ret=node.value)
         return node
 
@@ -795,9 +817,10 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 ),
             ]:
                 operand_node = getattr(node, attr)
+                untraced_operand = self.orig_to_copy_mapping[id(operand_node)]
                 transformed_node = self.visit(operand_node)
                 for evt in evts:
-                    if self.handler_predicate_by_event[evt](operand_node):
+                    if self.handler_predicate_by_event[evt](untraced_operand):
                         with fast.location_of(operand_node):
                             transformed_node = self.emit(
                                 evt, operand_node, ret=transformed_node
@@ -828,6 +851,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     @fast.location_of_arg
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.BoolOp:
         orig_node = node
+        untraced_node = self.orig_to_copy_mapping[id(orig_node)]
         with self.attrsub_context(None):
             for idx, val in enumerate(node.values):
                 untraced_val = self.orig_to_copy_mapping[id(val)]
@@ -842,7 +866,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                         )
                 node.values[idx] = transformed_val
         for evt in (TraceEvent.before_boolop, TraceEvent.after_boolop):
-            if self.handler_predicate_by_event[evt](orig_node):
+            if self.handler_predicate_by_event[evt](untraced_node):
                 node = self.emit(evt, orig_node, ret=node)  # type: ignore[assignment]
         return node
 
@@ -853,7 +877,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         untraced_node = self.orig_to_copy_mapping[id(node)]
 
         with self.attrsub_context(None):
-            if self.handler_predicate_by_event[TraceEvent.left_compare_arg](node.left):
+            if self.handler_predicate_by_event[TraceEvent.left_compare_arg](
+                self.orig_to_copy_mapping[id(node.left)]
+            ):
                 with fast.location_of(node.left):
                     node.left = self.emit(
                         TraceEvent.left_compare_arg,
@@ -864,7 +890,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 node.left = self.visit(node.left)
 
             for idx, comparator in enumerate(node.comparators):
-                if self.handler_predicate_by_event[TraceEvent.compare_arg](comparator):
+                if self.handler_predicate_by_event[TraceEvent.compare_arg](
+                    self.orig_to_copy_mapping[id(comparator)]
+                ):
                     with fast.location_of(comparator):
                         node.comparators[idx] = self.emit(
                             TraceEvent.compare_arg,
@@ -925,13 +953,14 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
     def visit_JoinedStr(self, node: ast.JoinedStr):
         orig_node = node
         transformed: ast.AST = node
+        untraced_node = self.orig_to_copy_mapping[id(orig_node)]
         with self.attrsub_context(None):
             node.values = [self.visit(value) for value in node.values]
-        if self.handler_predicate_by_event[TraceEvent.before_fstring](orig_node):
+        if self.handler_predicate_by_event[TraceEvent.before_fstring](untraced_node):
             transformed = self.emit(
                 TraceEvent.before_fstring, orig_node, ret=transformed
             )
-        if self.handler_predicate_by_event[TraceEvent.after_fstring](orig_node):
+        if self.handler_predicate_by_event[TraceEvent.after_fstring](untraced_node):
             transformed = self.emit(
                 TraceEvent.after_fstring, orig_node, ret=transformed
             )
@@ -943,44 +972,57 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
         def visit_Bytes(self, node: ast.Bytes):
             if isinstance(node.s, bytes) and self.handler_predicate_by_event[
                 TraceEvent.after_bytes
-            ](node):
+            ](self.orig_to_copy_mapping[id(node)]):
                 return self.emit(TraceEvent.after_bytes, node, ret=node)
 
         @fast.location_of_arg
         def visit_Ellipsis(self, node: ast.Ellipsis):
-            if self.handler_predicate_by_event[TraceEvent.ellipsis](node):
+            if self.handler_predicate_by_event[TraceEvent.ellipsis](
+                self.orig_to_copy_mapping[id(node)]
+            ):
                 return self.emit(TraceEvent.ellipsis, node, ret=node)
             else:
                 return node
 
         @fast.location_of_arg
         def visit_NameConstant(self, node: ast.NameConstant):
+            untraced_node = self.orig_to_copy_mapping[id(node)]
             if node.value is None and self.handler_predicate_by_event[
                 TraceEvent.after_none
-            ](node):
+            ](untraced_node):
                 return self.emit(TraceEvent.after_none, node, ret=node)
             if type(node.value) is bool:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_bool](node):
+                if self.handler_predicate_by_event[TraceEvent.after_bool](
+                    untraced_node
+                ):
                     return self.emit(TraceEvent.after_bool, node, ret=node)
             return node
 
         @fast.location_of_arg
         def visit_Num(self, node: ast.Num):
+            untraced_node = self.orig_to_copy_mapping[id(node)]
             if type(node.n) is int:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_int](node):
+                if self.handler_predicate_by_event[TraceEvent.after_int](untraced_node):
                     return self.emit(TraceEvent.after_int, node, ret=node)
             if type(node.n) is float:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_float](node):
+                if self.handler_predicate_by_event[TraceEvent.after_float](
+                    untraced_node
+                ):
                     return self.emit(TraceEvent.after_float, node, ret=node)
             if type(node.n) is complex:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_complex](node):
+                if self.handler_predicate_by_event[TraceEvent.after_complex](
+                    untraced_node
+                ):
                     return self.emit(TraceEvent.after_complex, node, ret=node)
             return node
 
         @fast.location_of_arg
         def visit_Str(self, node: ast.Str):
+            untraced_node = self.orig_to_copy_mapping[id(node)]
             if type(node.s) is str:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_string](node):
+                if self.handler_predicate_by_event[TraceEvent.after_string](
+                    untraced_node
+                ):
                     return self.emit(TraceEvent.after_string, node, ret=node)
             return node
 
@@ -988,32 +1030,43 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
 
         @fast.location_of_arg
         def visit_Constant(self, node: ast.Constant):
+            untraced_node = self.orig_to_copy_mapping[id(node)]
             if node.value is ... and self.handler_predicate_by_event[
                 TraceEvent.ellipsis
-            ](node):
+            ](untraced_node):
                 return self.emit(TraceEvent.ellipsis, node, ret=node)
             if node.value is None and self.handler_predicate_by_event[
                 TraceEvent.after_none
-            ](node):
+            ](untraced_node):
                 return self.emit(TraceEvent.after_none, node, ret=node)
             # we need these explicit type checks because e.g.
             # bool is instance of int is instance of float
             if type(node.value) is bytes:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_bytes](node):
+                if self.handler_predicate_by_event[TraceEvent.after_bytes](
+                    untraced_node
+                ):
                     return self.emit(TraceEvent.after_bytes, node, ret=node)
             if type(node.value) is bool:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_bool](node):
+                if self.handler_predicate_by_event[TraceEvent.after_bool](
+                    untraced_node
+                ):
                     return self.emit(TraceEvent.after_bool, node, ret=node)
             if type(node.value) is int:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_int](node):
+                if self.handler_predicate_by_event[TraceEvent.after_int](untraced_node):
                     return self.emit(TraceEvent.after_int, node, ret=node)
             if type(node.value) is float:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_float](node):
+                if self.handler_predicate_by_event[TraceEvent.after_float](
+                    untraced_node
+                ):
                     return self.emit(TraceEvent.after_float, node, ret=node)
             if type(node.value) is complex:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_complex](node):
+                if self.handler_predicate_by_event[TraceEvent.after_complex](
+                    untraced_node
+                ):
                     return self.emit(TraceEvent.after_complex, node, ret=node)
             if type(node.value) is str:  # noqa: E721
-                if self.handler_predicate_by_event[TraceEvent.after_string](node):
+                if self.handler_predicate_by_event[TraceEvent.after_string](
+                    untraced_node
+                ):
                     return self.emit(TraceEvent.after_string, node, ret=node)
             return node
