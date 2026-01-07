@@ -116,9 +116,10 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
     def _handle_loop_body(
         self, node: Union[ast.For, ast.While], orig_body: List[ast.AST]
     ) -> List[ast.AST]:
+        untraced_node = self.orig_to_copy_mapping[id(node)]
         loop_node_copy = cast(
             Union[ast.For, ast.While],
-            fast.copy_ast(self.orig_to_copy_mapping[id(node)]),
+            fast.copy_ast(untraced_node),
         )
         loop_node_copy.body, globals_and_nonlocals = strip_globals_and_nonlocals(
             loop_node_copy.body
@@ -135,7 +136,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
             else:
                 before_loop_evt = TraceEvent.before_while_loop_body
                 after_loop_evt = TraceEvent.after_while_loop_iter
-            if self.handler_predicate_by_event[after_loop_evt](node):
+            if self.handler_predicate_by_event[after_loop_evt](untraced_node):
                 ret: List[ast.AST] = [
                     fast.Try(
                         body=orig_body,
@@ -170,7 +171,7 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                                         ret=fast.NameConstant(True),
                                     )
                                     if self.handler_predicate_by_event[before_loop_evt](
-                                        node
+                                        untraced_node
                                     )
                                     else None
                                 ),
