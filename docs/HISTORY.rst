@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.81 (2026-01-08)
+-------------------
+* Onboard subscripts to dot_prefix augmentation types;
+
 0.0.80 (2026-01-06)
 -------------------
 * Bugfix to ensure event handler predicates use bookkeeping AST nodes;
