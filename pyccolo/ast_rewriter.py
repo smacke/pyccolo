@@ -169,7 +169,7 @@ class AstRewriter(ast.NodeTransformer):
             return getattr(node, "end_lineno", None), getattr(
                 node, "end_col_offset", None
             )
-        elif isinstance(node, ast.Attribute):
+        elif isinstance(node, (ast.Attribute, ast.Subscript)):
             return getattr(node.value, "end_lineno", None), getattr(
                 node.value, "end_col_offset", None
             )
@@ -182,7 +182,7 @@ class AstRewriter(ast.NodeTransformer):
     ) -> Tuple[Optional[int], Optional[int]]:
         if isinstance(node, ast.Name):
             return node.lineno, node.col_offset
-        elif isinstance(node, ast.Attribute):
+        elif isinstance(node, (ast.Attribute, ast.Subscript)):
             return node.value.lineno, node.value.col_offset
         else:
             return None, None
