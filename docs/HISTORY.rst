@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.82 (2026-01-09)
+-------------------
+* Improve reliability of augmentation detection for BinOp / BoolOp by using ranges;
+
 0.0.81 (2026-01-08)
 -------------------
 * Onboard subscripts to dot_prefix augmentation types;
