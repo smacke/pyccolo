@@ -22,6 +22,20 @@ class AugmentationType(Enum):
     call = "call"
 
 
+class Position(NamedTuple):
+    line: int
+    col: int
+
+
+class Range(NamedTuple):
+    start: Position
+    end: Position
+
+    @classmethod
+    def singleton_span(cls, start: int, col: int) -> "Range":
+        return cls(Position(start, col), Position(start, col))
+
+
 class AugmentationSpec(NamedTuple):
     aug_type: AugmentationType
     token: str
@@ -29,11 +43,11 @@ class AugmentationSpec(NamedTuple):
 
 
 def fix_positions(
-    pos_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]],
+    pos_by_spec: Dict[AugmentationSpec, Set[Position]],
     spec_order: Tuple[AugmentationSpec, ...],
-) -> Dict[AugmentationSpec, Set[Tuple[int, int]]]:
+) -> Dict[AugmentationSpec, List[Position]]:
     col_by_spec_by_line: Dict[int, Dict[AugmentationSpec, List[int]]] = {}
-    fixed_pos_by_spec: Dict[AugmentationSpec, Set[Tuple[int, int]]] = {}
+    fixed_pos_by_spec: Dict[AugmentationSpec, List[Position]] = {}
     for spec, positions in pos_by_spec.items():
         for line, col in sorted(positions):
             col_by_spec_by_line.setdefault(line, {}).setdefault(spec, []).append(col)
@@ -56,9 +70,11 @@ def fix_positions(
                         else:
                             break
         for spec, cols in col_by_spec.items():
-            fixed_pos_by_spec.setdefault(spec, set())
+            fixed_pos_by_spec.setdefault(spec, [])
             for col in cols:
-                fixed_pos_by_spec[spec].add((line, col))
+                fixed_pos_by_spec[spec].append(Position(line, col))
+    for positions_lst in fixed_pos_by_spec.values():
+        positions_lst.sort()
     return fixed_pos_by_spec
 
 
@@ -73,8 +89,6 @@ def replace_tokens_and_get_augmented_positions(
     match = StringIO()
     cur_match_start = (-1, -1)
     col_offset = 0
-    token_before_match_start = None
-    token_before_match_start_col_offset = None
 
     def _flush_match(force: bool = False) -> None:
         nonlocal cur_match_start
@@ -96,15 +110,9 @@ def replace_tokens_and_get_augmented_positions(
     def _write_match(tok: Union[str, tokenize.TokenInfo]) -> None:
         nonlocal cur_match_start
         nonlocal col_offset
-        nonlocal token_before_match_start
-        nonlocal token_before_match_start_col_offset
         if isinstance(tok, tokenize.TokenInfo):
             if match.getvalue() == "":
                 cur_match_start = tok.start
-                token_before_match_start = prev_non_whitespace_token
-                token_before_match_start_col_offset = (
-                    prev_non_whitespace_token_col_offset
-                )
             to_write = tok.string
         else:
             to_write = tok
@@ -112,24 +120,10 @@ def replace_tokens_and_get_augmented_positions(
         _flush_match()
         if spec.token != match.getvalue():
             return
-        if spec.aug_type in (AugmentationType.binop, AugmentationType.boolop):
-            # for binop / boolop, we use left operand's end_col_offset to locate the position of the op
-            if (
-                token_before_match_start is not None
-                and token_before_match_start_col_offset is not None
-            ):
-                positions.append(
-                    (
-                        token_before_match_start.end[0],
-                        token_before_match_start.end[1]
-                        + token_before_match_start_col_offset,
-                    )
-                )
-        else:
-            match_pos_col_offset = cur_match_start[1] + col_offset
-            match_pos_col_offset += len(spec.token) - len(spec.token.strip())
-            match_pos_col_offset += len(spec.token) - len(spec.token.lstrip())
-            positions.append((cur_match_start[0], match_pos_col_offset))
+        match_pos_col_offset = cur_match_start[1] + col_offset
+        match_pos_col_offset += len(spec.token) - len(spec.token.strip())
+        match_pos_col_offset += len(spec.token) - len(spec.token.lstrip())
+        positions.append((cur_match_start[0], match_pos_col_offset))
         col_offset += len(spec.replacement) - len(spec.token)
         transformed.write(spec.replacement)
         cur_match_start = (
@@ -141,8 +135,6 @@ def replace_tokens_and_get_augmented_positions(
 
     positions: List[Tuple[int, int]] = []
     prev = None
-    prev_non_whitespace_token = None
-    prev_non_whitespace_token_col_offset = None
     for cur in tokens:
         if prev is not None and prev.end[0] == cur.start[0]:
             if match.getvalue() == "":
@@ -157,9 +149,6 @@ def replace_tokens_and_get_augmented_positions(
                 _write_match(" ")
         _write_match(cur)
         prev = cur
-        if cur.string.strip() != "":
-            prev_non_whitespace_token = cur
-            prev_non_whitespace_token_col_offset = col_offset
 
     _flush_match(force=True)
     return transformed.getvalue(), positions
