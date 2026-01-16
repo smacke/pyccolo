@@ -4,12 +4,12 @@ import tokenize
 import warnings
 from enum import Enum
 from io import StringIO
-from typing import TYPE_CHECKING, Callable, Dict, List, NamedTuple, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Set, Tuple, Union
 
 if TYPE_CHECKING:
     from pyccolo.ast_rewriter import AstRewriter
 
-    CodeType = Union[str, List[str]]
+    CodeLines = Union[str, List[str]]
 
 
 class AugmentationType(Enum):
@@ -79,12 +79,33 @@ def fix_positions(
 
 
 def replace_tokens_and_get_augmented_positions(
-    tokenizable: Union[str, List[tokenize.TokenInfo]], spec: AugmentationSpec
+    rewriter: "AstRewriter", code: str, specs: List[AugmentationSpec]
+) -> Tuple[str, List[AugmentationSpec]]:
+    specs_applied: List[AugmentationSpec] = []
+    for spec in specs:
+        if spec.token not in code:
+            continue
+        tokens = list(
+            itertools.chain(*make_tokens_by_line(code.splitlines(keepends=True)))
+        )
+        code, positions = _replace_tokens_and_get_augmented_positions_inner(
+            tokens, spec
+        )
+        if len(positions) > 0:
+            specs_applied.append(spec)
+        for pos in positions:
+            rewriter.register_augmented_position(spec, *pos)
+    return code, specs_applied
+
+
+def _replace_tokens_and_get_augmented_positions_inner(
+    generic_tokens: Union[str, List[tokenize.TokenInfo]], spec: AugmentationSpec
 ) -> Tuple[str, List[Tuple[int, int]]]:
-    if isinstance(tokenizable, str):
-        tokens = list(make_tokens_by_line([tokenizable]))[0]
-    else:
-        tokens = tokenizable
+    tokens = (
+        make_tokens_by_line([generic_tokens])[0]
+        if isinstance(generic_tokens, str)
+        else generic_tokens
+    )
     transformed = StringIO()
     match = StringIO()
     cur_match_start = (-1, -1)
@@ -196,25 +217,3 @@ def make_tokens_by_line(lines: List[str]) -> List[List[tokenize.TokenInfo]]:
         tokens_by_line.pop()
 
     return tokens_by_line
-
-
-def make_syntax_augmenter(
-    rewriter: "AstRewriter", aug_spec: AugmentationSpec
-) -> "Callable[[CodeType], CodeType]":
-    def _input_transformer(lines: "CodeType") -> "CodeType":
-        if isinstance(lines, list):
-            code_lines: List[str] = lines
-        else:
-            code_lines = lines.splitlines(keepends=True)
-        tokens = list(itertools.chain(*make_tokens_by_line(code_lines)))
-        transformed, positions = replace_tokens_and_get_augmented_positions(
-            tokens, aug_spec
-        )
-        for pos in positions:
-            rewriter.register_augmented_position(aug_spec, *pos)
-        if isinstance(lines, list):
-            return transformed.splitlines(keepends=True)
-        else:
-            return transformed
-
-    return _input_transformer

@@ -79,7 +79,7 @@ class AstRewriter(ast.NodeTransformer):
     def _get_order_of_specs_applied(self) -> Tuple[AugmentationSpec, ...]:
         specs = []
         for tracer in self._tracers:
-            for spec in tracer.syntax_augmentation_specs():
+            for spec in tracer.last_applied_specs:
                 if spec not in specs:
                     specs.append(spec)
         return tuple(specs)

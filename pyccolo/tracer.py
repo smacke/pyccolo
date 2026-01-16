@@ -7,7 +7,6 @@ import logging
 import os
 import sys
 import textwrap
-import types
 from collections import defaultdict
 from contextlib import contextmanager, suppress
 from types import CodeType, FrameType
@@ -58,7 +57,10 @@ from pyccolo.extra_builtins import (
 from pyccolo.handler import HandlerSpec
 from pyccolo.import_hooks import patch_meta_path_non_context
 from pyccolo.predicate import Predicate
-from pyccolo.syntax_augmentation import AugmentationSpec, make_syntax_augmenter
+from pyccolo.syntax_augmentation import (
+    AugmentationSpec,
+    replace_tokens_and_get_augmented_positions,
+)
 from pyccolo.trace_events import (
     AST_TO_EVENT_MAPPING,
     EVT_TO_EVENT_MAPPING,
@@ -67,6 +69,9 @@ from pyccolo.trace_events import (
 )
 from pyccolo.trace_stack import TraceStack
 from pyccolo.utils import clear_keys
+
+if TYPE_CHECKING:
+    from syntax_augmentation import CodeLines
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -209,6 +214,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         self.events_with_registered_handlers: FrozenSet[TraceEvent] = frozenset(
             events_with_registered_handlers
         )
+        self.last_applied_specs: List[AugmentationSpec] = []
         self._ctx: Optional[ContextManager] = None
         self._tracing_enabled_files: Set[str] = {self.defined_file}
         self._current_sandbox_fname: str = SANDBOX_FNAME
@@ -576,11 +582,28 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     ) -> AstRewriter:
         return self.ast_rewriter_cls(_TRACER_STACK, path, module_id=module_id)
 
-    def make_syntax_augmenters(self, ast_rewriter: AstRewriter) -> List[Callable]:
-        return [
-            make_syntax_augmenter(ast_rewriter, spec)
-            for spec in self.syntax_augmentation_specs()
-        ]
+    def make_syntax_augmenter(
+        self, ast_rewriter: AstRewriter
+    ) -> "Callable[[CodeLines], CodeLines]":
+        aug_specs = self.syntax_augmentation_specs()
+
+        def _input_transformer(lines: "CodeLines") -> "CodeLines":
+            if len(aug_specs) == 0:
+                return lines
+            if isinstance(lines, list):
+                code = "".join(lines)
+            else:
+                code = lines
+            code, specs_applied = replace_tokens_and_get_augmented_positions(
+                ast_rewriter, code, aug_specs
+            )
+            self.last_applied_specs = specs_applied
+            if isinstance(lines, list):
+                return code.splitlines(keepends=True)
+            else:
+                return code
+
+        return _input_transformer
 
     @contextmanager
     def tracing_enabled(self, **kwargs) -> Generator[None, None, None]:
@@ -621,12 +644,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             code.body[0] = self.make_ast_rewriter(f.__code__.co_filename).visit(
                 code.body[0]
             )
-            compiled: types.CodeType = compile(code, f.__code__.co_filename, "exec")
+            compiled: CodeType = compile(code, f.__code__.co_filename, "exec")
             for const in compiled.co_consts:
-                if (
-                    isinstance(const, types.CodeType)
-                    and const.co_name == f.__code__.co_name
-                ):
+                if isinstance(const, CodeType) and const.co_name == f.__code__.co_name:
                     f.__code__ = const
                     break
 
@@ -760,9 +780,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         return cleanup_callback
 
     def preprocess(self, code: str, rewriter: AstRewriter) -> str:
-        for augmenter in self.make_syntax_augmenters(rewriter):
-            code = augmenter(code)
-        return code
+        if len(self.syntax_augmentation_specs()) == 0:
+            return code
+        return self.make_syntax_augmenter(rewriter)(code)
 
     def parse(
         self, code: str, mode="exec", filename: Optional[str] = None

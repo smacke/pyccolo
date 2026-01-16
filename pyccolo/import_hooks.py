@@ -57,10 +57,10 @@ class TraceLoader(SourceFileLoader):
         super().__init__(*args, **kwargs)
         self._tracers = tracers
         self._ast_rewriter = tracers[-1].make_ast_rewriter(path=None)  # type: ignore[arg-type]  # this will be set below
-        self._syntax_augmenters: List[Tuple["BaseTracer", List[Callable]]] = []
+        self._syntax_augmenters: List[Tuple["BaseTracer", Callable]] = []
         for tracer in tracers:
             self._syntax_augmenters.append(
-                (tracer, tracer.make_syntax_augmenters(self._ast_rewriter))
+                (tracer, tracer.make_syntax_augmenter(self._ast_rewriter))
             )
         self._augmentation_context: bool = False
 
@@ -187,11 +187,10 @@ class TraceLoader(SourceFileLoader):
             # happen in the correct order.
             source = str(source_bytes, encoding="utf-8")
         source_path_str = str(source_path)
-        for tracer, augmenters in self._syntax_augmenters:
+        for tracer, augmenter in self._syntax_augmenters:
             if not tracer._should_instrument_file_impl(source_path_str):
                 continue
-            for augmenter in augmenters:
-                source = augmenter(source)
+            source = augmenter(source)
         if still_needs_decode:
             source = decode_source(bytes(source, encoding="utf-8"))
         return source
