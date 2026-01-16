@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.83 (2026-01-15)
+-------------------
+* Optimize syntax augmentation application;
+
 0.0.82 (2026-01-09)
 -------------------
 * Improve reliability of augmentation detection for BinOp / BoolOp by using ranges;
