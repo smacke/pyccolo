@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.84 (2026-01-19)
+-------------------
+* Better syntax augmentation support on fstrings;
+
 0.0.83 (2026-01-15)
 -------------------
 * Optimize syntax augmentation application;
