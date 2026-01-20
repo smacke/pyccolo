@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
+import ast
 import itertools
+import re
 import tokenize
 import warnings
 from enum import Enum
 from io import StringIO
-from typing import TYPE_CHECKING, Dict, List, NamedTuple, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Generator, List, NamedTuple, Set, Tuple, Union
 
 if TYPE_CHECKING:
     from pyccolo.ast_rewriter import AstRewriter
@@ -98,6 +100,227 @@ def replace_tokens_and_get_augmented_positions(
     return code, specs_applied
 
 
+def _find_matching_brace(content: str, start: int) -> int:
+    """Find the position of the matching closing brace, handling nesting."""
+    brace_level = 1
+    pos = start + 1
+    while pos < len(content) and brace_level > 0:
+        if content[pos] == "{":
+            brace_level += 1
+        elif content[pos] == "}":
+            brace_level -= 1
+        pos += 1
+    return pos if brace_level == 0 else start + 1
+
+
+def split_fstring(
+    fstring: tokenize.TokenInfo,
+) -> Generator[tokenize.TokenInfo, None, None]:
+    """
+    Split an f-string token into individual components, tolerantly handling
+    invalid format specifiers by wrapping them in quotes.
+    """
+    string_value = fstring.string
+
+    # Check if this is an f-string
+    fstring_pattern = re.compile(r'^([fFrR]+)(["\'])')
+    match = fstring_pattern.match(string_value)
+    if not match:
+        yield fstring
+        return
+
+    prefix = match.group(1)
+    quote_char = match.group(2)
+    alt_quote_char = '"' if quote_char == "'" else "'"
+    original_content = string_value[len(prefix) + 1 : -1]
+
+    # Preprocess: wrap unquoted { } expressions in quotes for parsing
+    processed_parts = []
+    i = 0
+    while i < len(original_content):
+        if original_content[i] == "{":
+            j = _find_matching_brace(original_content, i)
+            if j > i + 1:
+                # Check if already quoted
+                if (
+                    i + 1 < len(original_content)
+                    and original_content[i + 1] == alt_quote_char
+                ):
+                    processed_parts.append((original_content[i:j], False))
+                else:
+                    # Wrap in quotes
+                    inner = original_content[i + 1 : j - 1]
+                    processed_parts.append(
+                        ("{" + alt_quote_char + inner + alt_quote_char + "}", True)
+                    )
+                i = j
+            else:
+                processed_parts.append((original_content[i], False))
+                i += 1
+        else:
+            # Accumulate string literal until next {
+            start = i
+            while i < len(original_content) and original_content[i] != "{":
+                i += 1
+            if i > start:
+                processed_parts.append((original_content[start:i], False))
+
+    # Parse the processed f-string
+    processed_fstring = (
+        prefix + quote_char + "".join(p for p, _ in processed_parts) + quote_char
+    )
+    try:
+        tree = ast.parse(processed_fstring, mode="eval")
+        if not isinstance(tree.body, ast.JoinedStr):
+            yield fstring
+            return
+        joined_str = tree.body
+    except (SyntaxError, ValueError):
+        yield fstring
+        return
+
+    # Reconstruct original parts (unwrapping quotes we added)
+    original_parts = [
+        (
+            "{" + part[2:-2] + "}"
+            if wrapped
+            and part.startswith("{" + alt_quote_char)
+            and part.endswith(alt_quote_char + "}")
+            else part
+        )
+        for part, wrapped in processed_parts
+    ]
+
+    # Map AST components to original parts and create tokens
+    # Brackets { } are absorbed by surrounding tokens
+    current_col = fstring.start[1]
+    part_idx = 0
+    values = joined_str.values
+    line_no = fstring.start[0]
+
+    def _create_token(
+        string: str, start_col: int, token_type: int = tokenize.STRING
+    ) -> tokenize.TokenInfo:
+        """Helper to create a token with adjusted position."""
+        return tokenize.TokenInfo(
+            type=token_type,
+            string=string,
+            start=(line_no, start_col),
+            end=(line_no, start_col + len(string)),
+            line=fstring.line,
+        )
+
+    def _yield_tokenized_content(
+        content: str, start_col: int
+    ) -> Generator[tokenize.TokenInfo, None, None]:
+        """Tokenize content and yield tokens with adjusted positions."""
+        try:
+            for token in tokenize.generate_tokens(StringIO(content).readline):
+                if token.type in (tokenize.ENDMARKER, tokenize.NEWLINE):
+                    continue
+                yield tokenize.TokenInfo(
+                    type=token.type,
+                    string=token.string,
+                    start=(line_no, start_col + token.start[1]),
+                    end=(line_no, start_col + token.end[1]),
+                    line=fstring.line,
+                )
+        except (SyntaxError, tokenize.TokenError):
+            yield _create_token(content, start_col)
+
+    for value_idx, value in enumerate(values):
+        is_last = value_idx == len(values) - 1
+        is_first = value_idx == 0
+        next_is_formatted = value_idx + 1 < len(values) and isinstance(
+            values[value_idx + 1], ast.FormattedValue
+        )
+        prev_was_formatted = value_idx > 0 and isinstance(
+            values[value_idx - 1], ast.FormattedValue
+        )
+
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            # String literal: find matching parts and build token
+            s = value.value
+            parts = []
+            while part_idx < len(original_parts) and not original_parts[
+                part_idx
+            ].startswith("{"):
+                parts.append(original_parts[part_idx])
+                part_idx += 1
+                if "".join(parts) == s:
+                    break
+
+            if not parts:
+                yield fstring
+                return
+
+            content = "".join(parts)
+            if prev_was_formatted:
+                content = "}" + content
+            if next_is_formatted:
+                content = content + "{"
+
+            # Build token string with prefix/quote as needed
+            if is_first:
+                token_str = prefix + quote_char + content
+            elif is_last:
+                token_str = content + quote_char
+            else:
+                token_str = content
+
+            token = _create_token(token_str, current_col)
+            current_col += len(token_str)
+            yield token
+
+        elif isinstance(value, ast.FormattedValue):
+            # Formatted value: extract inner content and tokenize
+            if part_idx >= len(original_parts):
+                yield fstring
+                return
+
+            part_content = original_parts[part_idx]
+            if not (part_content.startswith("{") and part_content.endswith("}")):
+                yield fstring
+                return
+
+            inner_content = part_content[1:-1]
+
+            # Add opening token if first
+            if is_first:
+                opening = _create_token(prefix + quote_char + "{", current_col)
+                current_col += len(opening.string)
+                yield opening
+
+            # Tokenize inner content
+            last_token = None
+            for token in _yield_tokenized_content(inner_content, current_col):
+                last_token = token
+                yield token
+            if last_token:
+                current_col = last_token.end[1]
+
+            part_idx += 1
+
+            # Add closing token if last
+            if is_last:
+                closing = _create_token("}" + quote_char, current_col)
+                current_col += len(closing.string)
+                yield closing
+        else:
+            yield fstring
+            return
+
+
+def split_fstrings(
+    tokens: List[tokenize.TokenInfo], spec: AugmentationSpec
+) -> Generator[tokenize.TokenInfo, None, None]:
+    for token in tokens:
+        if token.type == tokenize.STRING and spec.token in token.string:
+            yield from split_fstring(token)
+        else:
+            yield token
+
+
 def _replace_tokens_and_get_augmented_positions_inner(
     generic_tokens: Union[str, List[tokenize.TokenInfo]], spec: AugmentationSpec
 ) -> Tuple[str, List[Tuple[int, int]]]:
@@ -156,7 +379,7 @@ def _replace_tokens_and_get_augmented_positions_inner(
 
     positions: List[Tuple[int, int]] = []
     prev = None
-    for cur in tokens:
+    for cur in split_fstrings(tokens, spec):
         if prev is not None and prev.end[0] == cur.start[0]:
             if match.getvalue() == "":
                 cur_match_start = (prev.end[0], prev.end[1])
