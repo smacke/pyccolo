@@ -6,7 +6,17 @@ import tokenize
 import warnings
 from enum import Enum
 from io import StringIO
-from typing import TYPE_CHECKING, Dict, Generator, List, NamedTuple, Set, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Dict,
+    Generator,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 if TYPE_CHECKING:
     from pyccolo.ast_rewriter import AstRewriter
@@ -81,7 +91,7 @@ def fix_positions(
 
 
 def replace_tokens_and_get_augmented_positions(
-    rewriter: "AstRewriter", code: str, specs: List[AugmentationSpec]
+    code: str, specs: List[AugmentationSpec], rewriter: Optional["AstRewriter"]
 ) -> Tuple[str, List[AugmentationSpec]]:
     specs_applied: List[AugmentationSpec] = []
     for spec in specs:
@@ -95,6 +105,8 @@ def replace_tokens_and_get_augmented_positions(
         )
         if len(positions) > 0:
             specs_applied.append(spec)
+        if rewriter is None:
+            continue
         for pos in positions:
             rewriter.register_augmented_position(spec, *pos)
     return code, specs_applied

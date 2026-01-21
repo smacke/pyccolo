@@ -10,7 +10,7 @@ import inspect
 import textwrap
 import types
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.emit_event import _TRACER_STACK, SANDBOX_FNAME, SANDBOX_FNAME_PREFIX, allow_reentrant_event_handling
@@ -155,6 +155,10 @@ def instance() -> BaseTracer:
 
 def parse(code: str, mode: str = "exec") -> Union[ast.Module, ast.Expression]:
     return tracer().parse(code, mode=mode)
+
+
+def transform(code: str, tracers: Optional[List[BaseTracer]] = None) -> str:
+    return tracer().transform(code, tracers=tracers)
 
 
 def eval(code: Union[str, ast.expr, ast.Expression], *args, **kwargs) -> Any:

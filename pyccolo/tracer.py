@@ -583,7 +583,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         return self.ast_rewriter_cls(_TRACER_STACK, path, module_id=module_id)
 
     def make_syntax_augmenter(
-        self, ast_rewriter: AstRewriter
+        self, ast_rewriter: Optional[AstRewriter]
     ) -> "Callable[[CodeLines], CodeLines]":
         aug_specs = self.syntax_augmentation_specs()
 
@@ -595,9 +595,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             else:
                 code = lines
             code, specs_applied = replace_tokens_and_get_augmented_positions(
-                ast_rewriter, code, aug_specs
+                code, aug_specs, rewriter=ast_rewriter
             )
-            self.last_applied_specs = specs_applied
+            if ast_rewriter is not None:
+                self.last_applied_specs = specs_applied
             if isinstance(lines, list):
                 return code.splitlines(keepends=True)
             else:
@@ -779,10 +780,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             self.enter_tracing_hook()
         return cleanup_callback
 
-    def preprocess(self, code: str, rewriter: AstRewriter) -> str:
+    def preprocess(self, code: str, rewriter: Optional[AstRewriter]) -> str:
         if len(self.syntax_augmentation_specs()) == 0:
             return code
-        return self.make_syntax_augmenter(rewriter)(code)
+        return self.make_syntax_augmenter(ast_rewriter=rewriter)(code)
 
     def parse(
         self, code: str, mode="exec", filename: Optional[str] = None
@@ -793,6 +794,11 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         for tracer in _TRACER_STACK:
             code = tracer.preprocess(code, rewriter)
         return rewriter.visit(ast.parse(code, mode=mode))
+
+    def transform(self, code: str, tracers: Optional[List["BaseTracer"]] = None) -> str:
+        for tracer in _TRACER_STACK if tracers is None else tracers:
+            code = tracer.preprocess(code, rewriter=None)
+        return code
 
     def exec_raw(
         self,
