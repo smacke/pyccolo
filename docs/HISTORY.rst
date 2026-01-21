@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.85 (2026-01-20)
+-------------------
+* Expose code transformation API;
+
 0.0.84 (2026-01-19)
 -------------------
 * Better syntax augmentation support on fstrings;
