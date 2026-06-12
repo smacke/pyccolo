@@ -1,6 +1,12 @@
 History
 =======
 
+0.0.86 (2026-06-11)
+-------------------
+* Support composition with transformational (``global_guards_enabled = False``) tracers: treat all of their handlers as guard-exempt when composed with a guard-using tracer;
+* Emit a guard-exempt fallback for comprehension elements so guard-exempt handlers still fire after the first iteration;
+* Only instrument for tracers that are not currently hard-disabled, keeping code rewritten while a tracer is disabled free of its unused guard machinery;
+
 0.0.85 (2026-01-20)
 -------------------
 * Expose code transformation API;
