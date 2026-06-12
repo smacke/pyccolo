@@ -30,20 +30,7 @@ class StatementMapper(ast.NodeVisitor):
 
     def _handle_augmentations(self, no: ast.AST, nc: ast.AST) -> None:
         for tracer in self._tracers:
-            augs = tracer.get_augmentations(id(no))
-            if augs:
-                # ``augmented_node_ids_by_spec`` is keyed by ``id(nc)``, so a
-                # registered entry is only meaningful while ``nc`` stays alive;
-                # otherwise the copy could be garbage collected and its address
-                # recycled by an unrelated node, yielding a spurious hit (e.g. a
-                # plain name mistaken for a ``$`` placeholder). Pin the copy so
-                # its id cannot be reused while it remains registered. Copies
-                # produced during a parse are additionally bookkept (and thus gc'd
-                # together) by the ast rewriter; runtime copies made via
-                # ``bookkeeping_propagating_copy`` would otherwise leak a dangling
-                # id here.
-                tracer.ast_node_by_id[id(nc)] = nc
-            for spec in augs:
+            for spec in tracer.get_augmentations(id(no)):
                 tracer.augmented_node_ids_by_spec[spec].add(id(nc))
 
     def __call__(
