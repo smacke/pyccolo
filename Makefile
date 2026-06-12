@@ -47,7 +47,7 @@ coverage: check_no_typing
 xmlcov: check_no_typing
 	coverage xml
 
-check_ci: typecheck xmlcov
+check_ci: blackcheck typecheck xmlcov
 
 deps:
 	pip install -r requirements.txt

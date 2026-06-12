@@ -57,9 +57,9 @@ class AstRewriter(ast.NodeTransformer):
         self._tracers = tracers
         self._path = path
         self._module_id = module_id
-        self._augmented_positions_by_spec: Dict[
-            AugmentationSpec, Set[Position]
-        ] = defaultdict(set)
+        self._augmented_positions_by_spec: Dict[AugmentationSpec, Set[Position]] = (
+            defaultdict(set)
+        )
         self.orig_to_copy_mapping: Optional[Dict[int, ast.AST]] = None
 
     @contextmanager
@@ -340,18 +340,18 @@ class AstRewriter(ast.NodeTransformer):
         BookkeepingVisitor(cleanup_bookkeeper).visit(node)
         last_tracer.remove_bookkeeping(cleanup_bookkeeper, module_id)
 
-        new_bookkeeper = last_tracer.ast_bookkeeper_by_fname[
-            self._path
-        ] = AstBookkeeper.create(self._path, module_id)
+        new_bookkeeper = last_tracer.ast_bookkeeper_by_fname[self._path] = (
+            AstBookkeeper.create(self._path, module_id)
+        )
         if old_bookkeeper is not None and self.gc_bookkeeping:
             last_tracer.remove_bookkeeping(old_bookkeeper, module_id)
         BookkeepingVisitor(new_bookkeeper).visit(orig_to_copy_mapping[id(node)])
         last_tracer.add_bookkeeping(new_bookkeeper, module_id)
         self.orig_to_copy_mapping = orig_to_copy_mapping
         self._handle_all_augmentations(orig_to_copy_mapping)
-        raw_handler_predicates_by_event: DefaultDict[
-            TraceEvent, List[Predicate]
-        ] = defaultdict(list)
+        raw_handler_predicates_by_event: DefaultDict[TraceEvent, List[Predicate]] = (
+            defaultdict(list)
+        )
         raw_guard_exempt_handler_predicates_by_event: DefaultDict[
             TraceEvent, List[Predicate]
         ] = defaultdict(list)
@@ -403,12 +403,12 @@ class AstRewriter(ast.NodeTransformer):
                 CompositePredicate.any(raw_predicates)
             )
         for evt, raw_predicates in raw_guard_exempt_handler_predicates_by_event.items():
-            guard_exempt_handler_prediate_by_event[
-                evt
-            ] = self._make_node_copy_flyweight(CompositePredicate.any(raw_predicates))
-        handler_guards_by_event: DefaultDict[
-            TraceEvent, List[GUARD_DATA_T]
-        ] = defaultdict(list)
+            guard_exempt_handler_prediate_by_event[evt] = (
+                self._make_node_copy_flyweight(CompositePredicate.any(raw_predicates))
+            )
+        handler_guards_by_event: DefaultDict[TraceEvent, List[GUARD_DATA_T]] = (
+            defaultdict(list)
+        )
         for tracer in self._tracers:
             for evt, handler_specs in tracer._event_handlers.items():
                 handler_guards_by_event[evt].extend(

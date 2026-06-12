@@ -152,9 +152,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     sandbox_fname_counter = 0
 
     _MANAGER_CLASS_REGISTERED = False
-    EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[
-        TraceEvent, List[HandlerSpec]
-    ] = defaultdict(list)
+    EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[TraceEvent, List[HandlerSpec]] = (
+        defaultdict(list)
+    )
     EVENT_HANDLERS_BY_CLASS: Dict[
         "Type[BaseTracer]",
         DefaultDict[TraceEvent, List[HandlerSpec]],
@@ -1129,12 +1129,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         TracerT = TypeVar("TracerT", bound="_InternalBaseTracer")
 
         @classmethod
-        def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT:
-            ...
+        def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT: ...
 
         @classmethod
-        def clear_instance(cls) -> None:
-            ...
+        def clear_instance(cls) -> None: ...
 
 
 def make_assert_evt_when(
