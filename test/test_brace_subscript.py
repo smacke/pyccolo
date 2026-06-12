@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+import sys
+
+import pytest
+
 import pyccolo as pyc
 from pyccolo.examples.brace_subscript import BraceSubscriptTracer
 from pyccolo.examples.quick_lambda import QuickLambdaTracer
@@ -57,6 +61,10 @@ class _DetectTracer(pyc.BaseTracer):
         return ret
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 8),
+    reason="subscript augmentation marking needs end_col_offset (Python 3.8+)",
+)
 def test_augmentation_is_detectable():
     # A subscript that came from braces is marked, so a tracer can tell it apart
     # from an ordinary subscript via get_augmentations.

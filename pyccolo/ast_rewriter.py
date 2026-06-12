@@ -257,6 +257,9 @@ class AstRewriter(ast.NodeTransformer):
     def _get_subscript_range_for(node: ast.AST) -> Optional[Range]:
         # The opening bracket of a subscript sits immediately after the value,
         # which is exactly the position a paired ``{`` -> ``[`` swap registers.
+        # Relies on end_col_offset, so subscript-augmentation detection requires
+        # Python 3.8+; on 3.7 this returns None (the swap still works, but a
+        # brace-block subscript is not distinguishable via get_augmentations).
         if not isinstance(node, ast.Subscript):
             return None
         end_lineno: Optional[int] = getattr(node.value, "end_lineno", None)

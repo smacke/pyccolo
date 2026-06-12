@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+import sys
+
+import pytest
+
 import pyccolo as pyc
 from pyccolo.examples.func_block import FuncBlockTracer
 
@@ -66,6 +70,10 @@ def test_nested_blocks():
     assert result == 6, result  # 0 + 2 + 4
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 8),
+    reason="subscript augmentation marking needs end_col_offset (Python 3.8+)",
+)
 def test_passes_a_real_callable_through_subscript_handler():
     # Demonstrate the slice really is a function value: a pyccolo
     # after_subscript_slice handler receives the freshly-defined callable.
