@@ -49,13 +49,13 @@ back out).
 import ast
 import builtins
 import textwrap
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List
 
 import pyccolo as pyc
 from pyccolo.syntax_augmentation import make_paired_delimiter_augmenter
 
 
-def _build_function(body: "list[ast.stmt]", namespace: Dict[str, Any]) -> Callable:
+def _build_function(body: List[ast.stmt], namespace: Dict[str, Any]) -> Callable:
     """Compile ``body`` (a list of statements) into a zero-arg function defined
     in ``namespace`` and return the resulting callable."""
     template = ast.parse("def __pyc_block_fn__():\n    pass")
@@ -66,7 +66,7 @@ def _build_function(body: "list[ast.stmt]", namespace: Dict[str, Any]) -> Callab
     return namespace["__pyc_block_fn__"]
 
 
-def _with_value_return(body: "list[ast.stmt]") -> "list[ast.stmt]":
+def _with_value_return(body: List[ast.stmt]) -> List[ast.stmt]:
     """If the block ends in a bare expression, turn it into a ``return`` so the
     compiled function yields that value."""
     if body and isinstance(body[-1], ast.Expr):
