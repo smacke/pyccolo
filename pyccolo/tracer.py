@@ -826,6 +826,64 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             code = tracer.preprocess(code, rewriter=None)
         return code
 
+    @contextmanager
+    def _preserve_transient_rewrite_state(self) -> Generator[None, None, None]:
+        # `parse` overwrites a little transient, non-additive state (the
+        # current module and each tracer's last-applied augmentation specs).
+        # Save/restore it so a nested parse doesn't clobber an in-flight one.
+        saved_module = self.current_module[0]
+        saved_specs = [(tracer, tracer.last_applied_specs) for tracer in _TRACER_STACK]
+        try:
+            yield
+        finally:
+            self.current_module[0] = saved_module
+            for tracer, specs in saved_specs:
+                tracer.last_applied_specs = specs
+
+    def parse_fragment(
+        self, code: str, filename: Optional[str] = None
+    ) -> Union[ast.Module, ast.Expression]:
+        """Parse + instrument a code fragment from *within* an already active
+        trace (e.g. inside an event handler) without disturbing the enclosing
+        rewrite's transient state. Returns the instrumented AST; the caller may
+        edit it before running it with ``exec_raw(..., instrument=False)``.
+
+        Use this (rather than ``parse``/``exec``) when you need to compile a
+        fragment mid-handler: it neither re-enters the tracing context (which
+        would reset tracer state) nor clobbers an in-flight parse, so nested
+        instrumented constructs in the fragment still dispatch to handlers."""
+        if filename is None:
+            filename = self.make_sandbox_fname()
+        with self._preserve_transient_rewrite_state():
+            return self.parse(code, mode="exec", filename=filename)
+
+    def exec_fragment(
+        self,
+        code: Union[str, ast.Module],
+        global_env: dict,
+        local_env: dict,
+        filename: Optional[str] = None,
+    ) -> dict:
+        """Parse, instrument, and run a code fragment from within an active
+        trace, reusing the current tracing context. ``local_env`` is mutated
+        with whatever the fragment defines and returned. See
+        :meth:`parse_fragment`."""
+        if filename is None:
+            filename = self.make_sandbox_fname()
+        module = (
+            self.parse_fragment(code, filename=filename)
+            if isinstance(code, str)
+            else code
+        )
+        self.exec_raw(
+            module,
+            global_env=global_env,
+            local_env=local_env,
+            filename=filename,
+            instrument=False,
+        )
+        return local_env
+
     def exec_raw(
         self,
         code: Union[ast.Module, ast.Expression, str],
