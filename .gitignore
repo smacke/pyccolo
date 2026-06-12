@@ -5,6 +5,7 @@
 **/.ipynb_checkpoints
 *.bundle.*
 *.tsbuildinfo
+uv.lock
 frontend/**/lib/
 frontend/**/node_modules/
 frontend/labextension/package-lock.json
