@@ -350,7 +350,18 @@ class AstRewriter(ast.NodeTransformer):
                 )
                 for handler_spec in handler_data:
                     raw_handler_predicates_by_event[evt].append(handler_spec.predicate)
-                    if handler_spec.exempt_from_guards:
+                    # A tracer with guards globally disabled wants *none* of its
+                    # handlers guarded -- its handlers may perform semantic
+                    # substitution (rather than mere observation) that must fire on
+                    # every execution of a node, including repeat loop iterations.
+                    # When such a tracer is composed with one that does want guards,
+                    # the rewriter's global_guards_enabled becomes True (it is the
+                    # ``any`` over tracers), so honor the intent here by treating all
+                    # of its handlers as guard-exempt.
+                    if (
+                        handler_spec.exempt_from_guards
+                        or not tracer.global_guards_enabled
+                    ):
                         raw_guard_exempt_handler_predicates_by_event[evt].append(
                             handler_spec.predicate
                         )

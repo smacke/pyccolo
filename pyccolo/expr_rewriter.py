@@ -595,6 +595,18 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
             if self.handler_predicate_by_event[evt](untraced_field):
                 visited_field = self.emit(evt, field, ret=visited_field, **extra_kwargs)
             if loop_guard is not None:
+                # The guarded-off path (iterations after the first) must still run
+                # guard-exempt handlers -- a cooperating tracer's correctness-
+                # critical substitutions (e.g. pipescript's macro expansions) live
+                # on nodes inside the comprehension element and would otherwise be
+                # dropped, since the bare ``untraced_field`` carries no
+                # instrumentation. Re-visit a fresh copy within a guard-exempt
+                # context so only those handlers are emitted. When no tracer has
+                # guard-exempt handlers this collapses to the bare field, matching
+                # the previous behavior.
+                field_copy = fast.copy_ast(untraced_field)
+                with self.guard_exempt_context(field, field_copy):
+                    guard_exempt_field = self.visit(field_copy)
                 visited_field = fast.IfExp(
                     test=make_composite_condition(
                         [
@@ -603,7 +615,7 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                         ]
                     ),
                     body=visited_field,
-                    orelse=untraced_field,
+                    orelse=guard_exempt_field,
                 )
         return visited_field
 
