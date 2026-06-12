@@ -125,12 +125,12 @@ class BlockLambdaTracer(pyc.BaseTracer):
     # --- the runtime helper ---
 
     def __pyc_block__(
-        self, trigger: str, body_src: str, g: Dict[str, Any], l: Dict[str, Any]
+        self, trigger: str, body_src: str, g: Dict[str, Any], loc: Dict[str, Any]
     ) -> Any:
         # re-transform so nested trigger{...} blocks inside the body are handled.
         body_src = self.transform(body_src)
         tree = ast.parse(textwrap.dedent(body_src))
-        namespace: Dict[str, Any] = {**g, **l}
+        namespace: Dict[str, Any] = {**g, **loc}
 
         if trigger in ("map", "gen"):
             # statement-bodied generator expression: body is expected to contain

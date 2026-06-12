@@ -14,6 +14,11 @@ line-length = 88
 target-version = ['py39']
 extend-exclude = '(^/pyccolo/__init__|^/versioneer|_version|.*uses_optional_chaining)\.py'
 
+[tool.ruff]
+# uses_optional_chaining.py contains intentionally invalid syntax that pyccolo
+# transforms at import time; ruff can't parse it, so skip it entirely.
+extend-exclude = ['*uses_optional_chaining.py']
+
 [tool.isort]
 profile = 'black'
 extend_skip_glob = [

@@ -44,7 +44,7 @@ def test_fn_block_returns_callable():
 
 def test_do_block_closes_over_locals():
     with BlockLambdaTracer:
-        n = 7
+        n = 7  # noqa: F841  (closed over by the do{...} block below)
         result = pyc.eval(
             """do{
                 acc = 0

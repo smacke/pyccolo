@@ -37,7 +37,7 @@ def test_thunk_is_deferred():
 
 def test_run_closes_over_locals():
     with FuncBlockTracer:
-        n = 6
+        n = 6  # noqa: F841  (closed over by the run{...} block below)
         result = pyc.eval(
             """run{
                 acc = 1

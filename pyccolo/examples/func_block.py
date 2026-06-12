@@ -87,9 +87,9 @@ class FuncBlockTracer(pyc.BaseTracer):
                 delattr(builtins, name)
 
     def __pyc_fn__(
-        self, body_src: str, g: Dict[str, Any], l: Dict[str, Any]
+        self, body_src: str, g: Dict[str, Any], loc: Dict[str, Any]
     ) -> Callable[[], Any]:
         # re-transform so nested run{...}/thunk{...} blocks are handled
         body_src = self.transform(body_src)
         tree = ast.parse(textwrap.dedent(body_src))
-        return _build_function(_with_value_return(tree.body), {**g, **l})
+        return _build_function(_with_value_return(tree.body), {**g, **loc})
