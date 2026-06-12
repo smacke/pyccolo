@@ -43,6 +43,9 @@ jobs:
         pip install -e .[test]
     - name: Lint with ruff
       run: make lint
+    - name: Check formatting with black and isort
+      if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.14' }}
+      run: make blackcheck
     - name: Run unit tests with pytest (skip typechecking, coverage)
       if: matrix.os == 'windows-latest'
       run: pytest
