@@ -579,7 +579,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         return _file_passes_filter_impl(self, evt, filename, is_reentrant=is_reentrant)
 
     def make_ast_rewriter(
-        self, path: str, module_id: Optional[int] = None
+        self,
+        path: str,
+        module_id: Optional[int] = None,
+        tracers: Optional[List["BaseTracer"]] = None,
     ) -> AstRewriter:
         # Only instrument for tracers that aren't hard-disabled right now. A
         # hard-disabled tracer is skipped at event-emit time (see _emit_event), so
@@ -590,14 +593,18 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         # nothing is disabled, pass the live _TRACER_STACK through unchanged so the
         # common path is byte-for-byte identical (no extra list allocation, which
         # some id()-order-sensitive bookkeeping is fragile to).
-        tracers: List[BaseTracer] = _TRACER_STACK
-        if any(tracer._is_tracing_hard_disabled for tracer in _TRACER_STACK):
-            tracers = [
-                tracer
-                for tracer in _TRACER_STACK
-                if not tracer._is_tracing_hard_disabled
-            ] or _TRACER_STACK
-        return self.ast_rewriter_cls(tracers, path, module_id=module_id)
+        #
+        # ``tracers`` lets a caller scope the rewrite to a subset of the active
+        # stack -- e.g. compiling a sub-fragment that should be instrumented by
+        # only some cooperating tracers, not every tracer that happens to be
+        # active (a foreign tracer may not recognize the fragment's nodes).
+        stack: List[BaseTracer] = _TRACER_STACK if tracers is None else tracers
+        rewrite_tracers: List[BaseTracer] = stack
+        if any(tracer._is_tracing_hard_disabled for tracer in stack):
+            rewrite_tracers = [
+                tracer for tracer in stack if not tracer._is_tracing_hard_disabled
+            ] or stack
+        return self.ast_rewriter_cls(rewrite_tracers, path, module_id=module_id)
 
     def make_syntax_augmenter(
         self, ast_rewriter: Optional[AstRewriter]
@@ -812,12 +819,16 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         return self.make_syntax_augmenter(ast_rewriter=rewriter)(code)
 
     def parse(
-        self, code: str, mode="exec", filename: Optional[str] = None
+        self,
+        code: str,
+        mode="exec",
+        filename: Optional[str] = None,
+        tracers: Optional[List["BaseTracer"]] = None,
     ) -> Union[ast.Module, ast.Expression]:
         if filename is None:
             filename = self.make_sandbox_fname()
-        rewriter = self.make_ast_rewriter(filename)
-        for tracer in _TRACER_STACK:
+        rewriter = self.make_ast_rewriter(filename, tracers=tracers)
+        for tracer in _TRACER_STACK if tracers is None else tracers:
             code = tracer.preprocess(code, rewriter)
         return rewriter.visit(ast.parse(code, mode=mode))
 
@@ -841,7 +852,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 tracer.last_applied_specs = specs
 
     def parse_fragment(
-        self, code: str, filename: Optional[str] = None
+        self,
+        code: str,
+        filename: Optional[str] = None,
+        tracers: Optional[List["BaseTracer"]] = None,
     ) -> Union[ast.Module, ast.Expression]:
         """Parse + instrument a code fragment from *within* an already active
         trace (e.g. inside an event handler) without disturbing the enclosing
@@ -851,11 +865,15 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         Use this (rather than ``parse``/``exec``) when you need to compile a
         fragment mid-handler: it neither re-enters the tracing context (which
         would reset tracer state) nor clobbers an in-flight parse, so nested
-        instrumented constructs in the fragment still dispatch to handlers."""
+        instrumented constructs in the fragment still dispatch to handlers.
+
+        ``tracers`` scopes the instrumentation to a subset of the active stack;
+        pass it when a foreign co-tracer should not weave its events into the
+        fragment (e.g. it would not recognize the fragment's synthetic nodes)."""
         if filename is None:
             filename = self.make_sandbox_fname()
         with self._preserve_transient_rewrite_state():
-            return self.parse(code, mode="exec", filename=filename)
+            return self.parse(code, mode="exec", filename=filename, tracers=tracers)
 
     def exec_fragment(
         self,
