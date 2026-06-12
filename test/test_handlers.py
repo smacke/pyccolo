@@ -17,6 +17,28 @@ def test_sandbox():
     assert len(env) == 1, "got %s" % env
 
 
+def test_sandbox_fnames_unique_across_tracer_subclasses():
+    # The counter must be shared across subclasses; otherwise each subclass
+    # mints its own <sandbox-1>, <sandbox-2>, ... and the colliding filenames
+    # make one module's rewrite evict another module's still-live ast
+    # bookkeeping (e.g. a re-executed cell's compiled macro block).
+    class _TracerA(pyc.BaseTracer):
+        pass
+
+    class _TracerB(pyc.BaseTracer):
+        pass
+
+    names = [
+        _TracerA.make_sandbox_fname(),
+        _TracerB.make_sandbox_fname(),
+        _TracerA.make_sandbox_fname(),
+        _TracerB.make_sandbox_fname(),
+        pyc.BaseTracer.make_sandbox_fname(),
+    ]
+    assert all(n.startswith(SANDBOX_FNAME_PREFIX) for n in names), names
+    assert len(set(names)) == len(names), names
+
+
 def test_docstring_preserved():
     env = pyc.exec(
         """

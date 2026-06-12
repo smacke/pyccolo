@@ -310,8 +310,13 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
 
     @classmethod
     def make_sandbox_fname(cls) -> str:
-        cls.sandbox_fname_counter += 1
-        return f"{SANDBOX_FNAME_PREFIX}-{cls.sandbox_fname_counter}>"
+        # Increment on the shared base, NOT ``cls``: ``cls.x += 1`` would bind a
+        # fresh per-subclass counter, so different tracer subclasses (e.g.
+        # pipescript's Macro/Pipeline tracers) would each mint ``<sandbox-1>``,
+        # ``<sandbox-2>``, ... and collide on filenames -- and a colliding path
+        # makes one module's rewrite evict another's still-live ast bookkeeping.
+        _InternalBaseTracer.sandbox_fname_counter += 1
+        return f"{SANDBOX_FNAME_PREFIX}-{_InternalBaseTracer.sandbox_fname_counter}>"
 
     @property
     def is_tracing_enabled(self) -> bool:
