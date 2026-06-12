@@ -339,6 +339,18 @@ class AstRewriter(ast.NodeTransformer):
             TraceEvent, List[Predicate]
         ] = defaultdict(list)
 
+        # A tracer with guards globally disabled wants *none* of its handlers
+        # guarded, but that only matters when some *other* tracer enables guards
+        # (the rewriter inserts guards iff global_guards_enabled, which is the
+        # ``any`` over tracers). When no tracer wants guards there is nothing to be
+        # exempt from, so skip building the exempt predicates entirely -- both to
+        # avoid pointless work and, importantly, to leave the standalone code path
+        # byte-for-byte unchanged (building extra predicates perturbs object
+        # identities, which some id()-order-sensitive bookkeeping is fragile to).
+        any_guards_enabled = any(
+            tracer.global_guards_enabled for tracer in self._tracers
+        )
+
         for tracer in self._tracers:
             if not self.should_instrument_with_tracer(tracer):
                 continue
@@ -350,17 +362,11 @@ class AstRewriter(ast.NodeTransformer):
                 )
                 for handler_spec in handler_data:
                     raw_handler_predicates_by_event[evt].append(handler_spec.predicate)
-                    # A tracer with guards globally disabled wants *none* of its
-                    # handlers guarded -- its handlers may perform semantic
-                    # substitution (rather than mere observation) that must fire on
-                    # every execution of a node, including repeat loop iterations.
-                    # When such a tracer is composed with one that does want guards,
-                    # the rewriter's global_guards_enabled becomes True (it is the
-                    # ``any`` over tracers), so honor the intent here by treating all
-                    # of its handlers as guard-exempt.
-                    if (
-                        handler_spec.exempt_from_guards
-                        or not tracer.global_guards_enabled
+                    # Honor a guard-disabled tracer's intent by treating all of its
+                    # handlers as guard-exempt -- but only when guards are actually
+                    # in play (see above).
+                    if handler_spec.exempt_from_guards or (
+                        any_guards_enabled and not tracer.global_guards_enabled
                     ):
                         raw_guard_exempt_handler_predicates_by_event[evt].append(
                             handler_spec.predicate

@@ -585,11 +585,17 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         # weaving its events -- and, crucially, its guards -- into the code is pure
         # overhead. This keeps code rewritten while some tracer is disabled lean:
         # e.g. a cooperating tracer that builds lambdas via pyc.eval while *we* are
-        # disabled gets a sandbox free of our (unused) guard machinery. Falls back
-        # to the full stack if filtering would leave nothing to instrument with.
-        tracers = [
-            tracer for tracer in _TRACER_STACK if not tracer._is_tracing_hard_disabled
-        ] or _TRACER_STACK
+        # disabled gets a sandbox free of our (unused) guard machinery. When
+        # nothing is disabled, pass the live _TRACER_STACK through unchanged so the
+        # common path is byte-for-byte identical (no extra list allocation, which
+        # some id()-order-sensitive bookkeeping is fragile to).
+        tracers: List[BaseTracer] = _TRACER_STACK
+        if any(tracer._is_tracing_hard_disabled for tracer in _TRACER_STACK):
+            tracers = [
+                tracer
+                for tracer in _TRACER_STACK
+                if not tracer._is_tracing_hard_disabled
+            ] or _TRACER_STACK
         return self.ast_rewriter_cls(tracers, path, module_id=module_id)
 
     def make_syntax_augmenter(
