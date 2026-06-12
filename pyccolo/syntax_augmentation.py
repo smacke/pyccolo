@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 import itertools
+import keyword
 import re
 import tokenize
 import warnings
@@ -8,8 +9,10 @@ from enum import Enum
 from io import StringIO
 from typing import (
     TYPE_CHECKING,
+    Callable,
     Dict,
     Generator,
+    Iterable,
     List,
     NamedTuple,
     Optional,
@@ -32,6 +35,7 @@ class AugmentationType(Enum):
     binop = "binop"
     boolop = "boolop"
     call = "call"
+    subscript = "subscript"
 
 
 class Position(NamedTuple):
@@ -52,6 +56,26 @@ class AugmentationSpec(NamedTuple):
     aug_type: AugmentationType
     token: str
     replacement: str
+    # When ``close_token`` is set, the spec describes a *paired* (delimited)
+    # construct rather than a single-token replacement: ``token`` opens it,
+    # ``close_token`` closes it, and the two are correlated with depth-aware
+    # matching. ``name_pattern``, if given, is a regex restricting which
+    # preceding ``NAME`` opens the construct; ``None`` means "any non-keyword
+    # NAME". See :func:`replace_paired_delimiters_and_get_augmented_positions`.
+    close_token: Optional[str] = None
+    close_replacement: Optional[str] = None
+    name_pattern: Optional[str] = None
+    # When set on a paired spec, the captured body is not spliced in verbatim;
+    # instead it is wrapped as ``<body_func_wrapper>('<body source>', globals(),
+    # locals())`` -- a call *expression* that evaluates to a function compiled
+    # from the (possibly multi-statement) body. This is what lets a ``{ ... }``
+    # block carry statements through the subscript path: the resulting
+    # ``macro[<func>]`` hands a freshly-defined callable to the macro.
+    body_func_wrapper: Optional[str] = None
+
+    @property
+    def is_paired(self) -> bool:
+        return self.close_token is not None
 
 
 def fix_positions(
@@ -408,6 +432,209 @@ def _replace_tokens_and_get_augmented_positions_inner(
 
     _flush_match(force=True)
     return transformed.getvalue(), positions
+
+
+class _PairedMatch(NamedTuple):
+    name: str
+    name_start: Tuple[int, int]
+    open_start: Tuple[int, int]
+    open_end: Tuple[int, int]
+    close_start: Tuple[int, int]
+    close_end: Tuple[int, int]
+
+
+def _line_starts(code: str) -> List[int]:
+    starts = [0]
+    for i, ch in enumerate(code):
+        if ch == "\n":
+            starts.append(i + 1)
+    return starts
+
+
+def _name_predicate(name_pattern: Optional[str]) -> "Callable[[str], bool]":
+    # Hard keywords (``return``, ``yield``, ``not``, ``in``, ...) can legally be
+    # followed immediately by ``{`` (e.g. ``return{1}`` is a set literal), so we
+    # never treat those as triggers -- only NAMEs that are otherwise a syntax
+    # error in front of ``{`` are safe to rewrite.
+    if name_pattern is None:
+        return lambda name: not keyword.iskeyword(name)
+    pat = re.compile(name_pattern)
+    return lambda name: (
+        not keyword.iskeyword(name) and pat.fullmatch(name) is not None
+    )
+
+
+def _find_first_paired_construct(
+    code: str,
+    name_predicate: "Callable[[str], bool]",
+    open_tok: str,
+    close_tok: str,
+) -> Optional[_PairedMatch]:
+    """Return the leftmost (hence outermost) ``NAME<open>...<close>`` construct,
+    correlating delimiters with depth-aware matching. Only fires when ``<open>``
+    immediately follows (no whitespace) a ``NAME`` accepted by
+    ``name_predicate``, so ordinary set/dict literals are never matched."""
+    try:
+        toks = list(tokenize.generate_tokens(StringIO(code).readline))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return None
+    for idx in range(1, len(toks)):
+        tok = toks[idx]
+        if tok.type != tokenize.OP or tok.string != open_tok:
+            continue
+        prev = toks[idx - 1]
+        if not (
+            prev.type == tokenize.NAME
+            and prev.end == tok.start
+            and name_predicate(prev.string)
+        ):
+            continue
+        depth = 0
+        for j in range(idx, len(toks)):
+            t = toks[j]
+            if t.type == tokenize.OP and t.string == open_tok:
+                depth += 1
+            elif t.type == tokenize.OP and t.string == close_tok:
+                depth -= 1
+                if depth == 0:
+                    return _PairedMatch(
+                        name=prev.string,
+                        name_start=prev.start,
+                        open_start=tok.start,
+                        open_end=tok.end,
+                        close_start=t.start,
+                        close_end=t.end,
+                    )
+        return None  # unbalanced; bail out
+    return None
+
+
+def make_paired_delimiter_augmenter(
+    triggers: Optional[Iterable[str]],
+    emit: "Callable[[str, str], str]",
+    open_tok: str = "{",
+    close_tok: str = "}",
+) -> "Callable[[str], str]":
+    """
+    Build a source-to-source transformer that rewrites ``TRIGGER<open>...<close>``
+    constructs (e.g. ``map{ ... }``) by correlating the opening and closing
+    delimiters, capturing the raw source between them, and replacing the whole
+    span with whatever ``emit(trigger_name, inner_source)`` returns.
+
+    Unlike single-token :class:`AugmentationSpec` replacement, this captures a
+    *balanced, variable-length* span. Matching is depth-aware so nested
+    ``open``/``close`` pairs inside the body don't terminate the match early.
+
+    ``triggers`` may be ``None`` (any non-keyword ``NAME``) or an iterable of
+    permitted names. A delimiter only opens a construct when it immediately
+    follows (no intervening whitespace) such a ``NAME`` -- so normal set/dict
+    literals like ``{1: 2}`` are never matched.
+    """
+    if triggers is None:
+        name_predicate = _name_predicate(None)
+    else:
+        trigger_set = set(triggers)
+        name_predicate = lambda name: name in trigger_set  # noqa: E731
+
+    def _augment(code: str) -> str:
+        # Rewrite a single (outermost, leftmost) construct per pass, looping
+        # until none remain -- robust against the index shifts splicing causes.
+        while True:
+            match = _find_first_paired_construct(
+                code, name_predicate, open_tok, close_tok
+            )
+            if match is None:
+                return code
+            starts = _line_starts(code)
+
+            def _abs(pos: Tuple[int, int]) -> int:
+                return starts[pos[0] - 1] + pos[1]
+
+            inner = code[_abs(match.open_end) : _abs(match.close_start)]
+            replacement = emit(match.name, inner)
+            code = (
+                code[: _abs(match.name_start)]
+                + replacement
+                + code[_abs(match.close_end) :]
+            )
+
+    return _augment
+
+
+def replace_paired_delimiters_and_get_augmented_positions(
+    code: str,
+    specs: List[AugmentationSpec],
+    rewriter: Optional["AstRewriter"],
+) -> Tuple[str, List[AugmentationSpec]]:
+    """
+    Apply the *paired* (delimited) augmentation specs to ``code``: for each spec,
+    correlate ``spec.token`` / ``spec.close_token`` and rewrite each
+    ``NAME<open> ... <close>`` construct into ``NAME<replacement> ...
+    <close_replacement>``.
+
+    The canonical use is ``{`` -> ``[`` and ``}`` -> ``]``, which turns
+    ``macro{ ... }`` into the subscript ``macro[ ... ]`` so that existing
+    subscript event handlers fire unchanged. The opening-delimiter position is
+    registered with the rewriter (mapped to the resulting ``Subscript`` node via
+    :data:`AugmentationType.subscript`) so handlers can distinguish a brace-block
+    from an ordinary subscript via ``get_augmentations``. The opening delimiter
+    sits right after ``NAME`` regardless of body length, so this position is
+    well-defined even when the body is rewritten.
+
+    If ``spec.body_func_wrapper`` is set, the enclosed body is not spliced in
+    verbatim; it is wrapped as ``<wrapper>('<body>', globals(), locals())`` -- a
+    call expression evaluating to a function compiled from the body. This is how
+    statement-bodied blocks ride the subscript path: ``macro[<func>]`` passes a
+    freshly-defined callable to a function-consuming macro.
+    """
+    specs_applied: List[AugmentationSpec] = []
+    for spec in specs:
+        if spec.close_token is None or spec.close_token not in code:
+            continue
+        if spec.token not in code:
+            continue
+        name_predicate = _name_predicate(spec.name_pattern)
+        close_replacement = (
+            spec.close_token
+            if spec.close_replacement is None
+            else spec.close_replacement
+        )
+        applied = False
+        while True:
+            match = _find_first_paired_construct(
+                code, name_predicate, spec.token, spec.close_token
+            )
+            if match is None:
+                break
+            applied = True
+            starts = _line_starts(code)
+
+            def _abs(pos: Tuple[int, int]) -> int:
+                return starts[pos[0] - 1] + pos[1]
+
+            inner = code[_abs(match.open_end) : _abs(match.close_start)]
+            if spec.body_func_wrapper is None:
+                slice_src = inner
+            else:
+                slice_src = "{}({!r}, globals(), locals())".format(
+                    spec.body_func_wrapper, inner
+                )
+            replacement = match.name + spec.replacement + slice_src + close_replacement
+            # The opening delimiter lands immediately after NAME, so its
+            # position is unaffected by any rewriting of the body.
+            bracket_pos = (match.name_start[0], match.name_start[1] + len(match.name))
+            code = (
+                code[: _abs(match.name_start)]
+                + replacement
+                + code[_abs(match.close_end) :]
+            )
+            if rewriter is not None:
+                rewriter.register_augmented_position(
+                    spec, bracket_pos[0], bracket_pos[1]
+                )
+        if applied:
+            specs_applied.append(spec)
+    return code, specs_applied
 
 
 # copied from IPython to avoid bringing it in as a dependency

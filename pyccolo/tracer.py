@@ -59,6 +59,7 @@ from pyccolo.import_hooks import patch_meta_path_non_context
 from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import (
     AugmentationSpec,
+    replace_paired_delimiters_and_get_augmented_positions,
     replace_tokens_and_get_augmented_positions,
 )
 from pyccolo.trace_events import (
@@ -151,9 +152,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     sandbox_fname_counter = 0
 
     _MANAGER_CLASS_REGISTERED = False
-    EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[TraceEvent, List[HandlerSpec]] = (
-        defaultdict(list)
-    )
+    EVENT_HANDLERS_PENDING_REGISTRATION: DefaultDict[
+        TraceEvent, List[HandlerSpec]
+    ] = defaultdict(list)
     EVENT_HANDLERS_BY_CLASS: Dict[
         "Type[BaseTracer]",
         DefaultDict[TraceEvent, List[HandlerSpec]],
@@ -603,6 +604,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     ) -> "Callable[[CodeLines], CodeLines]":
         aug_specs = self.syntax_augmentation_specs()
 
+        single_specs = [spec for spec in aug_specs if not spec.is_paired]
+        paired_specs = [spec for spec in aug_specs if spec.is_paired]
+
         def _input_transformer(lines: "CodeLines") -> "CodeLines":
             if len(aug_specs) == 0:
                 return lines
@@ -610,11 +614,17 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 code = "".join(lines)
             else:
                 code = lines
-            code, specs_applied = replace_tokens_and_get_augmented_positions(
-                code, aug_specs, rewriter=ast_rewriter
+            code, single_applied = replace_tokens_and_get_augmented_positions(
+                code, single_specs, rewriter=ast_rewriter
+            )
+            (
+                code,
+                paired_applied,
+            ) = replace_paired_delimiters_and_get_augmented_positions(
+                code, paired_specs, rewriter=ast_rewriter
             )
             if ast_rewriter is not None:
-                self.last_applied_specs = specs_applied
+                self.last_applied_specs = single_applied + paired_applied
             if isinstance(lines, list):
                 return code.splitlines(keepends=True)
             else:
@@ -1061,10 +1071,12 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         TracerT = TypeVar("TracerT", bound="_InternalBaseTracer")
 
         @classmethod
-        def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT: ...
+        def instance(cls: Type[TracerT], *args, **kwargs) -> TracerT:
+            ...
 
         @classmethod
-        def clear_instance(cls) -> None: ...
+        def clear_instance(cls) -> None:
+            ...
 
 
 def make_assert_evt_when(

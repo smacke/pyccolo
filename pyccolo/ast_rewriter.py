@@ -57,9 +57,9 @@ class AstRewriter(ast.NodeTransformer):
         self._tracers = tracers
         self._path = path
         self._module_id = module_id
-        self._augmented_positions_by_spec: Dict[AugmentationSpec, Set[Position]] = (
-            defaultdict(set)
-        )
+        self._augmented_positions_by_spec: Dict[
+            AugmentationSpec, Set[Position]
+        ] = defaultdict(set)
         self.orig_to_copy_mapping: Optional[Dict[int, ast.AST]] = None
 
     @contextmanager
@@ -253,6 +253,18 @@ class AstRewriter(ast.NodeTransformer):
             return None
         return Range.singleton_span(end_lineno, end_col_offset)
 
+    @staticmethod
+    def _get_subscript_range_for(node: ast.AST) -> Optional[Range]:
+        # The opening bracket of a subscript sits immediately after the value,
+        # which is exactly the position a paired ``{`` -> ``[`` swap registers.
+        if not isinstance(node, ast.Subscript):
+            return None
+        end_lineno: Optional[int] = getattr(node.value, "end_lineno", None)
+        end_col_offset: Optional[int] = getattr(node.value, "end_col_offset", None)
+        if end_lineno is None or end_col_offset is None:
+            return None
+        return Range.singleton_span(end_lineno, end_col_offset)
+
     def _get_range_for(
         self, aug_type: AugmentationType, node: ast.AST
     ) -> Optional[Range]:
@@ -270,6 +282,8 @@ class AstRewriter(ast.NodeTransformer):
             return self._get_boolop_range_for(node)
         elif aug_type == AugmentationType.call:
             return self._get_call_range_for(node)
+        elif aug_type == AugmentationType.subscript:
+            return self._get_subscript_range_for(node)
         else:
             raise NotImplementedError()
 
@@ -323,18 +337,18 @@ class AstRewriter(ast.NodeTransformer):
         BookkeepingVisitor(cleanup_bookkeeper).visit(node)
         last_tracer.remove_bookkeeping(cleanup_bookkeeper, module_id)
 
-        new_bookkeeper = last_tracer.ast_bookkeeper_by_fname[self._path] = (
-            AstBookkeeper.create(self._path, module_id)
-        )
+        new_bookkeeper = last_tracer.ast_bookkeeper_by_fname[
+            self._path
+        ] = AstBookkeeper.create(self._path, module_id)
         if old_bookkeeper is not None and self.gc_bookkeeping:
             last_tracer.remove_bookkeeping(old_bookkeeper, module_id)
         BookkeepingVisitor(new_bookkeeper).visit(orig_to_copy_mapping[id(node)])
         last_tracer.add_bookkeeping(new_bookkeeper, module_id)
         self.orig_to_copy_mapping = orig_to_copy_mapping
         self._handle_all_augmentations(orig_to_copy_mapping)
-        raw_handler_predicates_by_event: DefaultDict[TraceEvent, List[Predicate]] = (
-            defaultdict(list)
-        )
+        raw_handler_predicates_by_event: DefaultDict[
+            TraceEvent, List[Predicate]
+        ] = defaultdict(list)
         raw_guard_exempt_handler_predicates_by_event: DefaultDict[
             TraceEvent, List[Predicate]
         ] = defaultdict(list)
@@ -386,12 +400,12 @@ class AstRewriter(ast.NodeTransformer):
                 CompositePredicate.any(raw_predicates)
             )
         for evt, raw_predicates in raw_guard_exempt_handler_predicates_by_event.items():
-            guard_exempt_handler_prediate_by_event[evt] = (
-                self._make_node_copy_flyweight(CompositePredicate.any(raw_predicates))
-            )
-        handler_guards_by_event: DefaultDict[TraceEvent, List[GUARD_DATA_T]] = (
-            defaultdict(list)
-        )
+            guard_exempt_handler_prediate_by_event[
+                evt
+            ] = self._make_node_copy_flyweight(CompositePredicate.any(raw_predicates))
+        handler_guards_by_event: DefaultDict[
+            TraceEvent, List[GUARD_DATA_T]
+        ] = defaultdict(list)
         for tracer in self._tracers:
             for evt, handler_specs in tracer._event_handlers.items():
                 handler_guards_by_event[evt].extend(
