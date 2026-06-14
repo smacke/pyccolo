@@ -125,36 +125,36 @@ _CMP = {
 
 
 class Bin(Term):
-    def __init__(self, op: str, l: Term, r: Term) -> None:
-        self.op, self.l, self.r = op, l, r
+    def __init__(self, op: str, lhs: Term, rhs: Term) -> None:
+        self.op, self.lhs, self.rhs = op, lhs, rhs
 
     def eval(self, env):
-        return _BIN[self.op](self.l.eval(env), self.r.eval(env))
+        return _BIN[self.op](self.lhs.eval(env), self.rhs.eval(env))
 
     def z3(self, zvars):
-        l, r = self.l.z3(zvars), self.r.z3(zvars)
+        lhs, rhs = self.lhs.z3(zvars), self.rhs.z3(zvars)
         # z3's ArithRef defines ``/`` (integer division on Int sort) and ``%``
         # but not ``__floordiv__``, so route "//" through ``/`` explicitly.
         if self.op == "//":
-            return l / r
-        return _BIN[self.op](l, r)
+            return lhs / rhs
+        return _BIN[self.op](lhs, rhs)
 
     def __str__(self):
-        return f"({self.l} {self.op} {self.r})"
+        return f"({self.lhs} {self.op} {self.rhs})"
 
 
 class Cmp(Term):
-    def __init__(self, op: str, l: Term, r: Term) -> None:
-        self.op, self.l, self.r = op, l, r
+    def __init__(self, op: str, lhs: Term, rhs: Term) -> None:
+        self.op, self.lhs, self.rhs = op, lhs, rhs
 
     def eval(self, env):
-        return _CMP[self.op](self.l.eval(env), self.r.eval(env))
+        return _CMP[self.op](self.lhs.eval(env), self.rhs.eval(env))
 
     def z3(self, zvars):
-        return _CMP[self.op](self.l.z3(zvars), self.r.z3(zvars))
+        return _CMP[self.op](self.lhs.z3(zvars), self.rhs.z3(zvars))
 
     def __str__(self):
-        return f"({self.l} {self.op} {self.r})"
+        return f"({self.lhs} {self.op} {self.rhs})"
 
 
 class Not(Term):
@@ -216,7 +216,7 @@ def _has_var(t: Term) -> bool:
     if isinstance(t, Var):
         return True
     if isinstance(t, (Bin, Cmp)):
-        return _has_var(t.l) or _has_var(t.r)
+        return _has_var(t.lhs) or _has_var(t.rhs)
     if isinstance(t, Not):
         return _has_var(t.t)
     if isinstance(t, (And, Or)):
@@ -245,9 +245,9 @@ class Sym:
 
     def _bin(self, other, op, swap=False):
         ov, ot = _split(other)
-        l, r = (ot, self.t) if swap else (self.t, ot)
+        lhs, rhs = (ot, self.t) if swap else (self.t, ot)
         lv, rv = (ov, self.v) if swap else (self.v, ov)
-        return Sym(_BIN[op](lv, rv), Bin(op, l, r))
+        return Sym(_BIN[op](lv, rv), Bin(op, lhs, rhs))
 
     def __add__(self, o):
         return self._bin(o, "+")
