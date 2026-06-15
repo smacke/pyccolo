@@ -54,6 +54,7 @@ Caveats (honest scope):
     forward mode.
   * ``inspect.getsource`` is required, so REPL/lambda targets are unsupported.
 """
+import functools
 import inspect
 import logging
 import math
@@ -731,30 +732,48 @@ class AutodiffTracer(pyc.BaseTracer):
         self._helpers[func] = instrumented
         return instrumented
 
+    def resolve_call(self, func: Callable[..., Any]) -> Callable[..., Any]:
+        """Map a callable to its autodiff-aware version.
+
+        Swap an intercepted numpy/math function for its differentiable primitive;
+        instrument a user helper on demand so the tape flows through its body; or
+        wrap an un-ruled numpy/math function so it warns if a Var flows in. This is
+        the logic ``before_call`` applies; it is exposed so other call mechanisms
+        (e.g. pipescript's ``|>`` via its application hooks) can participate too.
+        """
+        replacement = _INTERCEPT.get(func)
+        if replacement is not None:
+            return replacement
+        if _is_user_function(func):
+            return self._instrument_helper(func)
+        if _is_mathy(func):
+            return _warn_wrapper(func)
+        return func  # builtins, methods, etc. pass through
+
     @pyc.register_handler(pyc.before_call)
     def handle_before_call(
         self, func: Callable[..., Any], node: Any, *_: Any, **__: Any
     ) -> Callable[..., Any]:
-        replacement = _INTERCEPT.get(func)
-        if replacement is not None:
-            # Swap an intercepted numpy/math function for its differentiable version.
-            return replacement
-        if _is_user_function(func):
-            # Differentiate through your own helpers: instrument them on demand so
-            # the tape flows through their bodies (numpy calls inside get swapped
-            # too).  No per-function rule required.
-            return self._instrument_helper(func)
-        if _is_mathy(func):
-            # A numpy/math function we have no rule for: warn (at call time) if a
-            # Var actually flows in, so a lost gradient does not pass silently.
-            return _warn_wrapper(func)
-        # Everything else (builtins, methods) passes through.
-        return func
+        return self.resolve_call(func)
 
 
 # ---------------------------------------------------------------------------
 # Public API.
 # ---------------------------------------------------------------------------
+def resolve_call(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Autodiff-aware version of ``func`` (the logic ``before_call`` applies).
+
+    Exposed so other call mechanisms can opt into interception -- e.g. wiring a
+    pipescript pipe hook so ``x |> np.exp`` differentiates when ``x`` is a Var::
+
+        from pipescript.tracers.pipeline_tracer import PipelineTracer
+        PipelineTracer.application_hooks.append(
+            lambda f, v: resolve_call(f) if isinstance(v, Var) else f
+        )
+    """
+    return AutodiffTracer.instance().resolve_call(func)
+
+
 def _is_numeric(x: object) -> bool:
     return (isinstance(x, (int, float)) and not isinstance(x, bool)) or isinstance(
         x, np.ndarray
@@ -762,8 +781,33 @@ def _is_numeric(x: object) -> bool:
 
 
 # ``tracer.instrumented`` rebinds ``f.__code__`` (and is not idempotent -- a second
-# call re-reads the now-relocated source), so instrument each function exactly once.
+# call re-reads the now-relocated source), so build each function's runner once.
 _INSTRUMENTED: Dict[Callable[..., Any], Callable[..., Any]] = {}
+
+
+def _make_runner(f: Callable[..., Any]) -> Callable[..., Any]:
+    """A callable that runs ``f`` with autodiff interception active.
+
+    Normally that means instrumenting ``f``'s source so its calls emit before_call.
+    But a function with no recoverable source -- notably a pipescript ``|>`` pipe
+    lambda, which is synthesized via ``pyc.eval`` and is therefore *already* woven
+    by its tracers -- can't be (re)instrumented; run it directly instead, with the
+    autodiff tracer enabled so the tape is built as the pipe executes.
+    """
+    tracer = AutodiffTracer.instance()
+    fname = getattr(getattr(f, "__code__", None), "co_filename", "") or ""
+    if not fname.startswith("<"):  # a real source file -> weave before_call in
+        try:
+            return tracer.instrumented(f)
+        except (OSError, TypeError, SyntaxError):
+            pass
+
+    @functools.wraps(f)
+    def run_directly(*args: Any, **kwargs: Any) -> Any:
+        with tracer.tracing_enabled():
+            return f(*args, **kwargs)
+
+    return run_directly
 
 
 def value_and_grad(
@@ -772,12 +816,13 @@ def value_and_grad(
     """Wrap ``f`` so that calling it returns ``(value, grads)``.
 
     ``grads`` is a tuple holding the gradient of the (scalar) output with respect
-    to each numeric/ndarray positional argument, in order.
+    to each numeric/ndarray positional argument, in order. ``f`` may be an ordinary
+    function or a pipescript ``|>`` pipe lambda (run it under ``PipelineTracer``).
     """
-    instrumented = _INSTRUMENTED.get(f)
-    if instrumented is None:
-        instrumented = AutodiffTracer.instance().instrumented(f)
-        _INSTRUMENTED[f] = instrumented
+    runner = _INSTRUMENTED.get(f)
+    if runner is None:
+        runner = _make_runner(f)
+        _INSTRUMENTED[f] = runner
 
     def wrapped(*args: Any) -> Tuple[Array, Tuple[ArrayLike, ...]]:
         arg_vars: List[Tuple[ArrayLike, Var]] = []
@@ -789,7 +834,7 @@ def value_and_grad(
                 call_args.append(v)
             else:
                 call_args.append(a)
-        out = instrumented(*call_args)
+        out = runner(*call_args)
         if isinstance(out, Var):
             out.backward()
             grads = tuple(_match_arg(orig, v.grad) for orig, v in arg_vars)
