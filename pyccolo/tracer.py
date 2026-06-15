@@ -3,6 +3,7 @@ import ast
 import builtins
 import functools
 import inspect
+import linecache
 import logging
 import os
 import sys
@@ -146,6 +147,11 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     should_patch_meta_path = True
     global_guards_enabled = True
     bytecode_caching_allowed = True
+    # When True, ``eval`` registers the (pre-instrumentation) source of sandbox
+    # code in ``linecache`` so ``inspect.getsource`` and tracebacks work for code
+    # with no on-disk source -- e.g. a pipescript ``|>`` pipe lambda. Off by
+    # default: it unparses + caches on every eval, which is wasteful in hot paths.
+    keep_sandbox_source = False
 
     ast_rewriter_cls = AstRewriter
     defined_file = ""
@@ -603,11 +609,21 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         # stack -- e.g. compiling a sub-fragment that should be instrumented by
         # only some cooperating tracers, not every tracer that happens to be
         # active (a foreign tracer may not recognize the fragment's nodes).
+        #
+        # ``self`` is always retained even when hard-disabled: a tracer rewrites
+        # on its own behalf, and ``instrumented``/``exec`` transiently hard-disable
+        # ``self`` only to keep the recompile itself untraced -- ``self`` *will* be
+        # live when the rewritten code runs. Dropping it here was a latent bug:
+        # with a single tracer the ``or stack`` fallback hid it, but with a second
+        # tracer also active, ``self``'s events (e.g. before_call) were silently
+        # left out of the woven code.
         stack: List[BaseTracer] = _TRACER_STACK if tracers is None else tracers
         rewrite_tracers: List[BaseTracer] = stack
         if any(tracer._is_tracing_hard_disabled for tracer in stack):
             rewrite_tracers = [
-                tracer for tracer in stack if not tracer._is_tracing_hard_disabled
+                tracer
+                for tracer in stack
+                if tracer is self or not tracer._is_tracing_hard_disabled
             ] or stack
         return self.ast_rewriter_cls(rewrite_tracers, path, module_id=module_id)
 
@@ -958,6 +974,30 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 local_env = frame.f_locals
         return global_env, local_env
 
+    def _register_sandbox_source(
+        self, filename: str, source: Optional[Union[str, ast.AST]]
+    ) -> None:
+        # Make inspect.getsource / tracebacks work for sandbox-compiled code (no
+        # on-disk source) by caching its source in linecache. Opt-in, sandbox-only.
+        if source is None or not filename.startswith(SANDBOX_FNAME_PREFIX):
+            return
+        if not (
+            self.keep_sandbox_source
+            or any(tracer.keep_sandbox_source for tracer in _TRACER_STACK)
+        ):
+            return
+        if not isinstance(source, str):
+            if not hasattr(ast, "unparse"):  # ast.unparse is Python 3.9+
+                return
+            try:
+                source = ast.unparse(source)
+            except Exception:
+                return
+        lines = source.splitlines(keepends=True) or [""]
+        if not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
+        linecache.cache[filename] = (len(source), None, lines, filename)
+
     def eval(
         self,
         code: Union[str, ast.expr, ast.Expression],
@@ -973,6 +1013,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         global_env, local_env = self._get_environments(
             global_env, local_env, num_extra_lookback_frames + 1
         )
+        # Capture the source before instrumentation weaves emit calls in: the
+        # original string, or the unparsed AST for a synthesized node.
+        source: Optional[Union[str, ast.AST]] = code if isinstance(code, str) else None
         with (
             self.tracing_context(
                 disabled=self._is_tracing_hard_disabled,
@@ -992,6 +1035,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                     code = ast.parse(code, mode="eval", filename=filename)
             if not isinstance(code, ast.Expression):
                 code = ast.Expression(code)
+            if source is None:
+                source = code  # AST input: unparse this (still pre-rewrite below)
+            self._register_sandbox_source(filename, source)
             if instrument and not visited:
                 code = self.make_ast_rewriter(path=filename).visit(code)
             return self.exec_raw(

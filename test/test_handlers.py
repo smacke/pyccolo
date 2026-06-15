@@ -710,3 +710,29 @@ def test_assert_events():
         )
 
     assert recorded == [(ast.Assert, pyc.before_stmt), (ast.Assert, pyc.after_stmt)]
+
+
+def test_keep_sandbox_source_enables_getsource():
+    import inspect
+
+    class PlainTracer(pyc.BaseTracer):
+        pass
+
+    class SourceKeepingTracer(pyc.BaseTracer):
+        keep_sandbox_source = True
+
+    # Off by default: a function eval'd in a sandbox has no recoverable source.
+    with PlainTracer:
+        f = pyc.eval("lambda x: x + 1")
+        assert f(1) == 2
+        try:
+            inspect.getsource(f)
+            assert False, "expected getsource to fail for un-kept sandbox source"
+        except OSError:
+            pass
+
+    # Opt in: the (pre-instrumentation) source is registered for inspect/tracebacks.
+    with SourceKeepingTracer:
+        g = pyc.eval("lambda x: x + 1")
+        assert g(1) == 2
+        assert inspect.getsource(g).strip() == "lambda x: x + 1"
