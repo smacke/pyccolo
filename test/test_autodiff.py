@@ -17,8 +17,10 @@ from pyccolo.examples.autodiff import (  # noqa: E402
     _deep_accuracy,
     _init_deep,
     _init_mlp,
+    _init_mlp_tree,
     _init_transformer,
     _mlp_accuracy,
+    _mlp_tree_accuracy,
     _transformer_accuracy,
     attention,
     deep_loss,
@@ -29,6 +31,7 @@ from pyccolo.examples.autodiff import (  # noqa: E402
     layer_norm,
     logistic_loss,
     mlp_loss,
+    mlp_tree_loss,
     transformer_block,
     transformer_loss,
     value_and_grad,
@@ -483,3 +486,136 @@ def test_logistic_regression_trains():
 def test_logistic_gradient_matches_finite_diff():
     _assert_grads_match(logistic_loss, (np.zeros(2), 0.0))
     _assert_grads_match(logistic_loss, (np.array([0.3, -0.4]), 0.1))
+
+
+# --- pytrees ----------------------------------------------------------------
+# Target functions live at module scope (a real file) so ``value_and_grad`` can
+# getsource + recompile them.
+def sum_sq(x):
+    return np.sum(x * x)
+
+
+def dict_quadratic(p):  # ignores p["tag"] -> its gradient leaf comes back None
+    return np.sum(p["x"] * p["x"]) + 3.0 * np.sum(p["y"])
+
+
+def _trees_equal(a, b):
+    la, ta = ad.tree_flatten(a)
+    lb, tb = ad.tree_flatten(b)
+    return (
+        ta == tb
+        and len(la) == len(lb)
+        and all(np.array_equal(x, y) for x, y in zip(la, lb))
+    )
+
+
+def _tree_finite_diff(f, tree, h=1e-6):
+    """Central-difference gradient of ``sum(f(tree))`` w.r.t. each numeric leaf."""
+    leaves, treedef = ad.tree_flatten(tree)
+
+    def loss(ls):
+        return float(np.sum(f(ad.tree_unflatten(treedef, ls))))
+
+    grads = []
+    for i, leaf in enumerate(leaves):
+        if isinstance(leaf, np.ndarray):
+            g = np.zeros_like(leaf)
+            for idx in np.ndindex(leaf.shape):
+                up = [x.copy() if isinstance(x, np.ndarray) else x for x in leaves]
+                dn = [x.copy() if isinstance(x, np.ndarray) else x for x in leaves]
+                up[i][idx] += h
+                dn[i][idx] -= h
+                g[idx] = (loss(up) - loss(dn)) / (2 * h)
+            grads.append(g)
+        elif isinstance(leaf, (int, float)) and not isinstance(leaf, bool):
+            up, dn = list(leaves), list(leaves)
+            up[i], dn[i] = leaf + h, leaf - h
+            grads.append((loss(up) - loss(dn)) / (2 * h))
+        else:
+            grads.append(None)  # non-numeric leaf: no gradient
+    return grads
+
+
+def test_tree_flatten_unflatten_roundtrip():
+    tree = {"a": [1.0, np.array([2.0, 3.0])], "b": (4.0,), "c": {"d": 5.0}}
+    leaves, treedef = ad.tree_flatten(tree)
+    rebuilt = ad.tree_unflatten(treedef, leaves)
+    assert ad.tree_structure(rebuilt) == treedef
+    assert _trees_equal(rebuilt, tree)
+
+
+def test_tree_structure_equality_by_shape():
+    a = {"w": np.zeros(3), "b": 0.0}
+    b = {"w": np.ones(5), "b": 1.0}  # same shape, different values/dtype
+    c = {"w": np.zeros(3)}  # missing a key -> different shape
+    d = [np.zeros(3), 0.0]  # list, not dict
+    assert ad.tree_structure(a) == ad.tree_structure(b)
+    assert ad.tree_structure(a) != ad.tree_structure(c)
+    assert ad.tree_structure(a) != ad.tree_structure(d)
+
+
+def test_tree_leaves_order_is_sorted_by_key():
+    leaves = ad.tree_leaves({"b": 2.0, "a": 1.0, "c": 3.0})
+    assert leaves == [1.0, 2.0, 3.0]
+
+
+def test_tree_map_leafwise_multiarg():
+    a = {"x": np.array([1.0, 2.0]), "y": 3.0}
+    b = {"x": np.array([10.0, 20.0]), "y": 30.0}
+    out = ad.tree_map(lambda p, q: p + q, a, b)
+    assert np.allclose(out["x"], [11.0, 22.0])
+    assert out["y"] == 33.0
+
+
+def test_sgd_update_matches_manual_and_preserves_structure():
+    params = {"w": np.array([1.0, 2.0, 3.0]), "b": 0.5}
+    grads = {"w": np.array([0.1, 0.2, 0.3]), "b": 1.0}
+    out = ad.sgd_update(params, grads, lr=0.1)
+    assert ad.tree_structure(out) == ad.tree_structure(params)
+    assert np.allclose(out["w"], params["w"] - 0.1 * grads["w"])
+    assert np.isclose(out["b"], 0.5 - 0.1 * 1.0)
+
+
+def test_bare_arg_is_single_leaf_pytree():
+    # A bare array is a one-leaf pytree, so its gradient comes back bare (this is
+    # what keeps the positional API backward compatible).
+    _, (g,) = value_and_grad(sum_sq)(np.array([1.0, 2.0, 3.0]))
+    assert isinstance(g, np.ndarray)
+    assert np.allclose(g, 2 * np.array([1.0, 2.0, 3.0]))
+
+
+def test_grad_pytree_matches_structure_and_finite_diff():
+    p = {"x": np.array([0.5, -1.0, 2.0]), "y": np.array([1.0, 3.0]), "tag": "ignored"}
+    _, (gtree,) = value_and_grad(dict_quadratic)(p)
+    assert ad.tree_structure(gtree) == ad.tree_structure(p)
+    assert gtree["tag"] is None  # non-numeric leaf -> no gradient
+    g_leaves = ad.tree_leaves(gtree)
+    fd_leaves = _tree_finite_diff(dict_quadratic, p)
+    for g, fd in zip(g_leaves, fd_leaves):
+        if fd is None:
+            assert g is None
+        else:
+            assert np.allclose(g, fd, atol=1e-5)
+
+
+def test_value_and_grad_over_dict_mlp_matches_finite_diff():
+    params = _init_mlp_tree(np.random.default_rng(0), n_hidden=4)
+    _, (gtree,) = value_and_grad(mlp_tree_loss)(params)
+    assert ad.tree_structure(gtree) == ad.tree_structure(params)
+    g_leaves = ad.tree_leaves(gtree)
+    fd_leaves = _tree_finite_diff(mlp_tree_loss, params)
+    for g, fd in zip(g_leaves, fd_leaves):
+        assert np.allclose(g, fd, atol=1e-4)
+
+
+def test_dict_pytree_mlp_trains():
+    params = _init_mlp_tree(np.random.default_rng(1))
+    vg = value_and_grad(mlp_tree_loss)
+    first = last = None
+    for _ in range(200):
+        loss, (g,) = vg(params)
+        first = float(loss) if first is None else first
+        last = float(loss)
+        params = ad.sgd_update(params, g, lr=0.5)
+    assert last < first
+    assert _mlp_tree_accuracy(params) >= 0.9

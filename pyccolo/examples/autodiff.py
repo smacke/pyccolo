@@ -70,6 +70,7 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+    cast,
 )
 
 import numpy as np
@@ -88,6 +89,10 @@ Operand = Union["Var", ArrayLike]
 # when the same helper is run outside the tape (e.g. at eval time).
 Tensor = Union["Var", np.ndarray]
 Axis = Optional[Union[int, Tuple[int, ...]]]
+# Named aliases for numpy interop whose precise types are intractable to spell
+# out (so the unavoidable ``Any`` is localized and documented, not bare).
+Index = Any  # a NumPy __getitem__ key: int / slice / ndarray / tuple / None / ...
+Shape = Any  # dim(s) for reshape: an int or a tuple of ints (np.reshape overloads)
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +225,7 @@ class Var:
     __hash__ = None  # type: ignore[assignment]
 
     # -- indexing (gather forward, scatter-add backward) ---------------------
-    def __getitem__(self, key: Any) -> "Var":
+    def __getitem__(self, key: Index) -> "Var":
         out = Var(self.value[key], _parents=(self,))
 
         def _backward() -> None:
@@ -244,7 +249,7 @@ class Var:
     def min(self, axis: Axis = None, keepdims: bool = False) -> "Var":
         return d_min(self, axis=axis, keepdims=keepdims)
 
-    def reshape(self, *shape: Any) -> "Var":
+    def reshape(self, *shape: Shape) -> "Var":
         return d_reshape(self, *shape)
 
     @property
@@ -264,7 +269,7 @@ class Var:
     def size(self) -> int:
         return self.value.size
 
-    def __array__(self, *args: Any, **kwargs: Any) -> Array:
+    def __array__(self, *args: object, **kwargs: object) -> Array:
         # No concrete array view: a numpy call reaching here was NOT intercepted,
         # so fail loudly instead of silently building an object array. Defining it
         # also makes Var statically array-like, so numpy-typed code checks.
@@ -480,11 +485,11 @@ def d_mean(x: Operand, axis: Axis = None, keepdims: bool = False) -> Var:
 def d_var(
     x: Operand,
     axis: Axis = None,
-    dtype: Any = None,
-    out: Any = None,
+    dtype: object = None,
+    out: object = None,
     ddof: int = 0,
     keepdims: bool = False,
-    **_: Any,
+    **_: object,
 ) -> Var:
     # Composed from mean/centering/square -- gradient flows for free; the numpy
     # signature order (a, axis, dtype, out, ddof, keepdims) is mirrored so
@@ -498,11 +503,11 @@ def d_var(
 def d_std(
     x: Operand,
     axis: Axis = None,
-    dtype: Any = None,
-    out: Any = None,
+    dtype: object = None,
+    out: object = None,
     ddof: int = 0,
     keepdims: bool = False,
-    **_: Any,
+    **_: object,
 ) -> Var:
     return d_var(x, axis=axis, ddof=ddof, keepdims=keepdims) ** 0.5
 
@@ -564,7 +569,7 @@ def d_transpose(x: Operand, axes: Optional[Tuple[int, ...]] = None) -> Var:
     return out
 
 
-def d_reshape(x: Operand, *shape: Any) -> Var:
+def d_reshape(x: Operand, *shape: Shape) -> Var:
     x = _lift(x)
     newshape = shape[0] if len(shape) == 1 else shape
     out = Var(np.reshape(x.value, newshape), _parents=(x,))
@@ -589,7 +594,7 @@ def d_reshape(x: Operand, *shape: Any) -> Var:
 # Each differentiable primitive is listed once alongside every numpy/math
 # callable that should route to it (e.g. np.exp and math.exp share d_exp); the
 # flat lookup the tracer uses is denormalized from this below.
-_RULES: Dict[Callable[..., Any], Tuple[Any, ...]] = {
+_RULES: Dict[Callable[..., object], Tuple[object, ...]] = {
     # elementwise unary
     d_exp: (np.exp, math.exp),
     d_log: (np.log, math.log),
@@ -625,7 +630,7 @@ _RULES: Dict[Callable[..., Any], Tuple[Any, ...]] = {
     d_concatenate: (np.concatenate,),
 }
 
-_INTERCEPT: Dict[Any, Callable[..., Any]] = {
+_INTERCEPT: Dict[object, Callable[..., object]] = {
     fn: impl for impl, fns in _RULES.items() for fn in fns
 }
 
@@ -634,7 +639,7 @@ class AutodiffWarning(UserWarning):
     """Emitted when a ``Var`` flows into a numpy/math function we cannot differentiate."""
 
 
-def _contains_var(values: Iterable[Any]) -> bool:
+def _contains_var(values: Iterable[object]) -> bool:
     for v in values:
         if isinstance(v, Var):
             return True
@@ -643,7 +648,7 @@ def _contains_var(values: Iterable[Any]) -> bool:
     return False
 
 
-def _is_mathy(func: Callable[..., Any]) -> bool:
+def _is_mathy(func: Callable[..., object]) -> bool:
     # numpy ufuncs / numpy functions / the math module are the calls that bypass
     # our operator overloading and silently drop gradients; builtins like abs/sum
     # work through dunder dispatch and must NOT be flagged.
@@ -667,7 +672,7 @@ _LIB_DIRS = tuple(
 )
 
 
-def _is_user_function(func: Callable[..., Any]) -> bool:
+def _is_user_function(func: Callable[..., object]) -> bool:
     """True for a plain Python function defined in user (non-library) code.
 
     The autodiff primitives (``d_*`` etc.) live in this module but are only ever
@@ -688,16 +693,16 @@ def _is_user_function(func: Callable[..., Any]) -> bool:
     return not any(filename.startswith(d) for d in _LIB_DIRS)
 
 
-_WRAPPERS: Dict[Callable[..., Any], Callable[..., Any]] = {}
+_WRAPPERS: Dict[Callable[..., object], Callable[..., object]] = {}
 
 
-def _warn_wrapper(func: Callable[..., Any]) -> Callable[..., Any]:
+def _warn_wrapper(func: Callable[..., object]) -> Callable[..., object]:
     wrapper = _WRAPPERS.get(func)
     if wrapper is not None:
         return wrapper
     name = getattr(func, "__name__", repr(func))
 
-    def _wrapped(*args: Any, **kwargs: Any) -> Any:
+    def _wrapped(*args: object, **kwargs: object) -> object:
         if _contains_var(args) or _contains_var(kwargs.values()):
             warnings.warn(
                 f"autodiff: no differentiation rule for {name!r}; "
@@ -717,9 +722,9 @@ class AutodiffTracer(pyc.BaseTracer):
 
     # ``instrumented`` rebinds ``__code__`` and is not idempotent, so each helper
     # is instrumented exactly once and reused.
-    _helpers: Dict[Callable[..., Any], Callable[..., Any]] = {}
+    _helpers: Dict[Callable[..., object], Callable[..., object]] = {}
 
-    def _instrument_helper(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def _instrument_helper(self, func: Callable[..., object]) -> Callable[..., object]:
         cached = self._helpers.get(func)
         if cached is not None:
             return cached
@@ -732,7 +737,7 @@ class AutodiffTracer(pyc.BaseTracer):
         self._helpers[func] = instrumented
         return instrumented
 
-    def resolve_call(self, func: Callable[..., Any]) -> Callable[..., Any]:
+    def resolve_call(self, func: Callable[..., object]) -> Callable[..., object]:
         """Map a callable to its autodiff-aware version.
 
         Swap an intercepted numpy/math function for its differentiable primitive;
@@ -752,15 +757,97 @@ class AutodiffTracer(pyc.BaseTracer):
 
     @pyc.register_handler(pyc.before_call)
     def handle_before_call(
-        self, func: Callable[..., Any], node: Any, *_: Any, **__: Any
-    ) -> Callable[..., Any]:
+        self, func: Callable[..., object], node: object, *_: object, **__: object
+    ) -> Callable[..., object]:
         return self.resolve_call(func)
+
+
+# ---------------------------------------------------------------------------
+# Pytrees: nested list/tuple/dict containers with arrays/scalars/Vars as leaves.
+# Let parameters be one structured object (a dict of weights, say) instead of a
+# pile of positional arrays, so value_and_grad returns gradients with the same
+# shape. list/tuple/dict (and subclasses) are nodes; everything else is a leaf.
+# (No namedtuple/custom-node registration; a namedtuple round-trips as a tuple.)
+# ---------------------------------------------------------------------------
+class _LeafMarker:
+    """Placeholder marking a leaf position in a treedef."""
+
+
+_LEAF = _LeafMarker()
+
+# A leaf is a Var, a plain number/array, or None (``None`` appears in a gradient
+# pytree at a non-numeric leaf). A pytree is a leaf or a nested list/tuple/dict of
+# pytrees; a treedef mirrors that shape with leaves replaced by ``_LeafMarker``.
+Leaf = Optional[Operand]
+PyTree = Union[Leaf, List["PyTree"], Tuple["PyTree", ...], Dict[str, "PyTree"]]
+TreeDef = Union[
+    _LeafMarker, List["TreeDef"], Tuple["TreeDef", ...], Dict[str, "TreeDef"]
+]
+
+
+def tree_flatten(tree: PyTree) -> Tuple[List[Leaf], TreeDef]:
+    """Return ``(leaves, treedef)`` -- the leaves in a fixed order, plus a
+    structure description that ``tree_unflatten`` can rebuild from."""
+    leaves: List[Leaf] = []
+
+    def build(node: PyTree) -> TreeDef:
+        if isinstance(node, list):
+            return [build(child) for child in node]
+        if isinstance(node, tuple):
+            return tuple(build(child) for child in node)
+        if isinstance(node, dict):
+            return {key: build(node[key]) for key in sorted(node)}
+        leaves.append(node)
+        return _LEAF
+
+    return leaves, build(tree)
+
+
+def tree_unflatten(treedef: TreeDef, leaves: Iterable[Leaf]) -> PyTree:
+    """Rebuild a pytree of the given ``treedef`` from a flat ``leaves`` iterable."""
+    it = iter(leaves)
+
+    def build(td: TreeDef) -> PyTree:
+        if isinstance(td, list):
+            return [build(child) for child in td]
+        if isinstance(td, tuple):
+            return tuple(build(child) for child in td)
+        if isinstance(td, dict):
+            return {key: build(td[key]) for key in td}
+        return next(it)
+
+    return build(treedef)
+
+
+def tree_leaves(tree: PyTree) -> List[Leaf]:
+    return tree_flatten(tree)[0]
+
+
+def tree_structure(tree: PyTree) -> TreeDef:
+    """The treedef of ``tree`` -- equal (``==``) iff two trees have the same shape."""
+    return tree_flatten(tree)[1]
+
+
+def tree_map(func: Callable[..., Leaf], tree: PyTree, *rest: PyTree) -> PyTree:
+    """Apply ``func`` leafwise across one or more same-structured pytrees."""
+    leaves, treedef = tree_flatten(tree)
+    rest_leaves = [tree_flatten(other)[0] for other in rest]
+    return tree_unflatten(treedef, [func(*xs) for xs in zip(leaves, *rest_leaves)])
+
+
+def sgd_update(params: PyTree, grads: PyTree, lr: float) -> PyTree:
+    """One SGD step over an arbitrary param pytree: ``p <- p - lr * g`` leafwise.
+
+    Both pytrees must share a structure (e.g. the gradient pytree that
+    ``value_and_grad`` returns for ``params``); the result has the same structure.
+    """
+    return tree_map(lambda p, g: cast(Array, p) - lr * cast(Array, g), params, grads)
 
 
 # ---------------------------------------------------------------------------
 # Public API.
 # ---------------------------------------------------------------------------
-def resolve_call(func: Callable[..., Any]) -> Callable[..., Any]:
+def resolve_call(func: Callable[..., object]) -> Callable[..., object]:
     """Autodiff-aware version of ``func`` (the logic ``before_call`` applies).
 
     Exposed so other call mechanisms can opt into interception -- e.g. wiring a
@@ -782,10 +869,10 @@ def _is_numeric(x: object) -> bool:
 
 # ``tracer.instrumented`` rebinds ``f.__code__`` (and is not idempotent -- a second
 # call re-reads the now-relocated source), so build each function's runner once.
-_INSTRUMENTED: Dict[Callable[..., Any], Callable[..., Any]] = {}
+_INSTRUMENTED: Dict[Callable[..., object], Callable[..., object]] = {}
 
 
-def _make_runner(f: Callable[..., Any]) -> Callable[..., Any]:
+def _make_runner(f: Callable[..., object]) -> Callable[..., object]:
     """A callable that runs ``f`` with autodiff interception active.
 
     Normally that means instrumenting ``f``'s source so its calls emit before_call.
@@ -803,7 +890,7 @@ def _make_runner(f: Callable[..., Any]) -> Callable[..., Any]:
             pass
 
     @functools.wraps(f)
-    def run_directly(*args: Any, **kwargs: Any) -> Any:
+    def run_directly(*args: object, **kwargs: object) -> object:
         with tracer.tracing_enabled():
             return f(*args, **kwargs)
 
@@ -811,66 +898,91 @@ def _make_runner(f: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def value_and_grad(
-    f: Callable[..., Any],
-) -> Callable[..., Tuple[Array, Tuple[ArrayLike, ...]]]:
+    f: Callable[..., object],
+) -> Callable[..., Tuple[Array, Tuple[PyTree, ...]]]:
     """Wrap ``f`` so that calling it returns ``(value, grads)``.
 
-    ``grads`` is a tuple holding the gradient of the (scalar) output with respect
-    to each numeric/ndarray positional argument, in order. ``f`` may be an ordinary
-    function or a pipescript ``|>`` pipe lambda (run it under ``PipelineTracer``).
+    ``grads`` is a tuple with one entry per positional argument, holding the
+    gradient of the (scalar) output w.r.t. that argument. Each argument may be a
+    pytree (e.g. a dict of weights); its gradient comes back as a matching pytree,
+    with ``None`` at any non-numeric leaf. A bare array/scalar is just a pytree
+    with one leaf, so it yields a bare gradient (backward compatible). ``f`` may be
+    an ordinary function or a pipescript ``|>`` pipe lambda (run it under
+    ``PipelineTracer``).
     """
     runner = _INSTRUMENTED.get(f)
     if runner is None:
         runner = _make_runner(f)
         _INSTRUMENTED[f] = runner
 
-    def wrapped(*args: Any) -> Tuple[Array, Tuple[ArrayLike, ...]]:
-        arg_vars: List[Tuple[ArrayLike, Var]] = []
-        call_args: List[Any] = []
+    def wrapped(*args: PyTree) -> Tuple[Array, Tuple[PyTree, ...]]:
+        call_args: List[PyTree] = []
+        per_arg: List[Tuple[TreeDef, List[Tuple[Leaf, Optional[Var]]]]] = []
         for a in args:
-            if _is_numeric(a):
-                v = Var(a)
-                arg_vars.append((a, v))
-                call_args.append(v)
-            else:
-                call_args.append(a)
+            leaves, treedef = tree_flatten(a)
+            info: List[Tuple[Leaf, Optional[Var]]] = []
+            wrapped_leaves: List[Leaf] = []
+            for leaf in leaves:
+                if _is_numeric(leaf):
+                    v = Var(cast(ArrayLike, leaf))
+                    info.append((leaf, v))
+                    wrapped_leaves.append(v)
+                else:
+                    info.append((leaf, None))
+                    wrapped_leaves.append(leaf)
+            call_args.append(tree_unflatten(treedef, wrapped_leaves))
+            per_arg.append((treedef, info))
+
         out = runner(*call_args)
         if isinstance(out, Var):
-            out.backward()
-            grads = tuple(_match_arg(orig, v.grad) for orig, v in arg_vars)
-            return out.value, grads
-        # Output does not depend on the inputs.
-        grads = tuple(_match_arg(orig, np.zeros_like(v.value)) for orig, v in arg_vars)
-        return np.asarray(out, dtype=float), grads
+            out.backward()  # otherwise each leaf's grad stays at its init zeros
+            value: Array = out.value
+        else:
+            value = np.asarray(out, dtype=float)
+
+        grads = tuple(
+            tree_unflatten(
+                treedef,
+                [None if v is None else _match_arg(orig, v.grad) for orig, v in info],
+            )
+            for treedef, info in per_arg
+        )
+        return value, grads
 
     return wrapped
 
 
-def _match_arg(orig: ArrayLike, grad: Array) -> ArrayLike:
+def _match_arg(orig: Leaf, grad: Array) -> Operand:
     return grad if isinstance(orig, np.ndarray) else float(grad)
 
 
-def grad(f: Callable[..., Any]) -> Callable[..., Tuple[ArrayLike, ...]]:
-    """Return a function computing just the gradient tuple of ``f``."""
+def grad(f: Callable[..., object]) -> Callable[..., Tuple[PyTree, ...]]:
+    """Return a function computing just the gradient tuple of ``f`` (one entry per
+    argument; each matches that argument's pytree structure)."""
     vg = value_and_grad(f)
     return lambda *args: vg(*args)[1]
 
 
 def gradient_descent(
-    loss_fn: Callable[..., Any],
+    loss_fn: Callable[..., object],
     init_params: Tuple[ArrayLike, ...],
     lr: float = 0.1,
     steps: int = 100,
-) -> Tuple[Tuple[Any, ...], List[float]]:
-    """Minimize ``loss_fn(*params)`` by gradient descent; return (params, history)."""
+) -> Tuple[Tuple[Array, ...], List[float]]:
+    """Minimize ``loss_fn(*params)`` by gradient descent; return (params, history).
+
+    Each step replaces ``p`` with ``p - lr * grad``; since a number/array minus an
+    array is always an array, the returned params are ``Array``s (a scalar init
+    like ``b=0.0`` is promoted on the first update).
+    """
     vg = value_and_grad(loss_fn)
-    params = list(init_params)
+    params: List[ArrayLike] = list(init_params)
     history: List[float] = []
     for _ in range(steps):
         loss, grads = vg(*params)
         history.append(float(loss))
-        params = [p - lr * g for p, g in zip(params, grads)]
-    return tuple(params), history
+        params = [p - lr * cast(Array, g) for p, g in zip(params, grads)]
+    return tuple(cast(List[Array], params)), history
 
 
 # ---------------------------------------------------------------------------
@@ -964,6 +1076,48 @@ def _init_mlp(
 def _mlp_accuracy(params: Tuple[Array, ...]) -> float:
     w1, b1, w2, b2 = params
     logits = np.maximum(_Xc @ w1 + b1, 0.0) @ w2 + b2
+    return float(np.mean(np.argmax(logits, axis=1) == _labels))
+
+
+# ---------------------------------------------------------------------------
+# Demo: the same 2-layer MLP, but with parameters as a *pytree* -- one nested
+# dict instead of four positional arrays. ``value_and_grad`` flattens the dict,
+# differentiates, and hands back a gradient dict of the same shape, so the whole
+# SGD update is the one-liner ``sgd_update`` (a ``tree_map``). This is how a real
+# framework lets a model own a structured bag of named parameters.
+# ---------------------------------------------------------------------------
+# A param pytree: ``{"hidden": {"w", "b"}, "out": {"w", "b"}}``. Annotated as a
+# concrete nested dict (not the open ``PyTree`` union) so the body indexes it; the
+# leaves are arrays at init and ``Var``s once ``value_and_grad`` wraps them, both
+# of which ``Tensor`` covers.
+MLPParams = Dict[str, Dict[str, Tensor]]
+
+
+def mlp_tree_loss(params: MLPParams) -> Operand:
+    h, o = params["hidden"], params["out"]
+    probs = mlp_forward(_Xc, h["w"], h["b"], o["w"], o["b"])
+    return cross_entropy(probs, _Yoh)
+
+
+def _init_mlp_tree(
+    rng: np.random.Generator, n_in: int = 2, n_hidden: int = 16, n_out: int = 3
+) -> PyTree:
+    return {
+        "hidden": {
+            "w": 0.1 * rng.standard_normal((n_in, n_hidden)),
+            "b": np.zeros(n_hidden),
+        },
+        "out": {
+            "w": 0.1 * rng.standard_normal((n_hidden, n_out)),
+            "b": np.zeros(n_out),
+        },
+    }
+
+
+def _mlp_tree_accuracy(params: PyTree) -> float:
+    p = cast(Dict[str, Dict[str, Array]], params)
+    h, o = p["hidden"], p["out"]
+    logits = np.maximum(_Xc @ h["w"] + h["b"], 0.0) @ o["w"] + o["b"]
     return float(np.mean(np.argmax(logits, axis=1) == _labels))
 
 
@@ -1165,6 +1319,22 @@ if __name__ == "__main__":
     )
     logger.info("  train accuracy: %.3f", _mlp_accuracy(params))
 
+    # Same MLP, parameters as a nested-dict pytree; SGD via tree_map (sgd_update).
+    tree_params = _init_mlp_tree(np.random.default_rng(1))
+    vg = value_and_grad(mlp_tree_loss)
+    tree_hist: List[float] = []
+    for _ in range(300):
+        loss, (tree_grads,) = vg(tree_params)
+        tree_hist.append(float(loss))
+        tree_params = sgd_update(tree_params, tree_grads, lr=0.5)
+    logger.info(
+        "Same MLP, dict-pytree params (tree_map SGD): loss %.4f -> %.4f over %d steps",
+        tree_hist[0],
+        tree_hist[-1],
+        len(tree_hist),
+    )
+    logger.info("  train accuracy: %.3f", _mlp_tree_accuracy(tree_params))
+
     deep_params = _init_deep(np.random.default_rng(2))
     deep_params, deep_hist = gradient_descent(deep_loss, deep_params, lr=0.3, steps=400)
     logger.info(
@@ -1188,5 +1358,5 @@ if __name__ == "__main__":
     xv = np.array([0.5, 1.0, 1.5])
     val, (g,) = value_and_grad(sin_sq)(xv)
     logger.info("sum(sin(x*x)):")
-    logger.info("  autodiff grad = %s", np.round(g, 4))
+    logger.info("  autodiff grad = %s", np.round(cast(Array, g), 4))
     logger.info("  analytic grad = %s", np.round(2 * xv * np.cos(xv * xv), 4))
