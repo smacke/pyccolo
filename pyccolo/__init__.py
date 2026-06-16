@@ -13,7 +13,15 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from pyccolo.ast_rewriter import AstRewriter
-from pyccolo.emit_event import _TRACER_STACK, SANDBOX_FNAME, SANDBOX_FNAME_PREFIX, allow_reentrant_event_handling
+from pyccolo.emit_event import (
+    _TRACER_STACK,
+    SANDBOX_FNAME,
+    SANDBOX_FNAME_PREFIX,
+    TRACEBACK_VISIBLE_SANDBOX_FILES,
+    allow_reentrant_event_handling,
+    is_traceback_visible,
+    mark_traceback_visible,
+)
 from pyccolo.extra_builtins import PYCCOLO_BUILTIN_PREFIX, make_guard_name
 from pyccolo.predicate import Predicate
 from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
@@ -257,8 +265,11 @@ __all__ = [
     "SANDBOX_FNAME_PREFIX",
     "Skip",
     "SkipAll",
+    "TRACEBACK_VISIBLE_SANDBOX_FILES",
     "TraceStack",
     "allow_reentrant_event_handling",
+    "is_traceback_visible",
+    "mark_traceback_visible",
     "event",
     "exec",
     "execute",
