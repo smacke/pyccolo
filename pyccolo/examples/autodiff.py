@@ -58,8 +58,10 @@ import functools
 import inspect
 import logging
 import math
+import sys
 import sysconfig
 import warnings
+from dataclasses import dataclass, replace
 from typing import (
     Any,
     Callable,
@@ -68,6 +70,7 @@ from typing import (
     List,
     Optional,
     Sequence,
+    Set,
     Tuple,
     Union,
     cast,
@@ -84,7 +87,9 @@ logger = logging.getLogger(__name__)
 Scalar = Union[int, float]
 Array = np.ndarray
 ArrayLike = Union[Scalar, Array]
-Operand = Union["Var", ArrayLike]
+# An operand is a Var, a plain number/array, or a ``Weight`` proxy (a late-bound
+# reference to an ambient parameter; see ``with`` support near ``ParamDict``).
+Operand = Union["Var", ArrayLike, "Weight"]
 # A differentiable tensor value: a ``Var`` during tracing, or a plain ndarray
 # when the same helper is run outside the tape (e.g. at eval time).
 Tensor = Union["Var", np.ndarray]
@@ -110,6 +115,8 @@ def _unbroadcast(grad: Array, shape: Tuple[int, ...]) -> Array:
 
 
 def _value(x: Operand) -> ArrayLike:
+    if isinstance(x, Weight):
+        x = x._live()
     return x.value if isinstance(x, Var) else x
 
 
@@ -303,12 +310,86 @@ class Var:
 
 
 def _lift(x: Operand) -> Var:
+    if isinstance(x, Weight):
+        x = x._live()
     return x if isinstance(x, Var) else Var(x)
 
 
 def detach(x: Operand) -> Var:
     """A fresh leaf with the same value but no gradient history (stop-gradient)."""
+    if isinstance(x, Weight):
+        x = x._live()
     return Var(x.value if isinstance(x, Var) else x)
+
+
+# ---------------------------------------------------------------------------
+# Parameters (optional, opt-in). A bare array/number is trainable -- the
+# default -- so existing code is unchanged. Wrap a value in a ``Param`` only
+# when you need to *freeze* it (``frozen``) or *tie* it to another leaf
+# (``tied``). ``value_and_grad`` reads these markers when it lifts argument
+# leaves onto the tape; the pytree machinery and ``sgd_update`` carry ``Param``s
+# through transparently, preserving the wrapper so updates stay in-structure.
+# ---------------------------------------------------------------------------
+@dataclass
+class Param:
+    """A model-parameter leaf carrying differentiation metadata.
+
+    ``trainable=False`` holds the value fixed: its gradient comes back ``None``
+    and ``sgd_update`` leaves it untouched. ``tie`` groups leaves that are the
+    *same* underlying weight -- every ``Param`` sharing a ``tie`` key is backed
+    by one tape node, so the gradient accumulates once and is reported
+    identically at each position (tied params must be initialized equal; the
+    shared node adopts the first occurrence's value).
+    """
+
+    value: Array
+    trainable: bool = True
+    tie: object = None
+    # Stamped by the ``params{...}`` DSL with the block that declared this param,
+    # so ``value_and_grad`` can reject a weight also passed in by hand.
+    origin: object = None
+
+    def __post_init__(self) -> None:
+        self.value = np.asarray(self.value, dtype=float)
+
+
+class _Frozen:
+    """A non-trainable parameter, as a call or a subscript: ``frozen(v)`` /
+    ``frozen[v]`` (the bracket form reads naturally inside a ``params{...}`` block)."""
+
+    def __call__(self, value: ArrayLike) -> Param:
+        return Param(np.asarray(value, dtype=float), trainable=False)
+
+    def __getitem__(self, value: ArrayLike) -> Param:
+        return self(value)
+
+
+frozen = _Frozen()
+
+
+class _TieRef:
+    """Marker produced by ``tied[w]``: tie this slot to the sibling parameter whose
+    value is ``target`` (the same array), reusing its init -- resolved by ``params``."""
+
+    __slots__ = ("target",)
+
+    def __init__(self, target: object) -> None:
+        self.target = target
+
+
+class _Tied:
+    """Weight tying. ``tied(key, value)`` ties every parameter sharing ``key``;
+    ``tied[w]`` (inside a ``params(...)`` block) ties to the sibling parameter ``w``
+    by reference -- just the name, with no restatement of its initializer."""
+
+    def __call__(self, key: object, value: ArrayLike) -> Param:
+        return Param(np.asarray(value, dtype=float), tie=key)
+
+    def __getitem__(self, ref: object) -> "_TieRef":
+        return _TieRef(ref)
+
+
+tied = _Tied()
 
 
 # ---------------------------------------------------------------------------
@@ -581,6 +662,67 @@ def d_reshape(x: Operand, *shape: Shape) -> Var:
     return out
 
 
+def d_expand_dims(x: Operand, axis: int) -> Var:
+    x = _lift(x)
+    pos = axis if axis >= 0 else axis + x.value.ndim + 1
+    shape = list(x.value.shape)
+    shape.insert(pos, 1)
+    return d_reshape(x, tuple(shape))
+
+
+# The ``*stack`` family is just ``concatenate`` after a shape fix-up, so composing
+# the existing differentiable primitives gives correct gradients for free.
+def d_stack(seq: Sequence[Operand], axis: int = 0) -> Var:
+    # join along a NEW axis: expand each input at ``axis``, then concatenate there.
+    return d_concatenate([d_expand_dims(s, axis) for s in seq], axis=axis)
+
+
+def _atleast_2d_row(x: Operand) -> Var:
+    x = _lift(x)
+    if x.value.ndim == 0:
+        return d_reshape(x, (1, 1))
+    if x.value.ndim == 1:
+        return d_reshape(x, (1, x.value.shape[0]))
+    return x
+
+
+def d_vstack(seq: Sequence[Operand]) -> Var:
+    # row-wise: 1-D inputs become single rows, then concatenate along axis 0.
+    return d_concatenate([_atleast_2d_row(s) for s in seq], axis=0)
+
+
+def d_hstack(seq: Sequence[Operand]) -> Var:
+    # column-wise: concatenate along axis 1, except 1-D inputs join along axis 0.
+    parts = [_lift(s) for s in seq]
+    axis = 0 if all(p.value.ndim <= 1 for p in parts) else 1
+    return d_concatenate(parts, axis=axis)
+
+
+def d_column_stack(seq: Sequence[Operand]) -> Var:
+    # 1-D inputs become columns ((n,) -> (n, 1)); then concatenate along axis 1.
+    parts = []
+    for s in seq:
+        p = _lift(s)
+        parts.append(d_reshape(p, (p.value.shape[0], 1)) if p.value.ndim == 1 else p)
+    return d_concatenate(parts, axis=1)
+
+
+def _atleast_3d_depth(x: Operand) -> Var:
+    x = _lift(x)
+    if x.value.ndim == 0:
+        return d_reshape(x, (1, 1, 1))
+    if x.value.ndim == 1:
+        return d_reshape(x, (1, x.value.shape[0], 1))
+    if x.value.ndim == 2:
+        return d_reshape(x, x.value.shape + (1,))
+    return x
+
+
+def d_dstack(seq: Sequence[Operand]) -> Var:
+    # depth-wise: stack along a third axis (after promoting inputs to 3-D).
+    return d_concatenate([_atleast_3d_depth(s) for s in seq], axis=2)
+
+
 # ---------------------------------------------------------------------------
 # The tracer: intercept numpy/math calls and route them to the d_* primitives.
 # ---------------------------------------------------------------------------
@@ -627,7 +769,13 @@ _RULES: Dict[Callable[..., object], Tuple[object, ...]] = {
     _matmul: (np.dot, np.matmul),
     d_transpose: (np.transpose,),
     d_reshape: (np.reshape,),
+    d_expand_dims: (np.expand_dims,),
     d_concatenate: (np.concatenate,),
+    d_stack: (np.stack,),
+    d_vstack: (np.vstack,),
+    d_hstack: (np.hstack,),
+    d_column_stack: (np.column_stack,),
+    d_dstack: (np.dstack,),
 }
 
 _INTERCEPT: Dict[object, Callable[..., object]] = {
@@ -775,14 +923,310 @@ class _LeafMarker:
 
 _LEAF = _LeafMarker()
 
-# A leaf is a Var, a plain number/array, or None (``None`` appears in a gradient
-# pytree at a non-numeric leaf). A pytree is a leaf or a nested list/tuple/dict of
-# pytrees; a treedef mirrors that shape with leaves replaced by ``_LeafMarker``.
-Leaf = Optional[Operand]
+# A leaf is a Param, a Var, a plain number/array, or None (``None`` appears in a
+# gradient pytree at a frozen/non-numeric leaf). A pytree is a leaf or a nested
+# list/tuple/dict of pytrees; a treedef mirrors that shape with leaves replaced
+# by ``_LeafMarker``.
+Leaf = Optional[Union["Param", Operand]]
 PyTree = Union[Leaf, List["PyTree"], Tuple["PyTree", ...], Dict[str, "PyTree"]]
 TreeDef = Union[
     _LeafMarker, List["TreeDef"], Tuple["TreeDef", ...], Dict[str, "TreeDef"]
 ]
+
+
+def _unwrap(x: object) -> object:
+    """Resolve a ``Weight`` proxy to its current value; leave anything else."""
+    return x._live() if isinstance(x, Weight) else x
+
+
+def _as_arr(x: object) -> Array:
+    """``_unwrap`` an operand and view it as an ndarray for typing (a ``Var``
+    operand still dispatches correctly at runtime)."""
+    return cast(Array, _unwrap(x))
+
+
+def _deep_unwrap(x: object) -> object:
+    """``_unwrap`` through lists/tuples (e.g. ``np.concatenate([w1, w2])``)."""
+    if isinstance(x, Weight):
+        return x._live()
+    if isinstance(x, list):
+        return [_deep_unwrap(e) for e in x]
+    if isinstance(x, tuple):
+        return tuple(_deep_unwrap(e) for e in x)
+    return x
+
+
+def _any_recording(obj: object) -> bool:
+    """True if a numpy call over ``obj`` should record -- i.e. some operand
+    resolves to a ``Var`` (training), vs. plain arrays (inference)."""
+    if isinstance(obj, Var):
+        return True
+    if isinstance(obj, Weight):
+        return isinstance(obj._live(), Var)
+    if isinstance(obj, (list, tuple)):
+        return any(_any_recording(e) for e in obj)
+    return False
+
+
+class Weight:
+    """A late-bound proxy for an ambient parameter (injected by ``with weights:``).
+
+    It forwards every operation to the *current* value of its weight: the plain
+    array during inference (so nothing is taped) and the live ``Var`` during a
+    ``grad`` pass (so the op records). The proxy is mode-agnostic -- the mode is
+    whatever its owner is currently bound to -- which is what lets a single model
+    definition serve both inference and training without binding a ``Var`` into it.
+    It speaks numpy's dispatch protocols, so ``np.exp(w)`` / ``np.sum(w)`` on a bare
+    weight route to the differentiable primitive when recording and to plain numpy
+    otherwise.
+    """
+
+    __slots__ = ("_owner", "_key")
+
+    def __init__(self, owner: "ParamDict", key: str) -> None:
+        self._owner = owner
+        self._key = key
+
+    def _live(self) -> Union[Var, ArrayLike]:
+        return self._owner._resolve_weight(self._key)
+
+    # The live value is a Var or ndarray; both support the operators below, but
+    # mypy can't express "whichever it is, it has @/+/...", so we view it as an
+    # ndarray for typing -- the runtime op dispatches correctly to Var either way.
+    def _arr(self) -> Array:
+        return cast(Array, self._live())
+
+    # -- operators: forward to the live value, unwrapping proxy operands ----------
+    def __matmul__(self, o: object) -> Operand:
+        return self._arr() @ _as_arr(o)
+
+    def __rmatmul__(self, o: object) -> Operand:
+        return _as_arr(o) @ self._arr()
+
+    def __add__(self, o: object) -> Operand:
+        return self._arr() + _as_arr(o)
+
+    __radd__ = __add__
+
+    def __sub__(self, o: object) -> Operand:
+        return self._arr() - _as_arr(o)
+
+    def __rsub__(self, o: object) -> Operand:
+        return _as_arr(o) - self._arr()
+
+    def __mul__(self, o: object) -> Operand:
+        return self._arr() * _as_arr(o)
+
+    __rmul__ = __mul__
+
+    def __truediv__(self, o: object) -> Operand:
+        return self._arr() / _as_arr(o)
+
+    def __rtruediv__(self, o: object) -> Operand:
+        return _as_arr(o) / self._arr()
+
+    def __pow__(self, o: object) -> Operand:
+        return self._arr() ** _as_arr(o)
+
+    def __neg__(self) -> Operand:
+        return -self._arr()
+
+    def __getitem__(self, key: Index) -> Operand:
+        return cast(Operand, self._arr()[key])
+
+    @property
+    def T(self) -> Operand:
+        return self._arr().T
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        return np.shape(_value(self))
+
+    @property
+    def ndim(self) -> int:
+        return np.ndim(_value(self))
+
+    @property
+    def size(self) -> int:
+        return int(np.size(_value(self)))
+
+    # -- numpy dispatch: route a ufunc / array-function over a bare weight --------
+    def __array_ufunc__(
+        self, ufunc: object, method: str, *inputs: object, **kwargs: object
+    ) -> object:
+        if method != "__call__":
+            return NotImplemented
+        if _any_recording(inputs):
+            prim = _INTERCEPT.get(ufunc)
+            if prim is not None:
+                return prim(*[_unwrap(i) for i in inputs], **kwargs)
+            return _warn_wrapper(cast(Callable[..., object], ufunc))(
+                *[_deep_unwrap(i) for i in inputs], **kwargs
+            )
+        return cast(Callable[..., object], ufunc)(
+            *[_deep_unwrap(i) for i in inputs], **kwargs
+        )
+
+    def __array_function__(
+        self,
+        func: Callable[..., object],
+        types: object,
+        args: Tuple[object, ...],
+        kwargs: Dict[str, object],
+    ) -> object:
+        if _any_recording(args):
+            prim = _INTERCEPT.get(func)
+            if prim is not None:
+                return prim(*args, **kwargs)
+            return _warn_wrapper(func)(*[_deep_unwrap(a) for a in args], **kwargs)
+        return func(*[_deep_unwrap(a) for a in args], **kwargs)
+
+    def __repr__(self) -> str:
+        return f"Weight({self._key!r})"
+
+
+class ParamDict(dict):
+    """A parameter dict that also allows attribute access: ``model.w`` reads
+    ``model["w"]`` (and ``model.w = v`` sets it). ``params(...)`` returns one at
+    every dict level. It is an ordinary ``dict`` otherwise, so the pytree
+    machinery, ``value_and_grad`` and ``sgd_update`` treat it as a dict; the
+    flatten/unflatten round trip preserves the type, so attribute access survives
+    an optimizer step (and gradient pytrees come back attribute-accessible too). A
+    weight named like a dict method (``items``) is still reachable via
+    ``model["items"]``.
+
+    Used as a context manager, ``with weights:`` injects a ``Weight`` proxy for each
+    parameter into the caller's module/cell globals (collision-checked, removed on
+    exit), so a forward pass can reference the weights *unqualified* -- ``w`` rather
+    than ``weights.w`` -- and still serve both clean inference and training. Drive
+    training with :meth:`grad` (binds the weights to ``Var``s, backprops, returns a
+    gradient ``ParamDict``) and :meth:`step` (in-place SGD).
+    """
+
+    # Live binding during a grad pass (name -> Var/array), and the injected-globals
+    # bookkeeping for the context manager. Both are real instance attributes, set
+    # via the leading-underscore path in ``__setattr__``.
+    _live: Optional[Dict[str, "Leaf"]] = None
+    _scope: Optional[Tuple[Dict[str, object], List[str]]] = None
+
+    # Leading-underscore attributes are real instance state (e.g. the live-binding
+    # used during a grad pass); every other name maps to a dict item.
+    def __getattr__(self, name: str) -> object:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+        else:
+            self[name] = value
+
+    def __delattr__(self, name: str) -> None:
+        if name.startswith("_"):
+            object.__delattr__(self, name)
+            return
+        try:
+            del self[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    # -- ambient-weights context manager + tape-style training --------------------
+    def _resolve_weight(self, key: str) -> Union[Var, ArrayLike]:
+        """The current value of ``key``: the live ``Var`` during a grad pass, else
+        the parameter's plain array (inference)."""
+        live = getattr(self, "_live", None)
+        if live is not None and key in live:
+            return cast(Union[Var, ArrayLike], live[key])
+        leaf = self[key]
+        return (
+            leaf.value if isinstance(leaf, Param) else cast(Union[Var, ArrayLike], leaf)
+        )
+
+    def __enter__(self) -> "ParamDict":
+        g = sys._getframe(1).f_globals
+        injected: List[str] = []
+        for key in self:
+            if not isinstance(self[key], Param):
+                continue
+            existing = g.get(key)
+            if key in g and not (
+                isinstance(existing, Weight) and existing._owner is self
+            ):
+                for name in injected:
+                    del g[name]
+                raise ValueError(
+                    f"with-weights: name {key!r} already exists in the enclosing "
+                    "scope; rename the parameter or the existing variable"
+                )
+            g[key] = Weight(self, key)
+            injected.append(key)
+        self._scope = (g, injected)
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        scope = self._scope
+        if scope is not None:
+            g, injected = scope
+            for key in injected:
+                got = g.get(key)
+                if isinstance(got, Weight) and got._owner is self:
+                    del g[key]
+            self._scope = None
+
+    def grad(self, objective: Callable[[], object]) -> Tuple[Array, "ParamDict"]:
+        """Run ``objective`` (a no-arg callable returning a scalar, built from this
+        model) with the weights bound to ``Var``s, backprop, and return
+        ``(value, grads)`` where ``grads`` is a ``ParamDict`` of gradients (``None``
+        at frozen weights). Tied weights share one gradient. Trainable leaves only;
+        nest by calling per sub-tree."""
+        tie_vars: Dict[object, Var] = {}
+        live: Dict[str, Leaf] = {}
+        grad_vars: Dict[str, Optional[Var]] = {}
+        for key in self:
+            leaf = self[key]
+            if isinstance(leaf, Param) or _is_numeric(leaf):
+                var, call_value = _wrap_leaf(cast(Leaf, leaf), tie_vars)
+                live[key] = call_value
+                grad_vars[key] = var
+            else:
+                live[key] = cast(Leaf, leaf)
+                grad_vars[key] = None
+        runner = _INSTRUMENTED.get(objective)
+        if runner is None:
+            runner = _make_runner(objective)  # cache: instrumented() is not idempotent
+            _INSTRUMENTED[objective] = runner
+        prev = getattr(self, "_live", None)
+        self._live = live
+        try:
+            out = runner()
+        finally:
+            self._live = prev
+        if isinstance(out, Var):
+            out.backward()
+            value: Array = out.value
+        else:
+            value = np.asarray(out, dtype=float)
+        grads = ParamDict(
+            {
+                key: (gv.grad if gv is not None else None)
+                for key, gv in grad_vars.items()
+            }
+        )
+        return value, grads
+
+    def step(self, grads: "ParamDict", lr: float) -> None:
+        """One in-place SGD step: ``p.value -= lr * grad`` for each trainable leaf
+        (frozen leaves, whose gradient is ``None``, are left untouched). The model's
+        proxies read the updated values on the next call."""
+        for key in self:
+            leaf = self[key]
+            g = grads.get(key)
+            if isinstance(leaf, Param) and leaf.trainable and g is not None:
+                leaf.value = cast(Array, leaf.value) - lr * cast(Array, g)
 
 
 def tree_flatten(tree: PyTree) -> Tuple[List[Leaf], TreeDef]:
@@ -796,7 +1240,9 @@ def tree_flatten(tree: PyTree) -> Tuple[List[Leaf], TreeDef]:
         if isinstance(node, tuple):
             return tuple(build(child) for child in node)
         if isinstance(node, dict):
-            return {key: build(node[key]) for key in sorted(node)}
+            built = {key: build(node[key]) for key in sorted(node)}
+            # Preserve a dict subtype (e.g. ParamDict) so it survives a round trip.
+            return ParamDict(built) if isinstance(node, ParamDict) else built
         leaves.append(node)
         return _LEAF
 
@@ -813,7 +1259,8 @@ def tree_unflatten(treedef: TreeDef, leaves: Iterable[Leaf]) -> PyTree:
         if isinstance(td, tuple):
             return tuple(build(child) for child in td)
         if isinstance(td, dict):
-            return {key: build(td[key]) for key in td}
+            built = {key: build(td[key]) for key in td}
+            return ParamDict(built) if isinstance(td, ParamDict) else built
         return next(it)
 
     return build(treedef)
@@ -835,13 +1282,135 @@ def tree_map(func: Callable[..., Leaf], tree: PyTree, *rest: PyTree) -> PyTree:
     return tree_unflatten(treedef, [func(*xs) for xs in zip(leaves, *rest_leaves)])
 
 
+def _sgd_step(p: Leaf, g: Leaf, lr: float) -> Leaf:
+    """One leafwise SGD step, preserving ``Param`` wrappers and skipping anything
+    with no gradient (``g is None`` -- a frozen or non-numeric leaf)."""
+    if isinstance(p, Param):
+        if not p.trainable or g is None:
+            return p  # frozen / no gradient: held fixed, wrapper preserved
+        return replace(p, value=cast(Array, p.value) - lr * cast(Array, g))
+    if g is None:
+        return p
+    return cast(Array, p) - lr * cast(Array, g)
+
+
 def sgd_update(params: PyTree, grads: PyTree, lr: float) -> PyTree:
     """One SGD step over an arbitrary param pytree: ``p <- p - lr * g`` leafwise.
 
     Both pytrees must share a structure (e.g. the gradient pytree that
     ``value_and_grad`` returns for ``params``); the result has the same structure.
+    ``Param`` leaves are carried through as ``Param``s -- frozen ones (gradient
+    ``None``) are left untouched, trainable ones are stepped in place.
     """
-    return tree_map(lambda p, g: cast(Array, p) - lr * cast(Array, g), params, grads)
+    return tree_map(lambda p, g: _sgd_step(p, g, lr), params, grads)
+
+
+# ---------------------------------------------------------------------------
+# Declarative parameter blocks (optional). ``params(...)`` is the ergonomic
+# entry point for building a parameter pytree: name each weight as a keyword,
+# write plain numbers/arrays for trainable weights, and use ``frozen`` / ``tied``
+# for the rest. Bare numerics are wrapped into trainable ``Param``s and every
+# leaf is stamped with this block's identity, so ``value_and_grad`` can reject a
+# weight that is also handed in by hand (one weight, one owner). Nest by passing
+# a dict (or another ``params(...)``) as a value.
+#
+# This is the library form of the DSL and needs no pipescript. The literal
+# ``params{ w1 = ...; b1 = ... }`` brace surface is sugar over it, available under
+# pipescript via ``register_pipescript_params_macro`` (below) -- the brace block's
+# assignments are harvested into a namespace and fed to ``params(**names)``.
+# ---------------------------------------------------------------------------
+def params(spec: Optional[Dict[str, PyTree]] = None, **named: PyTree) -> ParamDict:
+    """Build a parameter pytree as a ``ParamDict``: ``{name: Param}``, with nested
+    dicts/lists allowed and attribute access (``model.w`` as well as ``model["w"]``).
+
+    ``params(w=0.1 * rng.standard_normal((2, 3)), b=np.zeros(3))`` makes both
+    trainable; wrap a value in ``frozen(...)``/``frozen[...]`` to hold it fixed, or
+    ``tied(key, ...)`` to share it by key. Inside the block, ``tied[w]`` ties a slot
+    to the sibling parameter ``w`` by reference, reusing its initializer. Pass a
+    mapping positionally instead of keywords if your names are not valid
+    identifiers. The result flows through ``value_and_grad`` and ``sgd_update``
+    unchanged; use ``param_values`` to recover the raw arrays for inference.
+    """
+    if spec is not None and named:
+        raise TypeError("params() takes either a mapping or keyword args, not both")
+    items = dict(spec) if spec is not None else dict(named)
+    token = object()  # this block's identity, for the single-owner check
+
+    # Map each top-level value's array identity to its declaring name, so a
+    # ``tied[w]`` reference can find the sibling parameter it shares a weight with.
+    declarer: Dict[int, str] = {}
+    for name, value in items.items():
+        arr = value.value if isinstance(value, Param) else value
+        if isinstance(arr, np.ndarray):
+            declarer.setdefault(id(arr), name)
+    tie_keys: Dict[str, object] = {}  # target name -> shared tie sentinel
+
+    def wrap(v: PyTree, key: Optional[str] = None) -> PyTree:
+        if isinstance(v, _TieRef):
+            arr = v.target.value if isinstance(v.target, Param) else v.target
+            target = declarer.get(id(arr)) if isinstance(arr, np.ndarray) else None
+            if target is None or target == key:
+                raise ValueError(
+                    "autodiff: tied[...] must reference another parameter declared "
+                    "in the same params(...) call (by name)"
+                )
+            p = Param(np.asarray(cast(ArrayLike, arr), dtype=float))
+            p.tie = tie_keys.setdefault(target, object())
+            p.origin = token
+            return p
+        if isinstance(v, Param):
+            if v.origin is None:
+                v.origin = token  # adopt leaves from frozen()/tied() and nesting
+            return v
+        if isinstance(v, dict):
+            return ParamDict({k: wrap(child) for k, child in v.items()})
+        if isinstance(v, list):
+            return [wrap(child) for child in v]
+        if isinstance(v, tuple):
+            return tuple(wrap(child) for child in v)
+        if _is_numeric(v):
+            p = Param(np.asarray(cast(ArrayLike, v), dtype=float))
+            p.origin = token
+            return p
+        return v  # non-numeric leaf (e.g. a label): left alone, no gradient
+
+    result = ParamDict({key: wrap(value, key) for key, value in items.items()})
+    # Each referenced target must carry the same tie key as the slots tied to it.
+    for target, sentinel in tie_keys.items():
+        leaf = result.get(target)
+        if isinstance(leaf, Param):
+            leaf.tie = sentinel
+    return result
+
+
+def param_values(tree: PyTree) -> PyTree:
+    """Strip ``Param`` wrappers back to raw values, preserving structure -- the
+    inverse of what ``params`` adds, for running a model at inference time."""
+    return tree_map(lambda p: p.value if isinstance(p, Param) else p, tree)
+
+
+def register_pipescript_params_macro() -> None:
+    """Wire the literal ``params{ w = ...; b = ... }`` brace surface into pipescript.
+
+    pipescript's namespace-block mechanism runs the brace block, harvests its
+    top-level assignments (``_``-prefixed names are local temporaries, excluded),
+    and hands them to a builder; we point that builder at ``params(**names)``, so::
+
+        model = params{
+            w = 0.1 * rng.standard_normal((2, 16))
+            b = np.zeros(16)
+            g = frozen[np.ones(16)]
+            out = tied[w]               # ties to w by name, reusing its init
+        }
+
+    builds the same ``{name: Param}`` pytree as the call form. ``frozen`` / ``tied``
+    must be in scope inside the block. Requires pipescript; call once after loading
+    it (e.g. in a notebook after ``%load_ext pipescript``)."""
+    from pipescript.tracers.macro_tracer import register_namespace_macro
+
+    register_namespace_macro(
+        "params", lambda namespace: params(**namespace), call_form=params
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -886,7 +1455,9 @@ def _make_runner(f: Callable[..., object]) -> Callable[..., object]:
     if not fname.startswith("<"):  # a real source file -> weave before_call in
         try:
             return tracer.instrumented(f)
-        except (OSError, TypeError, SyntaxError):
+        except (OSError, TypeError, SyntaxError, ValueError):
+            # ValueError: a closure (free vars) can't be recompiled standalone; run
+            # it directly (its numpy must reach the tape via pipes or proxies then).
             pass
 
     @functools.wraps(f)
@@ -897,6 +1468,81 @@ def _make_runner(f: Callable[..., object]) -> Callable[..., object]:
     return run_directly
 
 
+def _dup_param_msg(p: "Param") -> str:
+    where = f" (declared in params block {p.origin!r})" if p.origin is not None else ""
+    return (
+        f"autodiff: a parameter{where} appears more than once across the "
+        "differentiated arguments; a weight must have a single owner -- declare it "
+        "once, and use tied(key, value) to share one weight across positions"
+    )
+
+
+def _check_param_ownership(args: Tuple[PyTree, ...]) -> None:
+    """Reject a ``params{...}``-declared weight that is *also* handed in as a
+    separate ``Param`` leaf.
+
+    A weight with two owners would be lifted onto the tape -- and stepped by the
+    optimizer -- through both paths. We flag the same ``Param`` object reused in
+    two leaf positions, and a distinct ``Param`` aliasing a block-owned weight's
+    value array. (Sharing one weight across positions is what ``tied`` is for.)
+    """
+    seen_obj: Set[int] = set()
+    val_owner: Dict[int, Param] = {}
+    for a in args:
+        for leaf in tree_leaves(a):
+            if not isinstance(leaf, Param):
+                continue
+            if id(leaf) in seen_obj and leaf.origin is not None:
+                raise ValueError(_dup_param_msg(leaf))
+            seen_obj.add(id(leaf))
+            other = val_owner.get(id(leaf.value))
+            tied_pair = (
+                other is not None and leaf.tie is not None and leaf.tie == other.tie
+            )
+            if (
+                other is not None
+                and other is not leaf
+                and not tied_pair  # tied params legitimately share one weight
+                and (leaf.origin is not None or other.origin is not None)
+            ):
+                raise ValueError(
+                    _dup_param_msg(leaf if leaf.origin is not None else other)
+                )
+            val_owner.setdefault(id(leaf.value), leaf)
+
+
+def _wrap_leaf(leaf: Leaf, tie_vars: Dict[object, Var]) -> Tuple[Optional[Var], Leaf]:
+    """Lift one argument leaf onto the tape.
+
+    Returns ``(var, call_value)``: ``var`` is the tape node whose ``.grad`` becomes
+    this leaf's gradient (``None`` when the leaf is frozen or non-numeric, so its
+    gradient comes back ``None``); ``call_value`` is what to pass into the
+    differentiated function in this leaf's place. Trainable ``Param``s and bare
+    numerics become fresh ``Var``s; a frozen ``Param`` passes its raw value
+    through; ``Param``s sharing a ``tie`` key share a single ``Var``.
+    """
+    if isinstance(leaf, _TieRef):
+        raise ValueError(
+            "autodiff: tied[...] is only meaningful inside params(...), where it "
+            "references a sibling parameter; it reached value_and_grad unresolved"
+        )
+    if isinstance(leaf, Param):
+        if not leaf.trainable:
+            return None, leaf.value
+        if leaf.tie is not None:
+            shared = tie_vars.get(leaf.tie)
+            if shared is None:
+                shared = Var(leaf.value)
+                tie_vars[leaf.tie] = shared
+            return shared, shared
+        v = Var(leaf.value)
+        return v, v
+    if _is_numeric(leaf):
+        v = Var(cast(ArrayLike, leaf))
+        return v, v
+    return None, leaf
+
+
 def value_and_grad(
     f: Callable[..., object],
 ) -> Callable[..., Tuple[Array, Tuple[PyTree, ...]]]:
@@ -905,10 +1551,11 @@ def value_and_grad(
     ``grads`` is a tuple with one entry per positional argument, holding the
     gradient of the (scalar) output w.r.t. that argument. Each argument may be a
     pytree (e.g. a dict of weights); its gradient comes back as a matching pytree,
-    with ``None`` at any non-numeric leaf. A bare array/scalar is just a pytree
-    with one leaf, so it yields a bare gradient (backward compatible). ``f`` may be
-    an ordinary function or a pipescript ``|>`` pipe lambda (run it under
-    ``PipelineTracer``).
+    with ``None`` at any non-numeric or frozen leaf. A bare array/scalar is just a
+    pytree with one leaf, so it yields a bare gradient (backward compatible).
+    Leaves may be ``Param``s to opt into freezing (``frozen``) or tying (``tied``).
+    ``f`` may be an ordinary function or a pipescript ``|>`` pipe lambda (run it
+    under ``PipelineTracer``).
     """
     runner = _INSTRUMENTED.get(f)
     if runner is None:
@@ -918,18 +1565,16 @@ def value_and_grad(
     def wrapped(*args: PyTree) -> Tuple[Array, Tuple[PyTree, ...]]:
         call_args: List[PyTree] = []
         per_arg: List[Tuple[TreeDef, List[Tuple[Leaf, Optional[Var]]]]] = []
+        _check_param_ownership(args)
+        tie_vars: Dict[object, Var] = {}
         for a in args:
             leaves, treedef = tree_flatten(a)
             info: List[Tuple[Leaf, Optional[Var]]] = []
             wrapped_leaves: List[Leaf] = []
             for leaf in leaves:
-                if _is_numeric(leaf):
-                    v = Var(cast(ArrayLike, leaf))
-                    info.append((leaf, v))
-                    wrapped_leaves.append(v)
-                else:
-                    info.append((leaf, None))
-                    wrapped_leaves.append(leaf)
+                var, call_value = _wrap_leaf(leaf, tie_vars)
+                info.append((leaf, var))
+                wrapped_leaves.append(call_value)
             call_args.append(tree_unflatten(treedef, wrapped_leaves))
             per_arg.append((treedef, info))
 
@@ -953,7 +1598,8 @@ def value_and_grad(
 
 
 def _match_arg(orig: Leaf, grad: Array) -> Operand:
-    return grad if isinstance(orig, np.ndarray) else float(grad)
+    value = orig.value if isinstance(orig, Param) else orig
+    return grad if isinstance(value, np.ndarray) else float(grad)
 
 
 def grad(f: Callable[..., object]) -> Callable[..., Tuple[PyTree, ...]]:
@@ -973,15 +1619,16 @@ def gradient_descent(
 
     Each step replaces ``p`` with ``p - lr * grad``; since a number/array minus an
     array is always an array, the returned params are ``Array``s (a scalar init
-    like ``b=0.0`` is promoted on the first update).
+    like ``b=0.0`` is promoted on the first update). A positional ``frozen`` param
+    is held fixed (its gradient is ``None``); ``Param`` wrappers are preserved.
     """
     vg = value_and_grad(loss_fn)
-    params: List[ArrayLike] = list(init_params)
+    params: List[Leaf] = [cast(Leaf, p) for p in init_params]
     history: List[float] = []
     for _ in range(steps):
         loss, grads = vg(*params)
         history.append(float(loss))
-        params = [p - lr * cast(Array, g) for p, g in zip(params, grads)]
+        params = [_sgd_step(p, cast(Leaf, g), lr) for p, g in zip(params, grads)]
     return tuple(cast(List[Array], params)), history
 
 
@@ -1020,6 +1667,15 @@ def logistic_loss(w: Tensor, b: Tensor) -> Operand:
 def _accuracy(w: Array, b: ArrayLike) -> float:
     z = _X @ w + b
     return float(np.mean((z > 0).astype(float) == _y))
+
+
+# Same logistic model, but parameters are a declarative ``params(...)`` block so
+# we can freeze the bias: ``model["b"]`` is read by name and held fixed.
+def logistic_param_loss(model: Dict[str, Tensor]) -> Operand:
+    z = _X @ model["w"] + model["b"]
+    p = sigmoid(z)
+    eps = 1e-12
+    return -np.mean(_y * np.log(p + eps) + (1 - _y) * np.log(1 - p + eps))
 
 
 # ---------------------------------------------------------------------------
@@ -1309,15 +1965,31 @@ if __name__ == "__main__":
     logger.info("  learned w=%s b=%.3f", np.round(w, 3), b)
     logger.info("  train accuracy: %.3f", _accuracy(w, b))
 
-    params = _init_mlp(np.random.default_rng(1))
-    params, mlp_hist = gradient_descent(mlp_loss, params, lr=0.5, steps=300)
+    # Same model via the declarative params(...) builder, with the bias frozen:
+    # SGD trains w and leaves b pinned at its initial value. Params read by
+    # attribute (model.w) as well as by key (model["w"]).
+    lr_model: ParamDict = params(w=np.zeros(2), b=frozen(0.0))
+    lr_vg = value_and_grad(logistic_param_loss)
+    for _step in range(200):
+        _loss, (g,) = lr_vg(lr_model)
+        lr_model = cast(ParamDict, sgd_update(lr_model, g, lr=0.5))
+    lr_w = cast(Param, lr_model.w).value
+    lr_b = cast(Param, lr_model.b).value
+    logger.info(
+        "logistic regression via params(...) with frozen bias: acc %.3f, b held at %g",
+        _accuracy(lr_w, lr_b),
+        float(lr_b),
+    )
+
+    mlp_params = _init_mlp(np.random.default_rng(1))
+    mlp_params, mlp_hist = gradient_descent(mlp_loss, mlp_params, lr=0.5, steps=300)
     logger.info(
         "2-layer MLP (relu + softmax), 3 classes: loss %.4f -> %.4f over %d steps",
         mlp_hist[0],
         mlp_hist[-1],
         len(mlp_hist),
     )
-    logger.info("  train accuracy: %.3f", _mlp_accuracy(params))
+    logger.info("  train accuracy: %.3f", _mlp_accuracy(mlp_params))
 
     # Same MLP, parameters as a nested-dict pytree; SGD via tree_map (sgd_update).
     tree_params = _init_mlp_tree(np.random.default_rng(1))

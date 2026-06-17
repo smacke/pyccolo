@@ -12,7 +12,10 @@ np = pytest.importorskip("numpy")
 import pyccolo.examples.autodiff as ad  # noqa: E402
 from pyccolo.examples.autodiff import (  # noqa: E402
     AutodiffWarning,
+    Param,
+    ParamDict,
     Var,
+    Weight,
     _accuracy,
     _deep_accuracy,
     _init_deep,
@@ -23,15 +26,21 @@ from pyccolo.examples.autodiff import (  # noqa: E402
     _mlp_tree_accuracy,
     _transformer_accuracy,
     attention,
+    cross_entropy,
     deep_loss,
     detach,
     dropout,
+    frozen,
     grad,
     gradient_descent,
     layer_norm,
     logistic_loss,
     mlp_loss,
     mlp_tree_loss,
+    param_values,
+    params,
+    softmax,
+    tied,
     transformer_block,
     transformer_loss,
     value_and_grad,
@@ -260,6 +269,88 @@ def test_fancy_index_scatter_add():
 def test_concatenate_split_backward():
     _assert_grads_match(
         concat_fn, (_RNG.standard_normal((2, 3)), _RNG.standard_normal((4, 3)))
+    )
+
+
+# --- the stack family (composed from concatenate + reshape) -----------------
+def stack_fn(a, b):
+    return np.sum(np.stack([a, b]) ** 2)  # new axis 0
+
+
+def stack_axis1_fn(a, b):
+    return np.sum(np.stack([a, b], axis=1) * np.arange(2).reshape(1, 2, 1))
+
+
+def vstack_fn(a, b):  # 1-D rows -> (2, n)
+    return np.sum(np.vstack([a, b]) ** 2)
+
+
+def vstack_2d_fn(a, b):  # 2-D -> concatenate axis 0
+    return np.sum(np.vstack([a, b]) * 3.0)
+
+
+def hstack_1d_fn(a, b):  # 1-D -> concatenate axis 0
+    return np.sum(np.hstack([a, b]) ** 2)
+
+
+def hstack_2d_fn(a, b):  # 2-D -> concatenate axis 1
+    return np.sum(np.hstack([a, b]) ** 2)
+
+
+def column_stack_fn(a, b):  # 1-D columns -> (n, 2)
+    return np.sum(np.column_stack([a, b]) ** 2)
+
+
+def dstack_fn(a, b):  # 2-D -> (m, n, 2)
+    return np.sum(np.dstack([a, b]) ** 2)
+
+
+def test_stack_new_axis():
+    _assert_grads_match(stack_fn, (_RNG.standard_normal(4), _RNG.standard_normal(4)))
+    _assert_grads_match(
+        stack_axis1_fn, (_RNG.standard_normal((3, 2)), _RNG.standard_normal((3, 2)))
+    )
+
+
+def test_vstack():
+    _assert_grads_match(vstack_fn, (_RNG.standard_normal(4), _RNG.standard_normal(4)))
+    _assert_grads_match(
+        vstack_2d_fn, (_RNG.standard_normal((2, 3)), _RNG.standard_normal((4, 3)))
+    )
+
+
+def test_hstack():
+    _assert_grads_match(
+        hstack_1d_fn, (_RNG.standard_normal(3), _RNG.standard_normal(5))
+    )
+    _assert_grads_match(
+        hstack_2d_fn, (_RNG.standard_normal((2, 3)), _RNG.standard_normal((2, 4)))
+    )
+
+
+def test_column_stack():
+    _assert_grads_match(
+        column_stack_fn, (_RNG.standard_normal(4), _RNG.standard_normal(4))
+    )
+
+
+def test_dstack():
+    _assert_grads_match(
+        dstack_fn, (_RNG.standard_normal((2, 3)), _RNG.standard_normal((2, 3)))
+    )
+
+
+def test_stack_values_match_numpy():
+    # the differentiable versions must also compute the same values as numpy
+    a, b = _RNG.standard_normal((2, 3)), _RNG.standard_normal((2, 3))
+    va, vb = Var(a), Var(b)
+    assert np.allclose(ad.d_stack([va, vb], axis=1).value, np.stack([a, b], axis=1))
+    assert np.allclose(ad.d_vstack([va, vb]).value, np.vstack([a, b]))
+    assert np.allclose(ad.d_hstack([va, vb]).value, np.hstack([a, b]))
+    assert np.allclose(ad.d_dstack([va, vb]).value, np.dstack([a, b]))
+    c, dd = _RNG.standard_normal(4), _RNG.standard_normal(4)
+    assert np.allclose(
+        ad.d_column_stack([Var(c), Var(dd)]).value, np.column_stack([c, dd])
     )
 
 
@@ -619,3 +710,394 @@ def test_dict_pytree_mlp_trains():
         params = ad.sgd_update(params, g, lr=0.5)
     assert last < first
     assert _mlp_tree_accuracy(params) >= 0.9
+
+
+# --- Param leaves: frozen / tied / ownership --------------------------------
+# Target functions at module scope so value_and_grad can recompile them.
+def param_quadratic(p):  # p["w"] trainable, p["b"] frozen
+    return np.sum(p["w"] * p["w"]) + np.sum(p["b"])
+
+
+def tied_quadratic(p):  # a and b are the same tied weight, used twice
+    return np.sum(p["a"] * p["a"]) + np.sum(p["b"] * p["b"])
+
+
+def param_sum(p):  # body irrelevant: the ownership guard fires before the call
+    return np.sum(p["w"])
+
+
+def reg_loss(p):  # minimize over w only; b is frozen
+    pred = _M @ p["w"] + p["b"]
+    return np.sum(pred * pred)
+
+
+def test_trainable_param_matches_bare_array():
+    # A bare array and a default Param around it differentiate identically.
+    x = np.array([1.0, 2.0, 3.0])
+    _, (g_bare,) = value_and_grad(sum_sq)(x)
+    _, (g_param,) = value_and_grad(sum_sq)(Param(x))
+    assert np.allclose(g_bare, g_param)
+
+
+def test_frozen_param_has_no_gradient():
+    p = {"w": Param(np.array([1.0, 2.0, 3.0])), "b": frozen(np.array([1.0, 2.0]))}
+    _, (g,) = value_and_grad(param_quadratic)(p)
+    assert ad.tree_structure(g) == ad.tree_structure(p)
+    assert np.allclose(g["w"], 2 * np.array([1.0, 2.0, 3.0]))
+    assert g["b"] is None  # frozen leaf -> no gradient
+
+
+def test_tied_params_share_one_weight():
+    # a and b tied -> one weight used twice: loss = 2*sum(w^2), dL/dw = 4w at both.
+    w = np.array([1.0, 2.0])
+    p = {"a": tied("shared", w), "b": tied("shared", w)}
+    val, (g,) = value_and_grad(tied_quadratic)(p)
+    assert np.allclose(val, 2 * np.sum(w * w))
+    assert np.allclose(g["a"], 4 * w)
+    assert np.allclose(g["b"], 4 * w)
+
+
+def test_sgd_update_preserves_param_and_holds_frozen_fixed():
+    p = {"w": Param(np.array([1.0, 2.0])), "b": frozen(np.array([5.0, 6.0]))}
+    g = {"w": np.array([1.0, 1.0]), "b": None}
+    out = ad.sgd_update(p, g, lr=0.1)
+    assert isinstance(out["w"], Param) and out["w"].trainable
+    assert np.allclose(out["w"].value, [0.9, 1.9])
+    assert isinstance(out["b"], Param) and not out["b"].trainable
+    assert np.allclose(out["b"].value, [5.0, 6.0])  # frozen leaf untouched
+
+
+def test_frozen_param_unchanged_during_training():
+    p = {"w": Param(np.array([1.0, -1.0, 0.5])), "b": frozen(np.array([2.0, -2.0]))}
+    b0 = p["b"].value.copy()
+    vg = value_and_grad(reg_loss)
+    first = last = None
+    for _ in range(50):
+        loss, (g,) = vg(p)
+        first = float(loss) if first is None else first
+        last = float(loss)
+        p = ad.sgd_update(p, g, lr=0.01)
+    assert last < first  # trainable w drives the loss down
+    assert isinstance(p["b"], Param) and not p["b"].trainable
+    assert np.allclose(p["b"].value, b0)  # frozen bias never moved
+
+
+def test_tied_params_stay_equal_during_training():
+    w = np.array([0.5, -0.5])
+    p = {"a": tied("k", w), "b": tied("k", w)}
+    vg = value_and_grad(tied_quadratic)
+    for _ in range(20):
+        _, (g,) = vg(p)
+        p = ad.sgd_update(p, g, lr=0.1)
+    assert np.allclose(p["a"].value, p["b"].value)
+
+
+def test_block_owned_param_reused_as_leaf_raises():
+    # Simulate a params{...} block stamping ``origin``; reusing that Param object
+    # as a second leaf is a double-owned weight.
+    shared = Param(np.array([1.0, 2.0]))
+    shared.origin = "blockA"
+    with pytest.raises(ValueError, match="single owner"):
+        value_and_grad(param_sum)({"w": shared, "extra": shared})
+
+
+def test_block_owned_value_aliased_by_handwritten_param_raises():
+    w = np.array([1.0, 2.0])
+    block = Param(w)
+    block.origin = "blockA"
+    hand = Param(w)  # distinct Param, same underlying value array
+    with pytest.raises(ValueError, match="single owner"):
+        value_and_grad(param_sum)({"a": block, "b": hand})
+
+
+def test_plain_duplicate_param_without_origin_is_allowed():
+    # Two hand Params sharing a value but with no block origin: not a guard error
+    # (only block-declared weights are policed). Both differentiate independently.
+    w = np.array([1.0, 2.0])
+    p = {"a": Param(w), "b": Param(w)}
+    val, (g,) = value_and_grad(tied_quadratic)(p)
+    assert np.allclose(val, 2 * np.sum(w * w))
+    assert np.allclose(g["a"], 2 * w)  # independent leaves -> 2w each, not 4w
+    assert np.allclose(g["b"], 2 * w)
+
+
+# --- the declarative params(...) builder ------------------------------------
+def two_arg_sum(p, q):  # body irrelevant: the ownership guard fires first
+    return np.sum(p["w"])
+
+
+def test_params_wraps_bare_numerics_as_trainable():
+    w, b = np.array([1.0, 2.0, 3.0]), np.array([0.5, -0.5])
+    model = params(w=w, b=b)
+    assert all(isinstance(model[k], Param) and model[k].trainable for k in model)
+    # differentiates exactly like a hand-built dict of bare arrays
+    _, (g_model,) = value_and_grad(reg_loss)(model)
+    _, (g_plain,) = value_and_grad(reg_loss)({"w": w, "b": b})
+    assert np.allclose(g_model["w"], g_plain["w"])
+    assert np.allclose(g_model["b"], g_plain["b"])
+
+
+def test_params_marks_frozen_and_tied():
+    w0 = np.array([1.0, 2.0])
+    model = params(
+        w=np.array([1.0, 2.0, 3.0]),
+        b=frozen(np.zeros(2)),
+        a=tied("k", w0),
+        c=tied("k", w0),
+    )
+    assert model["w"].trainable
+    assert not model["b"].trainable
+    assert model["a"].tie == "k" and model["c"].tie == "k"
+    # every leaf carries this block's single (shared) origin token
+    origins = {id(model[k].origin) for k in model}
+    assert len(origins) == 1 and model["w"].origin is not None
+
+
+def test_params_nests():
+    model = params(enc={"w": np.zeros((2, 2)), "b": frozen(np.zeros(2))}, scale=2.0)
+    assert isinstance(model["enc"]["w"], Param) and model["enc"]["w"].trainable
+    assert not model["enc"]["b"].trainable
+    assert isinstance(model["scale"], Param)
+
+
+def test_param_values_strips_wrappers():
+    model = params(w=np.array([1.0, 2.0]), nested={"u": np.array([3.0])})
+    raw = param_values(model)
+    assert type(raw["w"]) is np.ndarray and np.allclose(raw["w"], [1.0, 2.0])
+    assert np.allclose(raw["nested"]["u"], [3.0])
+
+
+def test_params_rejects_mapping_and_kwargs_together():
+    with pytest.raises(TypeError):
+        params({"w": np.zeros(2)}, b=np.zeros(2))
+
+
+def test_params_accepts_positional_mapping():
+    model = params({"weird key": np.zeros(2)})  # non-identifier name
+    assert isinstance(model["weird key"], Param)
+
+
+def test_params_block_weight_reused_as_leaf_raises():
+    model = params(w=np.array([1.0, 2.0, 3.0]), b=np.zeros(3))
+    # hand the same declared weight back as a separate leaf -> two owners
+    with pytest.raises(ValueError, match="single owner"):
+        value_and_grad(two_arg_sum)(model, {"alias": model["w"]})
+
+
+def test_frozen_bracket_matches_call_form():
+    x = np.array([1.0, 2.0, 3.0])
+    a, b = frozen[x], frozen(x)
+    assert isinstance(a, Param) and not a.trainable
+    assert isinstance(b, Param) and not b.trainable
+    assert np.allclose(a.value, x)
+
+
+def test_tied_bracket_ties_to_sibling_by_reference():
+    # tied[w] ties to the sibling `w` -- name only, no restated initializer.
+    w = np.array([1.0, 2.0])
+    model = params(a=w, b=tied[w])
+    assert model["a"].tie is not None
+    assert model["a"].tie == model["b"].tie  # one shared weight
+    # one weight used twice: loss = 2*sum(w^2), dL/dw = 4w reported at both slots
+    val, (g,) = value_and_grad(tied_quadratic)(model)
+    assert np.allclose(val, 2 * np.sum(w * w))
+    assert np.allclose(g["a"], 4 * w)
+    assert np.allclose(g["b"], 4 * w)
+
+
+def test_tied_bracket_unknown_reference_raises():
+    stranger = np.array([1.0, 2.0])  # not declared in this params() call
+    with pytest.raises(ValueError, match="reference another parameter"):
+        params(a=np.zeros(2), b=tied[stranger])
+
+
+def test_tie_ref_outside_params_raises():
+    w = np.array([1.0, 2.0])
+    with pytest.raises(ValueError, match="tied"):
+        value_and_grad(sum_sq)(tied[w])
+
+
+def test_params_supports_attribute_access():
+    model = params(w=np.array([1.0, 2.0]), b=frozen(np.zeros(2)))
+    assert isinstance(model, ad.ParamDict)
+    assert model.w is model["w"]  # attribute access mirrors the item
+    assert isinstance(model.b, Param) and not model.b.trainable
+    with pytest.raises(AttributeError):
+        model.nonexistent
+
+
+def test_params_attribute_access_is_nested():
+    model = params(enc={"w": np.zeros((2, 2))}, scale=2.0)
+    assert isinstance(model.enc, ad.ParamDict)
+    assert model.enc.w is model["enc"]["w"]
+
+
+def test_attribute_access_survives_value_and_grad_and_sgd_update():
+    model = params(w=np.array([1.0, -1.0, 0.5]), b=frozen(np.array([2.0, -2.0])))
+    vg = value_and_grad(reg_loss)
+    for _ in range(5):
+        _, (g,) = vg(model)
+        assert isinstance(g, ad.ParamDict)  # gradient pytree is attribute-accessible
+        assert g.b is None  # frozen leaf -> no gradient, reached by attribute
+        model = ad.sgd_update(model, g, lr=0.01)
+        assert isinstance(model, ad.ParamDict)  # type preserved across the step
+    assert np.allclose(model.b.value, [2.0, -2.0])  # frozen, read by attribute
+    assert isinstance(model.w, Param)
+
+
+def test_params_trains_with_frozen_layer():
+    model = params(w=np.array([1.0, -1.0, 0.5]), b=frozen(np.array([2.0, -2.0])))
+    b0 = model["b"].value.copy()
+    vg = value_and_grad(reg_loss)
+    first = last = None
+    for _ in range(50):
+        loss, (g,) = vg(model)
+        first = float(loss) if first is None else first
+        last = float(loss)
+        model = ad.sgd_update(model, g, lr=0.01)
+    assert last < first
+    assert np.allclose(model["b"].value, b0)  # frozen leaf stayed put
+
+
+# --- ambient weights: `with weights:` proxy injection + tape-style training ----
+# Forwards reference the weight names unqualified; `with weights:` injects a Weight
+# proxy for each into this module's globals, so these resolve at call time.
+_PX = np.random.default_rng(5).standard_normal((6, 3))
+_PY = np.eye(2)[np.random.default_rng(6).integers(0, 2, size=6)]
+_PW = 0.1 * np.random.default_rng(7).standard_normal((3, 2))
+_PB = np.zeros(2)
+
+
+def proxy_forward(x):
+    return softmax(x @ w + b)  # noqa: F821  (w, b injected by `with weights:`)
+
+
+def proxy_loss():
+    return cross_entropy(proxy_forward(_PX), _PY)
+
+
+def _softmax_ce_fd(W, B, h=1e-6):
+    def raw(Wm, Bm):
+        z = _PX @ Wm + Bm
+        e = np.exp(z - z.max(1, keepdims=True))
+        p = e / e.sum(1, keepdims=True)
+        return float(-np.mean(np.sum(_PY * np.log(p + 1e-12), axis=1)))
+
+    gW = np.zeros_like(W)
+    for i in np.ndindex(W.shape):
+        a, c = W.copy(), W.copy()
+        a[i] += h
+        c[i] -= h
+        gW[i] = (raw(a, B) - raw(c, B)) / (2 * h)
+    gB = np.zeros_like(B)
+    for i in np.ndindex(B.shape):
+        a, c = B.copy(), B.copy()
+        a[i] += h
+        c[i] -= h
+        gB[i] = (raw(W, a) - raw(W, c)) / (2 * h)
+    return gW, gB
+
+
+def test_proxy_operators_forward_to_live_value():
+    weights = params(w=np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]))
+    wp = Weight(weights, "w")
+    x = np.array([1.0, -1.0, 2.0])
+    # inference: live value is the array -> plain numpy result, no Var
+    assert type(x @ wp) is np.ndarray
+    assert np.allclose(x @ wp, x @ weights["w"].value)
+    assert np.allclose((wp + 1.0), weights["w"].value + 1.0)
+    assert np.allclose(wp.T, weights["w"].value.T)
+    assert wp.shape == (3, 2)
+
+
+def test_proxy_ufunc_np_exp_both_modes():
+    weights = params(w=np.array([0.5, 1.0, 1.5]))
+    wp = Weight(weights, "w")
+    out = np.exp(wp)  # inference: bare proxy straight into a ufunc
+    assert type(out) is np.ndarray and np.allclose(out, np.exp([0.5, 1.0, 1.5]))
+    v = Var(np.array([0.5, 1.0, 1.5]))
+    weights._live = {"w": v}  # training: live value is a Var
+    out2 = np.exp(wp)
+    out2.backward()
+    assert isinstance(out2, Var) and np.allclose(v.grad, np.exp([0.5, 1.0, 1.5]))
+    weights._live = None
+
+
+def test_proxy_array_function_np_sum_both_modes():
+    weights = params(w=np.array([1.0, 2.0, 3.0]))
+    wp = Weight(weights, "w")
+    assert np.allclose(np.sum(wp), 6.0)  # inference
+    v = Var(np.array([1.0, 2.0, 3.0]))
+    weights._live = {"w": v}  # training
+    s = np.sum(wp)
+    s.backward()
+    assert isinstance(s, Var) and np.allclose(v.grad, np.ones(3))
+    weights._live = None
+
+
+def test_with_weights_injects_and_removes_globals():
+    weights = params(w=np.zeros(2), b=np.zeros(3))
+    assert "w" not in globals() and "b" not in globals()
+    with weights:
+        assert isinstance(globals()["w"], Weight)
+        assert isinstance(globals()["b"], Weight)
+        assert globals()["w"]._owner is weights
+    assert "w" not in globals() and "b" not in globals()  # cleaned up on exit
+
+
+def test_with_weights_collision_raises():
+    weights = params(taken=np.zeros(2))
+    globals()["taken"] = 123  # a pre-existing, unrelated global
+    try:
+        with pytest.raises(ValueError, match="already exists"):
+            with weights:
+                pass
+        assert globals()["taken"] == 123  # untouched
+    finally:
+        del globals()["taken"]
+
+
+def test_with_weights_grad_matches_finite_diff():
+    weights = params(w=_PW.copy(), b=_PB.copy())
+    with weights:
+        value, grads = weights.grad(proxy_loss)
+    assert isinstance(grads, ParamDict)
+    gW, gB = _softmax_ce_fd(_PW, _PB)
+    assert np.allclose(grads.w, gW, atol=1e-5)  # gradient by attribute
+    assert np.allclose(grads["b"], gB, atol=1e-5)
+
+
+def test_step_updates_in_place_and_skips_frozen():
+    weights = params(w=np.array([1.0, 2.0]), b=frozen(np.array([5.0, 6.0])))
+    grads = ParamDict({"w": np.array([1.0, 1.0]), "b": None})
+    weights.step(grads, lr=0.1)
+    assert np.allclose(weights["w"].value, [0.9, 1.9])
+    assert np.allclose(weights["b"].value, [5.0, 6.0])  # frozen untouched
+
+
+def test_with_weights_inference_is_clean_and_training_updates():
+    weights = params(w=_PW.copy(), b=_PB.copy())
+    with weights:
+        preds = proxy_forward(_PX)  # inference: arrays in
+        assert type(preds) is np.ndarray and np.allclose(preds.sum(1), 1.0)
+        first = last = None
+        for _ in range(40):
+            value, grads = weights.grad(proxy_loss)
+            first = float(value) if first is None else first
+            last = float(value)
+            weights.step(grads, 0.5)
+    assert last < first  # the same definition trained the ambient weights
+
+
+def tied_obj():
+    return np.sum(a * a) + np.sum(c * c)  # noqa: F821  (a, c injected; one weight)
+
+
+def test_grad_with_tied_weights_shares_gradient():
+    w0 = np.array([1.0, 2.0])
+    weights = params(a=tied("k", w0), c=tied("k", w0))  # both tied -> one weight
+    with weights:
+        value, grads = weights.grad(tied_obj)
+    assert np.allclose(value, 2 * np.sum(w0 * w0))
+    assert np.allclose(grads["a"], 4 * w0)  # 4w: shared weight
+    assert np.allclose(grads["c"], 4 * w0)
