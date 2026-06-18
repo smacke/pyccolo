@@ -324,7 +324,7 @@ class AstRewriter(ast.NodeTransformer):
         for nc in orig_to_copy_mapping.values():
             self._handle_augmentations_for_node(augmented_positions_by_spec, nc)
 
-    def visit(self, node: ast.AST):
+    def visit(self, node: ast.AST, instrument: bool = True):
         assert isinstance(
             node, (ast.Expression, ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)
         )
@@ -349,6 +349,11 @@ class AstRewriter(ast.NodeTransformer):
         last_tracer.add_bookkeeping(new_bookkeeper, module_id)
         self.orig_to_copy_mapping = orig_to_copy_mapping
         self._handle_all_augmentations(orig_to_copy_mapping)
+        if not instrument:
+            # Return the augmentation-annotated *copy* (whose node ids are the keys
+            # in ``augmented_node_ids_by_spec``) without weaving in any tracing
+            # instrumentation. This is the clean tree ``untransform`` consumes.
+            return orig_to_copy_mapping[id(node)]
         raw_handler_predicates_by_event: DefaultDict[TraceEvent, List[Predicate]] = (
             defaultdict(list)
         )

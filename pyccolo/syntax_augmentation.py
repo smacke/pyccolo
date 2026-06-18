@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import ast
+import bisect
 import itertools
 import keyword
 import re
@@ -114,9 +115,50 @@ def fix_positions(
     return fixed_pos_by_spec
 
 
+# A single source edit, expressed in absolute character offsets of the source it
+# applies to: characters ``[start, end)`` are replaced by ``new_len`` characters.
+Edit = Tuple[int, int, int]
+
+
+def offset_of(line_starts: List[int], line: int, col: int) -> int:
+    """Absolute char offset for a 1-indexed ``line`` / 0-indexed ``col``."""
+    return line_starts[line - 1] + col
+
+
+def line_col_of(line_starts: List[int], off: int) -> Position:
+    """Inverse of :func:`offset_of`: absolute offset -> ``(line, col)``."""
+    idx = bisect.bisect_right(line_starts, off) - 1
+    if idx < 0:
+        idx = 0
+    return Position(idx + 1, off - line_starts[idx])
+
+
+def remap_through_edits(edits: List[Edit], off: int) -> int:
+    """Map ``off`` (an absolute offset in an edit's *input* text) to the
+    corresponding offset in the *output* text. ``edits`` must be sorted ascending
+    and non-overlapping. A position that falls strictly inside a replaced span is
+    clamped to the start of that span's replacement (the most useful anchor when
+    the original characters no longer exist)."""
+    delta = 0
+    for start, end, new_len in edits:
+        if end <= off:
+            delta += new_len - (end - start)
+        elif start <= off < end:
+            return start + delta
+        else:  # start > off: no further edit can precede ``off``
+            break
+    return off + delta
+
+
 def replace_tokens_and_get_augmented_positions(
-    code: str, specs: List[AugmentationSpec], rewriter: Optional["AstRewriter"]
+    code: str,
+    specs: List[AugmentationSpec],
+    rewriter: Optional["AstRewriter"],
+    positions: Optional[List[int]] = None,
 ) -> Tuple[str, List[AugmentationSpec]]:
+    """Apply the single-token ``specs`` to ``code``. When ``positions`` (absolute
+    char offsets into ``code``) is given, it is remapped *in place* to offsets into
+    the returned, transformed code."""
     specs_applied: List[AugmentationSpec] = []
     for spec in specs:
         if spec.token not in code:
@@ -124,14 +166,28 @@ def replace_tokens_and_get_augmented_positions(
         tokens = list(
             itertools.chain(*make_tokens_by_line(code.splitlines(keepends=True)))
         )
-        code, positions = _replace_tokens_and_get_augmented_positions_inner(
-            tokens, spec
+        new_code, out_positions, in_positions = (
+            _replace_tokens_and_get_augmented_positions_inner(tokens, spec)
         )
-        if len(positions) > 0:
+        if len(out_positions) > 0:
             specs_applied.append(spec)
+        if positions is not None and len(in_positions) > 0:
+            line_starts = _line_starts(code)
+            tok_len = len(spec.token)
+            repl_len = len(spec.replacement)
+            edits: List[Edit] = [
+                (
+                    offset_of(line_starts, line, col),
+                    offset_of(line_starts, line, col) + tok_len,
+                    repl_len,
+                )
+                for line, col in in_positions
+            ]
+            positions[:] = [remap_through_edits(edits, off) for off in positions]
+        code = new_code
         if rewriter is None:
             continue
-        for pos in positions:
+        for pos in out_positions:
             rewriter.register_augmented_position(spec, *pos)
     return code, specs_applied
 
@@ -359,7 +415,10 @@ def split_fstrings(
 
 def _replace_tokens_and_get_augmented_positions_inner(
     generic_tokens: Union[str, List[tokenize.TokenInfo]], spec: AugmentationSpec
-) -> Tuple[str, List[Tuple[int, int]]]:
+) -> Tuple[str, List[Tuple[int, int]], List[Tuple[int, int]]]:
+    """Returns ``(transformed_code, output_positions, input_positions)`` where the
+    two position lists give, respectively, the post-replacement (output) and
+    pre-replacement (input) ``(line, col)`` of each matched token."""
     tokens = (
         make_tokens_by_line([generic_tokens])[0]
         if isinstance(generic_tokens, str)
@@ -404,6 +463,7 @@ def _replace_tokens_and_get_augmented_positions_inner(
         match_pos_col_offset += len(spec.token) - len(spec.token.strip())
         match_pos_col_offset += len(spec.token) - len(spec.token.lstrip())
         positions.append((cur_match_start[0], match_pos_col_offset))
+        input_positions.append((cur_match_start[0], cur_match_start[1]))
         col_offset += len(spec.replacement) - len(spec.token)
         transformed.write(spec.replacement)
         cur_match_start = (
@@ -414,6 +474,7 @@ def _replace_tokens_and_get_augmented_positions_inner(
         match.truncate()
 
     positions: List[Tuple[int, int]] = []
+    input_positions: List[Tuple[int, int]] = []
     prev = None
     for cur in split_fstrings(tokens, spec):
         if prev is not None and prev.end[0] == cur.start[0]:
@@ -431,7 +492,7 @@ def _replace_tokens_and_get_augmented_positions_inner(
         prev = cur
 
     _flush_match(force=True)
-    return transformed.getvalue(), positions
+    return transformed.getvalue(), positions, input_positions
 
 
 class _PairedMatch(NamedTuple):
@@ -565,6 +626,7 @@ def replace_paired_delimiters_and_get_augmented_positions(
     code: str,
     specs: List[AugmentationSpec],
     rewriter: Optional["AstRewriter"],
+    positions: Optional[List[int]] = None,
 ) -> Tuple[str, List[AugmentationSpec]]:
     """
     Apply the *paired* (delimited) augmentation specs to ``code``: for each spec,
@@ -623,6 +685,15 @@ def replace_paired_delimiters_and_get_augmented_positions(
             # The opening delimiter lands immediately after NAME, so its
             # position is unaffected by any rewriting of the body.
             bracket_pos = (match.name_start[0], match.name_start[1] + len(match.name))
+            # This is a pure splice, so it maps cleanly onto a single edit; remap
+            # any tracked positions before ``code`` (and its line starts) change.
+            if positions is not None:
+                edit: Edit = (
+                    _abs(match.name_start),
+                    _abs(match.close_end),
+                    len(replacement),
+                )
+                positions[:] = [remap_through_edits([edit], off) for off in positions]
             code = (
                 code[: _abs(match.name_start)]
                 + replacement

@@ -10,7 +10,17 @@ import inspect
 import textwrap
 import types
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    overload,
+)
 
 from pyccolo.ast_rewriter import AstRewriter
 from pyccolo.emit_event import (
@@ -24,7 +34,7 @@ from pyccolo.emit_event import (
 )
 from pyccolo.extra_builtins import PYCCOLO_BUILTIN_PREFIX, make_guard_name
 from pyccolo.predicate import Predicate
-from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType
+from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType, Position
 from pyccolo.trace_events import TraceEvent
 from pyccolo.trace_stack import TraceStack
 from pyccolo.tracer import (
@@ -161,12 +171,74 @@ def instance() -> BaseTracer:
     return tracer()
 
 
-def parse(code: str, mode: str = "exec") -> Union[ast.Module, ast.Expression]:
-    return tracer().parse(code, mode=mode)
+def parse(
+    code: str, mode: str = "exec", instrument: bool = True
+) -> Union[ast.Module, ast.Expression]:
+    return tracer().parse(code, mode=mode, instrument=instrument)
 
 
-def transform(code: str, tracers: Optional[List[BaseTracer]] = None) -> str:
-    return tracer().transform(code, tracers=tracers)
+@overload
+def transform(
+    code: str,
+    tracers: Optional[List[BaseTracer]] = ...,
+    positions: None = ...,
+) -> str: ...
+
+
+@overload
+def transform(
+    code: str,
+    tracers: Optional[List[BaseTracer]],
+    positions: List[Tuple[int, int]],
+) -> Tuple[str, List[Position]]: ...
+
+
+@overload
+def transform(
+    code: str,
+    *,
+    positions: List[Tuple[int, int]],
+) -> Tuple[str, List[Position]]: ...
+
+
+def transform(
+    code: str,
+    tracers: Optional[List[BaseTracer]] = None,
+    positions: Optional[List[Tuple[int, int]]] = None,
+) -> Union[str, Tuple[str, List[Position]]]:
+    return tracer().transform(code, tracers=tracers, positions=positions)
+
+
+@overload
+def untransform(
+    tree: ast.AST,
+    tracers: Optional[List[BaseTracer]] = ...,
+    positions: None = ...,
+) -> str: ...
+
+
+@overload
+def untransform(
+    tree: ast.AST,
+    tracers: Optional[List[BaseTracer]],
+    positions: List[Tuple[int, int]],
+) -> Tuple[str, List[Position]]: ...
+
+
+@overload
+def untransform(
+    tree: ast.AST,
+    *,
+    positions: List[Tuple[int, int]],
+) -> Tuple[str, List[Position]]: ...
+
+
+def untransform(
+    tree: ast.AST,
+    tracers: Optional[List[BaseTracer]] = None,
+    positions: Optional[List[Tuple[int, int]]] = None,
+) -> Union[str, Tuple[str, List[Position]]]:
+    return tracer().untransform(tree, tracers=tracers, positions=positions)
 
 
 def eval(code: Union[str, ast.expr, ast.Expression], *args, **kwargs) -> Any:
