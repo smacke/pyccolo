@@ -94,6 +94,18 @@ PYCCOLO_DEV_MODE_ENV_VAR = "PYCCOLO_DEV_MODE"
 TRACED_LAMBDA_NAME = "<traced_lambda>"
 
 
+def _find_lambda(node: ast.AST, argcount: int) -> "Optional[ast.Lambda]":
+    """Find the ``ast.Lambda`` in ``node`` with the given positional arg count
+    (used to recover a lambda's body from the statement that ``getsource`` returns)."""
+    found: "Optional[ast.Lambda]" = None
+    for child in ast.walk(node):
+        if isinstance(child, ast.Lambda):
+            n_args = len(getattr(child.args, "posonlyargs", [])) + len(child.args.args)
+            if n_args == argcount:
+                found = child
+    return found
+
+
 def register_tracer_state_machine(tracer_cls: "Type[BaseTracer]") -> None:
     tracer_cls.EVENT_HANDLERS_BY_CLASS[tracer_cls] = defaultdict(
         list, tracer_cls.EVENT_HANDLERS_PENDING_REGISTRATION
@@ -147,6 +159,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     should_patch_meta_path = True
     global_guards_enabled = True
     bytecode_caching_allowed = True
+    # When True, ``instrumented`` will weave a bare ``lambda`` (recovered from the
+    # statement that defines it) by lifting it into a synthetic ``def``; otherwise
+    # only ``def``/``async def`` targets can be (re)instrumented from source.
+    instrument_lambdas = False
     # When True, ``eval`` registers the (pre-instrumentation) source of sandbox
     # code in ``linecache`` so ``inspect.getsource`` and tracebacks work for code
     # with no on-disk source -- e.g. a pipescript ``|>`` pipe lambda. Off by
@@ -695,13 +711,31 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
     def instrumented(self, f: Callable) -> Callable:
         f_defined_file = f.__code__.co_filename
         with self.tracing_disabled():
-            code = ast.parse(textwrap.dedent(inspect.getsource(f)))
-            code.body[0] = self.make_ast_rewriter(f.__code__.co_filename).visit(
-                code.body[0]
-            )
-            compiled: CodeType = compile(code, f.__code__.co_filename, "exec")
+            module = ast.parse(textwrap.dedent(inspect.getsource(f)))
+            node = module.body[0]
+            target_name = f.__code__.co_name
+            if self.instrument_lambdas and not isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef)
+            ):
+                # ``f`` is a lambda: ``getsource`` returns the whole statement that
+                # binds it (``g = lambda ...``, ``foo(lambda ...)``), not a ``def``.
+                # The rewriter only visits module/def nodes, so lift the lambda into
+                # a synthetic ``def`` whose body returns the lambda's expression. Off
+                # by default; a tracer opts in via ``instrument_lambdas = True``.
+                lam = _find_lambda(node, f.__code__.co_argcount)
+                if lam is None:
+                    raise ValueError("could not locate lambda in source")
+                target_name = "_pyccolo_lambda"
+                template = ast.parse(f"def {target_name}(): return None").body[0]
+                template.args = lam.args  # type: ignore[attr-defined]
+                template.body = [ast.Return(value=lam.body)]  # type: ignore[attr-defined]
+                ast.copy_location(template, lam)
+                ast.fix_missing_locations(template)
+                node = template
+            module.body[0] = self.make_ast_rewriter(f.__code__.co_filename).visit(node)
+            compiled: CodeType = compile(module, f.__code__.co_filename, "exec")
             for const in compiled.co_consts:
-                if isinstance(const, CodeType) and const.co_name == f.__code__.co_name:
+                if isinstance(const, CodeType) and const.co_name == target_name:
                     f.__code__ = const
                     break
 
