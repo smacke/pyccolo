@@ -19,6 +19,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    cast,
     overload,
 )
 
@@ -44,7 +45,7 @@ from pyccolo.tracer import (
     register_raw_handler,
     skip_when_tracing_disabled,
 )
-from pyccolo.utils import multi_context, resolve_tracer
+from pyccolo.utils import copy_function_with_code, multi_context, resolve_tracer
 
 
 if TYPE_CHECKING:
@@ -263,9 +264,12 @@ def execute(*args, **kwargs) -> Dict[str, Any]:
     return exec(*args, **kwargs)
 
 
-def instrumented(tracers: List[BaseTracer]) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def instrumented(
+    tracers: List[BaseTracer], mutate: bool = False
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
         f_defined_file = f.__code__.co_filename
+        target = f
         with multi_context([tracer.tracing_disabled() for tracer in tracers]):
             code = ast.parse(textwrap.dedent(inspect.getsource(f)))
             code.body[0] = tracers[-1].make_ast_rewriter(path=f.__code__.co_filename).visit(code.body[0])
@@ -275,7 +279,12 @@ def instrumented(tracers: List[BaseTracer]) -> Callable[[Callable[..., Any]], Ca
                     isinstance(const, types.CodeType)
                     and const.co_name == f.__code__.co_name
                 ):
-                    f.__code__ = const
+                    if mutate:
+                        f.__code__ = const
+                    else:
+                        target = copy_function_with_code(
+                            cast(types.FunctionType, f), const
+                        )
                     break
 
         @functools.wraps(f)
@@ -286,7 +295,7 @@ def instrumented(tracers: List[BaseTracer]) -> Callable[[Callable[..., Any]], Ca
                     for tracer in tracers
                 ]
             ):
-                return f(*args, **kwargs)
+                return target(*args, **kwargs)
 
         return instrumented_f
 

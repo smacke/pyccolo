@@ -11,7 +11,7 @@ import textwrap
 import warnings
 from collections import defaultdict
 from contextlib import contextmanager, suppress
-from types import CodeType, FrameType
+from types import CodeType, FrameType, FunctionType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -80,7 +80,7 @@ from pyccolo.trace_events import (
     TraceEvent,
 )
 from pyccolo.trace_stack import TraceStack
-from pyccolo.utils import clear_keys
+from pyccolo.utils import clear_keys, copy_function_with_code
 
 if TYPE_CHECKING:
     from syntax_augmentation import CodeLines
@@ -718,8 +718,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         finally:
             self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
 
-    def instrumented(self, f: Callable) -> Callable:
+    def instrumented(self, f: Callable, mutate: bool = False) -> Callable:
         f_defined_file = f.__code__.co_filename
+        target = f
         with self.tracing_disabled():
             module = ast.parse(textwrap.dedent(inspect.getsource(f)))
             node = module.body[0]
@@ -746,13 +747,16 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             compiled: CodeType = compile(module, f.__code__.co_filename, "exec")
             for const in compiled.co_consts:
                 if isinstance(const, CodeType) and const.co_name == target_name:
-                    f.__code__ = const
+                    if mutate:
+                        f.__code__ = const
+                    else:
+                        target = copy_function_with_code(cast(FunctionType, f), const)
                     break
 
         @functools.wraps(f)
         def instrumented_f(*args, **kwargs):
             with self.tracing_enabled(tracing_enabled_file=f_defined_file):
-                return f(*args, **kwargs)
+                return target(*args, **kwargs)
 
         return instrumented_f
 

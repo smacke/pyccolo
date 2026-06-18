@@ -100,3 +100,41 @@ def test_instrument_for_self_while_other_tracer_active():
 
     assert f() == 42
     assert seen == ["_coactive_regression_callee"]  # before_call fired anyway
+
+
+def test_instrumented_does_not_mutate_original_by_default():
+    class IncrementsAssignValue(pyc.BaseTracer):
+        @pyc.register_handler(ast.Assign)
+        def handle_assign(self, ret, *_, **__):
+            return ret + 1
+
+    tracer = IncrementsAssignValue.instance()
+
+    def f():
+        x = 41
+        return x
+
+    orig_code = f.__code__
+    g = tracer.instrumented(f)
+    assert g is not f
+    assert f.__code__ is orig_code  # original not rewritten in place
+    assert g() == 42  # the returned function is instrumented
+    assert f() == 41  # the original is left pristine
+
+
+def test_instrumented_mutate_opt_in_rewrites_original():
+    class IncrementsAssignValue(pyc.BaseTracer):
+        @pyc.register_handler(ast.Assign)
+        def handle_assign(self, ret, *_, **__):
+            return ret + 1
+
+    tracer = IncrementsAssignValue.instance()
+
+    def f():
+        x = 41
+        return x
+
+    orig_code = f.__code__
+    g = tracer.instrumented(f, mutate=True)
+    assert f.__code__ is not orig_code  # mutate=True rewrites in place (old behavior)
+    assert g() == 42
