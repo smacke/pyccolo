@@ -743,7 +743,19 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 ast.copy_location(template, lam)
                 ast.fix_missing_locations(template)
                 node = template
-            module.body[0] = self.make_ast_rewriter(f.__code__.co_filename).visit(node)
+            rewriter = self.make_ast_rewriter(f.__code__.co_filename)
+            # ``instrumented`` recompiles a *single* function from a file that may
+            # hold other, still-live instrumented code -- most visibly a notebook
+            # cell, where one ``co_filename`` is shared by every def/lambda in the
+            # cell. The default ``gc_bookkeeping`` assumes a whole-file (re)compile
+            # and so evicts the file's prior bookkeeper from the global
+            # ``ast_node_by_id`` before re-adding only this function's nodes; that
+            # silently drops the bookkeeping of sibling code in the same file (e.g.
+            # a pipescript ``|>`` whose runtime handlers then fail their node-id
+            # lookups and degrade to raw operators). Add this function's nodes
+            # without evicting the rest.
+            rewriter.gc_bookkeeping = False
+            module.body[0] = rewriter.visit(node)
             compiled: CodeType = compile(module, f.__code__.co_filename, "exec")
             for const in compiled.co_consts:
                 if isinstance(const, CodeType) and const.co_name == target_name:

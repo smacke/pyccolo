@@ -102,6 +102,40 @@ def test_instrument_for_self_while_other_tracer_active():
     assert seen == ["_coactive_regression_callee"]  # before_call fired anyway
 
 
+def test_instrumented_preserves_sibling_file_bookkeeping():
+    # Regression: ``instrumented`` recompiles a *single* function, but its source
+    # file may hold other, still-live instrumented code -- most visibly a notebook
+    # cell, where one ``co_filename`` is shared by every def/lambda in the cell.
+    # Instrumenting one function must not evict the global bookkeeping
+    # (``ast_node_by_id``) of the others sharing that file; otherwise their nodes
+    # vanish and any runtime node-id lookup against them (e.g. a pipescript ``|>``
+    # handler's gate) silently fails and the construct degrades to raw operators.
+    class WatchesCalls(pyc.BaseTracer):
+        @pyc.register_handler(pyc.before_call)
+        def handle_call(self, ret, *_, **__):
+            return ret
+
+    tracer = WatchesCalls.instance()
+
+    # Two functions defined in the same file (this test module's co_filename).
+    def sibling(y):
+        return _coactive_regression_callee()
+
+    def helper(x):
+        return x + 1
+
+    assert sibling.__code__.co_filename == helper.__code__.co_filename
+
+    ids_before = set(pyc.BaseTracer.ast_node_by_id)
+    tracer.instrumented(sibling)
+    sibling_ids = set(pyc.BaseTracer.ast_node_by_id) - ids_before
+    assert sibling_ids  # instrumenting sibling registered its nodes
+
+    # Instrumenting another function from the *same file* must not drop them.
+    tracer.instrumented(helper)
+    assert sibling_ids <= set(pyc.BaseTracer.ast_node_by_id)
+
+
 def test_instrumented_does_not_mutate_original_by_default():
     class IncrementsAssignValue(pyc.BaseTracer):
         @pyc.register_handler(ast.Assign)
