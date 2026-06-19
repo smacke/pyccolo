@@ -60,6 +60,7 @@ from pyccolo.extra_builtins import (
 from pyccolo.handler import HandlerSpec
 from pyccolo.import_hooks import patch_meta_path_non_context
 from pyccolo.predicate import Predicate
+from pyccolo.stmt_mapper import StatementMapper
 from pyccolo.syntax_augmentation import (
     AugmentationSpec,
     AugmentationType,
@@ -718,31 +719,81 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         finally:
             self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
 
+    def _augmented_definition_for(self, f: Callable) -> Optional[ast.AST]:
+        """The retained, augmentation-annotated ``def``/``async def`` AST for ``f``.
+
+        When ``f`` was syntax-augmented at compile time (e.g. a notebook-cell helper
+        whose body uses a cooperating tracer's surface syntax such as a pipescript
+        ``|>``), its augmentations live on the *original* AST nodes -- still reachable
+        via ``ast_node_by_id`` -- keyed by node ``id()``. ``inspect.getsource`` returns
+        the *lowered* source (the augmented token is already gone), so re-parsing it
+        yields fresh nodes with no markings and a cooperating tracer's ``when``-predicated
+        handlers never fire. Re-instrumenting from this retained node instead preserves
+        them. Returns ``None`` when ``f`` has no retained augmented definition (the
+        ordinary case) so callers use the source path.
+        """
+        code = getattr(f, "__code__", None)
+        # Only code woven with pyccolo emits can carry augmentations; a lambda's
+        # augmentations live on a ``Lambda`` node, not a named ``def``, so it never
+        # matches below. Gating on these keeps the scan off the common (plain) path.
+        if (
+            code is None
+            or code.co_name == "<lambda>"
+            or not any(name.endswith("_PYCCOLO_EVT_EMIT") for name in code.co_names)
+        ):
+            return None
+        # Scan the *global* node table, not ``ast_bookkeeper_by_fname[...]``: the latter
+        # is rebuilt on every ``instrumented``/``visit`` to hold only that one function's
+        # nodes, so a sibling def in the same cell file would already be gone. With
+        # ``gc_bookkeeping=False`` every instrumented function's nodes stay live here.
+        fallback: Optional[ast.AST] = None
+        for node in self.ast_node_by_id.values():
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == code.co_name
+                and any(self.get_augmentations(id(n)) for n in ast.walk(node))
+            ):
+                # Prefer an exact line match; fall back to a name match (a decorated
+                # def's ``co_firstlineno`` can point at the first decorator, not ``def``).
+                if getattr(node, "lineno", None) == code.co_firstlineno:
+                    return node
+                fallback = node
+        return fallback
+
     def instrumented(self, f: Callable, mutate: bool = False) -> Callable:
         f_defined_file = f.__code__.co_filename
         target = f
         with self.tracing_disabled():
-            module = ast.parse(textwrap.dedent(inspect.getsource(f)))
-            node = module.body[0]
             target_name = f.__code__.co_name
-            if self.instrument_lambdas and not isinstance(
-                node, (ast.FunctionDef, ast.AsyncFunctionDef)
-            ):
-                # ``f`` is a lambda: ``getsource`` returns the whole statement that
-                # binds it (``g = lambda ...``, ``foo(lambda ...)``), not a ``def``.
-                # The rewriter only visits module/def nodes, so lift the lambda into
-                # a synthetic ``def`` whose body returns the lambda's expression. Off
-                # by default; a tracer opts in via ``instrument_lambdas = True``.
-                lam = _find_lambda(node, f.__code__.co_argcount)
-                if lam is None:
-                    raise ValueError("could not locate lambda in source")
-                target_name = "_pyccolo_lambda"
-                template = ast.parse(f"def {target_name}(): return None").body[0]
-                template.args = lam.args  # type: ignore[attr-defined]
-                template.body = [ast.Return(value=lam.body)]  # type: ignore[attr-defined]
-                ast.copy_location(template, lam)
-                ast.fix_missing_locations(template)
-                node = template
+            augmented = self._augmented_definition_for(f)
+            if augmented is not None:
+                # Re-instrument from the retained augmented AST (copied so the live
+                # tree is untouched) so syntax augmentations -- e.g. pipescript pipe
+                # markings -- survive onto the recompiled node; the lowered linecache
+                # source would lose them and degrade pipes to raw operators.
+                node: ast.AST = StatementMapper.bookkeeping_propagating_copy(augmented)
+                module = ast.Module(body=[node], type_ignores=[])
+            else:
+                module = ast.parse(textwrap.dedent(inspect.getsource(f)))
+                node = module.body[0]
+                if self.instrument_lambdas and not isinstance(
+                    node, (ast.FunctionDef, ast.AsyncFunctionDef)
+                ):
+                    # ``f`` is a lambda: ``getsource`` returns the whole statement that
+                    # binds it (``g = lambda ...``, ``foo(lambda ...)``), not a ``def``.
+                    # The rewriter only visits module/def nodes, so lift the lambda into
+                    # a synthetic ``def`` whose body returns the lambda's expression. Off
+                    # by default; a tracer opts in via ``instrument_lambdas = True``.
+                    lam = _find_lambda(node, f.__code__.co_argcount)
+                    if lam is None:
+                        raise ValueError("could not locate lambda in source")
+                    target_name = "_pyccolo_lambda"
+                    template = ast.parse(f"def {target_name}(): return None").body[0]
+                    template.args = lam.args  # type: ignore[attr-defined]
+                    template.body = [ast.Return(value=lam.body)]  # type: ignore[attr-defined]
+                    ast.copy_location(template, lam)
+                    ast.fix_missing_locations(template)
+                    node = template
             rewriter = self.make_ast_rewriter(f.__code__.co_filename)
             # ``instrumented`` recompiles a *single* function from a file that may
             # hold other, still-live instrumented code -- most visibly a notebook
@@ -756,6 +807,9 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             # without evicting the rest.
             rewriter.gc_bookkeeping = False
             module.body[0] = rewriter.visit(node)
+            # The retained-AST copy carries source locations, but the rewriter injects
+            # nodes around them; backfill any the compiler would otherwise reject.
+            ast.fix_missing_locations(module)
             compiled: CodeType = compile(module, f.__code__.co_filename, "exec")
             for const in compiled.co_consts:
                 if isinstance(const, CodeType) and const.co_name == target_name:

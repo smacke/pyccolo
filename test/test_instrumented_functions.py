@@ -136,6 +136,76 @@ def test_instrumented_preserves_sibling_file_bookkeeping():
     assert sibling_ids <= set(pyc.BaseTracer.ast_node_by_id)
 
 
+def test_instrumented_preserves_augmentations_from_retained_ast():
+    # Regression: ``instrumented`` recompiles from ``inspect.getsource``, which yields
+    # the *lowered* source (the augmented token is already replaced) -- or no source at
+    # all. Re-parsing it loses every syntax augmentation, so a ``when``-gated handler
+    # that keys off an augmentation silently stops firing. ``instrumented`` must instead
+    # recompile from the retained, augmentation-annotated AST so the markings survive.
+    plus_plus = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="++", replacement="+"
+    )
+    fired = []
+
+    class Add42(pyc.BaseTracer):
+        @classmethod
+        def syntax_augmentation_specs(cls):
+            return [plus_plus]
+
+        @pyc.after_binop(when=lambda node: isinstance(node.op, ast.Add))
+        def handle_add(self, ret, node, *_, **__):
+            if plus_plus in self.get_augmentations(id(node)):
+                fired.append(True)
+                return ret + 42
+            return ret
+
+    tracer = Add42.instance()
+    # Define ``f`` from *surface* source under the tracer: its body BinOp is augmented
+    # and the FunctionDef is retained. ``f`` has no recompilable source (a sandbox
+    # filename with no linecache entry), so the old getsource path would just raise.
+    f = tracer.exec("def f():\n    return 21 ++ 21")["f"]
+    assert tracer._augmented_definition_for(f) is not None
+
+    g = tracer.instrumented(f)
+    assert g() == 84  # 21 + 21 + 42: the ``++`` augmentation survived the recompile
+    assert fired
+
+
+def test_instrumented_finds_augmented_def_after_sibling_recompiled():
+    # Regression: ``ast_bookkeeper_by_fname`` is rebuilt on every recompile to hold only
+    # the most recently visited function in a file. Instrumenting one helper must not
+    # hide a *sibling* augmented def from the same file (the same notebook cell) from a
+    # later ``instrumented`` call. The lookup must consult the global node table, which
+    # ``gc_bookkeeping=False`` keeps populated; an earlier version scanned only the
+    # per-file bookkeeper and so silently fell back to running siblings un-instrumented.
+    plus_plus = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="++", replacement="+"
+    )
+
+    class Add42(pyc.BaseTracer):
+        @classmethod
+        def syntax_augmentation_specs(cls):
+            return [plus_plus]
+
+        @pyc.after_binop(when=lambda node: isinstance(node.op, ast.Add))
+        def handle_add(self, ret, node, *_, **__):
+            if plus_plus in self.get_augmentations(id(node)):
+                return ret + 42
+            return ret
+
+    tracer = Add42.instance()
+    # Two augmented helpers sharing one (cell) file.
+    env = tracer.exec("def a():\n    return 1 ++ 1\ndef b():\n    return 2 ++ 2")
+    a, b = env["a"], env["b"]
+    assert a.__code__.co_filename == b.__code__.co_filename
+
+    # Recompiling ``b`` rebuilds the per-file bookkeeper to hold only ``b``'s nodes...
+    tracer.instrumented(b)
+    # ...yet ``a``'s augmented def is still found (via the global table) and preserved.
+    assert tracer._augmented_definition_for(a) is not None
+    assert tracer.instrumented(a)() == 44  # 1 + 1 + 42
+
+
 def test_instrumented_does_not_mutate_original_by_default():
     class IncrementsAssignValue(pyc.BaseTracer):
         @pyc.register_handler(ast.Assign)
