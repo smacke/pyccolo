@@ -106,6 +106,11 @@ class TraceEvent(Enum):
     before_binop = "before_binop"
     after_binop = "after_binop"
 
+    before_unaryop_arg = "before_unaryop_arg"
+    after_unaryop_arg = "after_unaryop_arg"
+    before_unaryop = "before_unaryop"
+    after_unaryop = "after_unaryop"
+
     before_boolop_arg = "before_boolop_arg"
     after_boolop_arg = "after_boolop_arg"
     before_boolop = "before_boolop"
@@ -186,6 +191,8 @@ BEFORE_EXPR_EVENTS = {
     TraceEvent.before_set_literal,
     TraceEvent.before_subscript_slice,
     TraceEvent.before_tuple_literal,
+    TraceEvent.before_unaryop,
+    TraceEvent.before_unaryop_arg,
 }
 
 
@@ -204,6 +211,7 @@ AST_TO_EVENT_MAPPING = {
     ast.Set: TraceEvent.after_set_literal,
     ast.Return: TraceEvent.after_return,
     ast.BinOp: TraceEvent.after_binop,
+    ast.UnaryOp: TraceEvent.after_unaryop,
     ast.Compare: TraceEvent.after_compare,
 }
 

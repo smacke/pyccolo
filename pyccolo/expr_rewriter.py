@@ -860,6 +860,47 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                 ret = self.emit(TraceEvent.after_binop, node, ret=ret)
         return ret
 
+    def visit_UnaryOp(
+        self, node: ast.UnaryOp
+    ) -> Union[ast.UnaryOp, ast.Call, ast.IfExp]:
+        untraced_node = self.orig_to_copy_mapping[id(node)]
+        op = node.op
+
+        with self.attrsub_context(None):
+            operand_node = node.operand
+            untraced_operand = self.orig_to_copy_mapping[id(operand_node)]
+            transformed_node = self.visit(operand_node)
+            for evt in (
+                TraceEvent.before_unaryop_arg,
+                TraceEvent.after_unaryop_arg,
+            ):
+                if self.handler_predicate_by_event[evt](untraced_operand):
+                    with fast.location_of(operand_node):
+                        transformed_node = self.emit(
+                            evt, operand_node, ret=transformed_node
+                        )
+            node.operand = transformed_node
+
+        ret: Union[ast.UnaryOp, ast.Call, ast.IfExp] = node
+        if self.handler_predicate_by_event[TraceEvent.before_unaryop](untraced_node):
+            with fast.location_of(node):
+                ret = self.emit(
+                    TraceEvent.before_unaryop,
+                    node,
+                    ret=self.make_lambda(
+                        body=fast.UnaryOp(
+                            op=op,
+                            operand=fast.Name("x", ast.Load()),
+                        ),
+                        args=[fast.arg("x", None)],
+                    ),
+                    before_expr_args=[node.operand],
+                )
+        if self.handler_predicate_by_event[TraceEvent.after_unaryop](untraced_node):
+            with fast.location_of(node):
+                ret = self.emit(TraceEvent.after_unaryop, node, ret=ret)
+        return ret
+
     @fast.location_of_arg
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.BoolOp:
         orig_node = node

@@ -567,6 +567,89 @@ def test_skip():
     assert SkipsSecondHandler.instance().exec("x = 41 + 4")["x"] == 41
 
 
+def test_before_neg_returning_callable():
+    class OverridesNeg(pyc.BaseTracer):
+        @pyc.before_unaryop(when=lambda node: isinstance(node.op, ast.USub))
+        def before_neg(self, *_, **__):
+            # receives the operand, like before_binop receives operands
+            return lambda x: x + 100
+
+        @pyc.after_unaryop(when=lambda node: isinstance(node.op, ast.USub))
+        def after_neg(self, ret, *_, **__):
+            assert ret == 105
+            return ret + 1
+
+    with OverridesNeg.instance():
+        assert pyc.exec("x = -5")["x"] == 106
+
+
+def test_before_neg_returning_constant():
+    class OverridesNeg(pyc.BaseTracer):
+        @pyc.before_unaryop(when=lambda node: isinstance(node.op, ast.USub))
+        def before_neg(self, *_, **__):
+            return 41
+
+        @pyc.after_unaryop(when=lambda node: isinstance(node.op, ast.USub))
+        def after_neg(self, ret, *_, **__):
+            assert ret == 41
+            return ret + 1
+
+    with OverridesNeg.instance():
+        assert pyc.exec("x = -5")["x"] == 42
+
+
+def test_after_invert():
+    class OverridesInvert(pyc.BaseTracer):
+        @pyc.after_unaryop(when=lambda node: isinstance(node.op, ast.Invert))
+        def after_invert(self, ret, *_, **__):
+            return ret + 1
+
+    with OverridesInvert.instance():
+        assert pyc.exec("x = ~5")["x"] == (~5) + 1
+
+
+def test_not_is_instrumented():
+    class OverridesNot(pyc.BaseTracer):
+        @pyc.before_unaryop(when=lambda node: isinstance(node.op, ast.Not))
+        def before_not(self, *_, **__):
+            return lambda x: "overridden"
+
+    with OverridesNot.instance():
+        assert pyc.exec("x = not True")["x"] == "overridden"
+
+
+def test_unaryop_arg_observed():
+    class ObservesOperand(pyc.BaseTracer):
+        seen = []
+
+        @pyc.after_unaryop_arg(when=lambda node: True)
+        def operand(self, ret, *_, **__):
+            ObservesOperand.seen.append(ret)
+            return ret
+
+    with ObservesOperand.instance():
+        assert pyc.exec("x = -7")["x"] == -7
+    assert ObservesOperand.seen == [7]
+
+
+def test_unaryop_skip():
+    class SkipsSecondHandler(pyc.BaseTracer):
+        @pyc.before_unaryop(when=lambda node: isinstance(node.op, ast.USub))
+        def before_neg(self, *_, **__):
+            return 41
+
+        @pyc.after_unaryop(when=lambda node: isinstance(node.op, ast.USub))
+        def after_neg(self, ret, *_, **__):
+            assert ret == 41
+            return pyc.Skip
+
+        @pyc.after_unaryop(when=lambda node: isinstance(node.op, ast.USub))
+        def skipped_after_neg(self, ret, *_, **__):
+            return ret + 1
+
+    assert SkipsSecondHandler.instance().exec("x = -5")["x"] == 41
+
+
 def test_conditional_instrumentation():
     class IncrementsX(pyc.BaseTracer):
         @pyc.load_name(when=lambda node: node.id == "x")
