@@ -719,7 +719,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         finally:
             self._num_sandbox_calls_seen = orig_num_sandbox_calls_seen
 
-    def _augmented_definition_for(self, f: Callable) -> Optional[ast.AST]:
+    def _augmented_definition_for(self, f: Callable) -> Optional[ast.stmt]:
         """The retained, augmentation-annotated ``def``/``async def`` AST for ``f``.
 
         When ``f`` was syntax-augmented at compile time (e.g. a notebook-cell helper
@@ -746,7 +746,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         # is rebuilt on every ``instrumented``/``visit`` to hold only that one function's
         # nodes, so a sibling def in the same cell file would already be gone. With
         # ``gc_bookkeeping=False`` every instrumented function's nodes stay live here.
-        fallback: Optional[ast.AST] = None
+        fallback: Optional[ast.stmt] = None
         for node in self.ast_node_by_id.values():
             if (
                 isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -771,7 +771,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 # tree is untouched) so syntax augmentations -- e.g. pipescript pipe
                 # markings -- survive onto the recompiled node; the lowered linecache
                 # source would lose them and degrade pipes to raw operators.
-                node: ast.AST = StatementMapper.bookkeeping_propagating_copy(augmented)
+                node: ast.stmt = StatementMapper.bookkeeping_propagating_copy(augmented)
                 module = ast.Module(body=[node], type_ignores=[])
             else:
                 module = ast.parse(textwrap.dedent(inspect.getsource(f)))

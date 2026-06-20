@@ -3,7 +3,7 @@ import logging
 import sys
 import threading
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Set
 
 from pyccolo.trace_events import BEFORE_EXPR_EVENTS
 
@@ -49,7 +49,7 @@ SANDBOX_FNAME_PREFIX = "<sandbox"
 # Traceback filters that hide sandbox frames (in pyccolo downstreams such as
 # pipescript and ipyflow) consult this so they agree without importing one
 # another.
-TRACEBACK_VISIBLE_SANDBOX_FILES: "set[str]" = set()
+TRACEBACK_VISIBLE_SANDBOX_FILES: Set[str] = set()
 
 
 def mark_traceback_visible(filename: str) -> None:
