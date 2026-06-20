@@ -1,7 +1,18 @@
 # -*- coding: utf-8 -*-
 import ast
+import sys
+
+import pytest
 
 import pyccolo as pyc
+
+# Syntax-augmentation retention keys nodes by source position, which relies on
+# ``end_col_offset``/``end_lineno`` (Python 3.8+). On 3.7 the augmentation never
+# maps onto the retained def, so these regressions cannot hold.
+requires_end_positions = pytest.mark.skipif(
+    sys.version_info < (3, 8),
+    reason="syntax augmentation retention requires end_col_offset (Python 3.8+)",
+)
 
 
 def test_basic_decorator():
@@ -136,6 +147,7 @@ def test_instrumented_preserves_sibling_file_bookkeeping():
     assert sibling_ids <= set(pyc.BaseTracer.ast_node_by_id)
 
 
+@requires_end_positions
 def test_instrumented_preserves_augmentations_from_retained_ast():
     # Regression: ``instrumented`` recompiles from ``inspect.getsource``, which yields
     # the *lowered* source (the augmented token is already replaced) -- or no source at
@@ -171,6 +183,7 @@ def test_instrumented_preserves_augmentations_from_retained_ast():
     assert fired
 
 
+@requires_end_positions
 def test_instrumented_finds_augmented_def_after_sibling_recompiled():
     # Regression: ``ast_bookkeeper_by_fname`` is rebuilt on every recompile to hold only
     # the most recently visited function in a file. Instrumenting one helper must not
