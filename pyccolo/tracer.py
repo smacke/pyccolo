@@ -1104,7 +1104,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             # The slice is ``wrapper('<inner>', globals(), locals())`` -- recover the
             # original body verbatim from the AST constant rather than the unparsed
             # text (which re-quotes/escapes it). Replace the whole ``[...]`` span.
-            sliced = node.slice
+            sliced: ast.AST = node.slice
             if isinstance(sliced, ast.Index):  # py3.8 compatibility shim
                 sliced = sliced.value  # type: ignore[attr-defined]
             if (
@@ -1410,6 +1410,10 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 source = ast.unparse(source)
             except Exception:
                 return
+        if not isinstance(source, str):
+            # Reassigning ``source`` above widens it back to its declared type
+            # (``ast.unparse`` is untyped under py3.8 typeshed); re-narrow to str.
+            return
         lines = source.splitlines(keepends=True) or [""]
         if not lines[-1].endswith("\n"):
             lines[-1] += "\n"
