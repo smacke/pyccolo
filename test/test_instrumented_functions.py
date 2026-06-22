@@ -255,3 +255,33 @@ def test_instrumented_mutate_opt_in_rewrites_original():
     g = tracer.instrumented(f, mutate=True)
     assert f.__code__ is not orig_code  # mutate=True rewrites in place (old behavior)
     assert g() == 42
+
+
+def test_instrumented_closure_preserves_free_vars():
+    # Recompiling a closure from source yields a top-level def whose free variables are
+    # lowered to LOAD_GLOBAL (co_freevars is empty); copy_function_with_code layers the
+    # captured cell values over globals so they still resolve instead of NameError-ing.
+    class Noop(pyc.BaseTracer):
+        pass
+
+    tracer = Noop.instance()
+
+    def make(offset):
+        def inner(x):
+            return x + offset  # ``offset`` is a free variable (a closure cell)
+
+        return inner
+
+    assert tracer.instrumented(make(10))(5) == 15
+
+
+def test_instrumented_lambda_closure_preserves_free_vars():
+    class Noop(pyc.BaseTracer):
+        instrument_lambdas = True
+
+    tracer = Noop.instance()
+
+    def make(t):
+        return lambda x: x + t  # ``t`` is captured from the enclosing scope
+
+    assert tracer.instrumented(make(7))(3) == 10
