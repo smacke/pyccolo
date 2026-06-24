@@ -1,6 +1,20 @@
 History
 =======
 
+0.0.87 (2026-06-24)
+-------------------
+* Add unary-op events (``before_unaryop`` / ``after_unaryop`` and ``before_unaryop_arg`` / ``after_unaryop_arg``), mirroring the binary-op event family;
+* Make ``BaseTracer.instrumented`` / ``pyc.instrumented`` non-mutating by default (build a fresh instrumented function via ``copy_function_with_code``); add opt-in ``mutate=True`` to restore the old in-place rewrite;
+* Preserve captured closures when instrumenting a function, so a recompiled closure resolves its free variables instead of raising ``NameError``;
+* Re-instrument syntax-augmented functions from their retained, augmentation-annotated AST rather than from ``inspect.getsource``, preserving augmentations through the recompile;
+* Support instrumenting lambdas;
+* Fix ``instrumented()`` evicting sibling bookkeeping when its ``co_filename`` is shared (e.g. multiple defs/lambdas in one notebook cell);
+* Fix multi-tracer instrumentation: always retain ``self`` in the rewrite so a function instrumented for one tracer still fires its events when a second tracer is co-active;
+* Add position-aware ``transform(code, positions=...)`` and ``untransform`` to remap positions into transformed source and reverse the rewrite on an annotated AST; add ``parse(..., instrument=False)``;
+* Add a traceback-visibility registry so cooperating tracers can agree on which sandbox frames carry user-authored source and should survive frame-filtering;
+* Add opt-in ``keep_sandbox_source`` so ``inspect.getsource`` / tracebacks work for sandbox-compiled code with no on-disk source;
+* Add reverse-mode autodiff and concolic-execution examples;
+
 0.0.86 (2026-06-12)
 -------------------
 * Support composition with transformational (``global_guards_enabled = False``) tracers: treat all of their handlers as guard-exempt when composed with a guard-using tracer;
