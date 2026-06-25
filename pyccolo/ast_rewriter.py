@@ -290,13 +290,22 @@ class AstRewriter(ast.NodeTransformer):
         else:
             raise NotImplementedError()
 
+    def _range_for_spec(self, spec: AugmentationSpec, node: ast.AST) -> Optional[Range]:
+        """Anchor range of ``node`` for ``spec``. A custom spec delegates to its
+        own ``range_for`` (it may anchor a synthesized node the built-in
+        ``aug_type`` helpers don't know about); all other specs use the built-in
+        per-``aug_type`` lookup unchanged."""
+        if spec.is_custom:
+            return spec.custom.range_for(node)  # type: ignore[union-attr]
+        return self._get_range_for(spec.aug_type, node)
+
     def _handle_augmentations_for_node(
         self,
         augmented_positions_by_spec: Dict[AugmentationSpec, List[Position]],
         nc: ast.AST,
     ) -> None:
         for spec, mod_positions in augmented_positions_by_spec.items():
-            aug_range = self._get_range_for(spec.aug_type, nc)
+            aug_range = self._range_for_spec(spec, nc)
             if aug_range is None:
                 continue
             start_pos, end_pos = aug_range

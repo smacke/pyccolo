@@ -35,7 +35,12 @@ from pyccolo.emit_event import (
 )
 from pyccolo.extra_builtins import PYCCOLO_BUILTIN_PREFIX, make_guard_name
 from pyccolo.predicate import Predicate
-from pyccolo.syntax_augmentation import AugmentationSpec, AugmentationType, Position
+from pyccolo.syntax_augmentation import (
+    AugmentationSpec,
+    AugmentationType,
+    CustomRewrite,
+    Position,
+)
 from pyccolo.trace_events import TraceEvent
 from pyccolo.trace_stack import TraceStack
 from pyccolo.tracer import (
@@ -340,6 +345,7 @@ __all__ = [
     "AstRewriter",
     "AugmentationSpec",
     "AugmentationType",
+    "CustomRewrite",
     "BaseTracer",
     "NoopTracer",
     "Null",

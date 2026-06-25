@@ -37,6 +37,10 @@ class AugmentationType(Enum):
     boolop = "boolop"
     call = "call"
     subscript = "subscript"
+    # A context-sensitive rewrite that the built-in token/paired passes can't
+    # express. The spec carries a :class:`CustomRewrite` (its ``custom`` field)
+    # that drives both the forward edit and the reverse (untransform) splice.
+    custom = "custom"
 
 
 class Position(NamedTuple):
@@ -51,6 +55,54 @@ class Range(NamedTuple):
     @classmethod
     def singleton_span(cls, start: int, col: int) -> "Range":
         return cls(Position(start, col), Position(start, col))
+
+
+class CustomRewrite:
+    """Drives a :data:`AugmentationType.custom` spec. A cooperating tracer that
+    needs a context-sensitive surface rewrite (one the static token/paired passes
+    can't express -- e.g. a token whose meaning depends on the preceding token, or
+    a per-occurrence choice between two lowerings) implements these three methods
+    so the rewrite participates in pyccolo's position-remapping and ``untransform``
+    machinery uniformly, instead of bolting on a parallel resugaring path.
+
+    Subclassing is optional (the methods are duck-typed); it just documents intent.
+    """
+
+    def rewrite(
+        self, code: str, register: "Callable[[int, int], None]"
+    ) -> "Tuple[str, List[Edit]]":
+        """Forward-rewrite ``code`` -> ``(new_code, edits)``.
+
+        ``edits`` are ``(start, end, new_len)`` triples in ``code``'s *input*
+        absolute offsets -- sorted ascending and disjoint, the same shape
+        :func:`replace_tokens_and_get_augmented_positions` builds -- so the caller
+        can remap tracked ``positions`` through them with
+        :func:`remap_through_edits`. For each rewritten occurrence whose resulting
+        AST node should be reverse-handled by ``untransform``, call
+        ``register(line, col)`` with the 1-indexed line / 0-indexed col of the
+        node's anchor *in ``new_code``* (the location :meth:`range_for` will
+        re-derive on the parsed node)."""
+        raise NotImplementedError
+
+    def range_for(self, node: ast.AST) -> "Optional[Range]":
+        """Anchor :class:`Range` of a rewritten ``node`` (mirrors the built-in
+        ``_get_<aug_type>_range_for`` helpers), or ``None`` if ``node`` is not one
+        this rewrite produced. Used both to bind the registered position forward
+        and to locate the node during ``untransform``."""
+        raise NotImplementedError
+
+    def reverse(
+        self,
+        node: ast.AST,
+        spec: "AugmentationSpec",
+        aug_range: "Range",
+        code: str,
+        line_starts: List[int],
+    ) -> "Optional[Tuple[int, int, str]]":
+        """Reverse (resugar) splice ``(start, end, new_text)`` on valid ``code``,
+        or ``None`` to leave ``node`` untouched. A single whole-span edit
+        suffices; the caller applies edits right-to-left."""
+        raise NotImplementedError
 
 
 class AugmentationSpec(NamedTuple):
@@ -73,10 +125,18 @@ class AugmentationSpec(NamedTuple):
     # block carry statements through the subscript path: the resulting
     # ``macro[<func>]`` hands a freshly-defined callable to the macro.
     body_func_wrapper: Optional[str] = None
+    # When set, ``aug_type`` is :data:`AugmentationType.custom` and this object
+    # drives the forward rewrite and reverse (untransform) splice. ``token`` /
+    # ``replacement`` are then informational only. See :class:`CustomRewrite`.
+    custom: Optional[CustomRewrite] = None
 
     @property
     def is_paired(self) -> bool:
         return self.close_token is not None
+
+    @property
+    def is_custom(self) -> bool:
+        return self.custom is not None
 
 
 def fix_positions(
@@ -90,6 +150,15 @@ def fix_positions(
             col_by_spec_by_line.setdefault(line, {}).setdefault(spec, []).append(col)
     for line, col_by_spec in col_by_spec_by_line.items():
         for spec_to_apply in spec_order:
+            # A custom spec has a variable-length, context-sensitive rewrite, so
+            # its ``token``/``replacement`` lengths don't describe a column delta:
+            # it must not *shift* other specs' positions. Specs registered after a
+            # custom rewrite already see its output, so no correction is owed them.
+            # (Custom specs ARE corrected as ``spec_to_fix`` below -- their anchors
+            # are registered in post-custom coords and need the later specs'
+            # shifts applied, exactly like any other registered position.)
+            if spec_to_apply.is_custom:
+                continue
             spec_to_apply_cols = col_by_spec.get(spec_to_apply)
             if spec_to_apply_cols is None:
                 continue

@@ -654,13 +654,93 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             ] or stack
         return self.ast_rewriter_cls(rewrite_tracers, path, module_id=module_id)
 
+    def _apply_augmentations(
+        self,
+        code: str,
+        rewriter: Optional[AstRewriter],
+        positions: Optional[List[int]],
+    ) -> str:
+        """Apply this tracer's syntax augmentations to ``code`` -- custom rewrites
+        first, then single-token, then paired. When ``positions`` (absolute char
+        offsets into ``code``) is given it is remapped *in place* into the returned
+        code's coordinates. Shared by the import path (``make_syntax_augmenter``)
+        and the eval/exec path (``preprocess``) so custom rewrites behave
+        identically on both."""
+        aug_specs = self.syntax_augmentation_specs()
+        if len(aug_specs) == 0:
+            return code
+        custom_specs = [spec for spec in aug_specs if spec.is_custom]
+        single_specs = [
+            spec for spec in aug_specs if not spec.is_custom and not spec.is_paired
+        ]
+        paired_specs = [
+            spec for spec in aug_specs if not spec.is_custom and spec.is_paired
+        ]
+
+        if not custom_specs:
+            # Legacy fast path: byte-for-byte the previous behavior. Pass the
+            # caller's ``positions`` through untouched -- its None-vs-list identity
+            # feeds id()-order-sensitive bookkeeping downstream, so never coerce a
+            # ``None`` into ``[]`` here.
+            code, single_applied = replace_tokens_and_get_augmented_positions(
+                code, single_specs, rewriter, positions
+            )
+            code, paired_applied = (
+                replace_paired_delimiters_and_get_augmented_positions(
+                    code, paired_specs, rewriter, positions
+                )
+            )
+            if rewriter is not None:
+                self.last_applied_specs = single_applied + paired_applied
+            return code
+
+        # Custom rewrites run FIRST -- a custom token (e.g. a *leading* ``|>``) may
+        # be invalid Python the later passes can't tokenize. Each custom anchor is
+        # registered in *post-custom* coordinates (right after its own rewrite,
+        # before the single/paired passes), exactly the convention the token/paired
+        # passes use for their own registered positions: ``fix_positions`` then
+        # shifts every registered position -- custom included -- to its final
+        # column for the column-deltas of all *later* specs, whether those run in
+        # this same tracer (single/paired below) or in a later tracer on the stack
+        # (e.g. pipescript's brace ``[`` registered here, then shifted by a later
+        # tracer's ``|>`` -> ``|``). The caller's tracked ``offsets`` are still
+        # threaded through every pass via ``remap_through_edits``.
+        n_caller = 0 if positions is None else len(positions)
+        offsets: List[int] = [] if positions is None else positions
+        custom_applied: List[AugmentationSpec] = []
+
+        for spec in custom_specs:
+            collected: List[Position] = []
+            new_code, edits = spec.custom.rewrite(  # type: ignore[union-attr]
+                code, lambda line, col: collected.append(Position(line, col))
+            )
+            if edits:
+                offsets[:] = [remap_through_edits(edits, off) for off in offsets]
+            if rewriter is not None:
+                for pos in collected:
+                    rewriter.register_augmented_position(spec, pos.line, pos.col)
+            if collected or edits:
+                custom_applied.append(spec)
+            code = new_code
+
+        code, single_applied = replace_tokens_and_get_augmented_positions(
+            code, single_specs, rewriter, offsets
+        )
+        code, paired_applied = replace_paired_delimiters_and_get_augmented_positions(
+            code, paired_specs, rewriter, offsets
+        )
+
+        if rewriter is not None:
+            self.last_applied_specs = custom_applied + single_applied + paired_applied
+
+        if positions is not None:
+            positions[:] = offsets[:n_caller]
+        return code
+
     def make_syntax_augmenter(
         self, ast_rewriter: Optional[AstRewriter]
     ) -> "Callable[[CodeLines], CodeLines]":
         aug_specs = self.syntax_augmentation_specs()
-
-        single_specs = [spec for spec in aug_specs if not spec.is_paired]
-        paired_specs = [spec for spec in aug_specs if spec.is_paired]
 
         def _input_transformer(lines: "CodeLines") -> "CodeLines":
             if len(aug_specs) == 0:
@@ -669,17 +749,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 code = "".join(lines)
             else:
                 code = lines
-            code, single_applied = replace_tokens_and_get_augmented_positions(
-                code, single_specs, rewriter=ast_rewriter
-            )
-            (
-                code,
-                paired_applied,
-            ) = replace_paired_delimiters_and_get_augmented_positions(
-                code, paired_specs, rewriter=ast_rewriter
-            )
-            if ast_rewriter is not None:
-                self.last_applied_specs = single_applied + paired_applied
+            code = self._apply_augmentations(code, ast_rewriter, None)
             if isinstance(lines, list):
                 return code.splitlines(keepends=True)
             else:
@@ -957,22 +1027,16 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         if len(self.syntax_augmentation_specs()) == 0:
             return code
         if positions is None:
+            # Delegate to ``make_syntax_augmenter`` so a subclass override of it
+            # (e.g. a cooperating tracer that injects an extra source pass) is
+            # honored on the eval/exec path, exactly as before. The base augmenter
+            # routes through ``_apply_augmentations``, so custom specs apply here
+            # too. Custom-spec support thus lives in one place across both paths.
             return self.make_syntax_augmenter(ast_rewriter=rewriter)(code)
-        # Positions-aware path: run the same two passes the augmenter does, but
-        # thread ``positions`` (absolute char offsets, remapped in place) through
-        # each so callers can follow a location across the rewrite.
-        aug_specs = self.syntax_augmentation_specs()
-        single_specs = [spec for spec in aug_specs if not spec.is_paired]
-        paired_specs = [spec for spec in aug_specs if spec.is_paired]
-        code, single_applied = replace_tokens_and_get_augmented_positions(
-            code, single_specs, rewriter, positions
-        )
-        code, paired_applied = replace_paired_delimiters_and_get_augmented_positions(
-            code, paired_specs, rewriter, positions
-        )
-        if rewriter is not None:
-            self.last_applied_specs = single_applied + paired_applied
-        return code
+        # Positions-aware path: thread ``positions`` (absolute char offsets,
+        # remapped in place) through every pass -- custom, single, then paired --
+        # so callers can follow a location across the rewrite.
+        return self._apply_augmentations(code, rewriter, positions)
 
     def parse(
         self,
@@ -1052,9 +1116,13 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         """Build a ``(start, end, new_text)`` splice on ``code`` (valid Python) that
         restores ``spec``'s augmented token(s) at ``node``. Returns ``None`` when the
         replacement text can't be located (the node is left untouched)."""
-        aug_range = rewriter._get_range_for(spec.aug_type, node)
+        aug_range = rewriter._range_for_spec(spec, node)
         if aug_range is None:
             return None
+        if spec.is_custom:
+            return spec.custom.reverse(  # type: ignore[union-attr]
+                node, spec, aug_range, code, line_starts
+            )
         if spec.is_paired:
             return self._reverse_paired_edit(node, spec, aug_range, code, line_starts)
         start_off = offset_of(line_starts, aug_range.start.line, aug_range.start.col)

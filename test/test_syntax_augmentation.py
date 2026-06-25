@@ -263,3 +263,141 @@ if sys.version_info >= (3, 8):  # noqa
                 tree = tracer.parse(code, instrument=False)
                 # the "?." is restored (ast.unparse may normalize the quote char)
                 assert "a?.b" in tracer.untransform(tree)
+
+        def test_custom_rewrite_synthesized_node_roundtrip_and_positions():
+            # A context-sensitive custom rewrite: a *leading* ``~>`` (one that
+            # starts an expression -- here at line start or right after ``=``)
+            # becomes ``lambda:``, synthesizing a Lambda the static aug-types can't
+            # describe. ``untransform`` strips the synthesized ``lambda:`` back to
+            # ``~>``, and tracked positions follow across the rewrite.
+            import re
+
+            from pyccolo.syntax_augmentation import Range, offset_of
+
+            class _LeadingArrow(pyc.CustomRewrite):
+                _PAT = re.compile(r"(?:^|=\s*)~>")
+
+                def rewrite(self, code, register):
+                    spans = [m.end() - 2 for m in self._PAT.finditer(code)]
+                    if not spans:
+                        return code, []
+                    result = code
+                    for start in sorted(spans, reverse=True):
+                        result = result[:start] + "lambda:" + result[start + 2 :]
+                    edits = [(s, s + 2, len("lambda:")) for s in spans]
+                    starts = pyc.syntax_augmentation._line_starts(result)
+                    delta = 0
+                    for s in sorted(spans):
+                        pos = pyc.syntax_augmentation.line_col_of(starts, s + delta)
+                        register(pos.line, pos.col)
+                        delta += len("lambda:") - 2
+                    return result, edits
+
+                def range_for(self, node):
+                    if isinstance(node, ast.Lambda):
+                        return Range.singleton_span(node.lineno, node.col_offset)
+                    return None
+
+                def reverse(self, node, spec, aug_range, code, line_starts):
+                    if not isinstance(node, ast.Lambda) or node.args.args:
+                        return None
+                    start = offset_of(line_starts, node.lineno, node.col_offset)
+                    body = offset_of(
+                        line_starts, node.body.lineno, node.body.col_offset
+                    )
+                    return (start, body, "~> ")
+
+            arrow_spec = pyc.AugmentationSpec(
+                aug_type=pyc.AugmentationType.custom,
+                token="~>",
+                replacement="lambda:",
+                custom=_LeadingArrow(),
+            )
+
+            class ArrowTracer(pyc.BaseTracer):
+                global_guards_enabled = False
+
+                @classmethod
+                def syntax_augmentation_specs(cls):
+                    return [arrow_spec]
+
+            tracer = ArrowTracer.instance()
+            with tracer:
+                # forward transform + eval
+                assert tracer.transform("f = ~> 1 + 2") == "f = lambda: 1 + 2"
+                assert tracer.eval("~> 1 + 2")() == 3
+                # untransform round-trip restores the leading ``~>``
+                assert _round_trip(tracer, "f = ~> 1 + 2") == "f = ~> 1 + 2"
+                # an infix ``~>`` (not expression-leading) is left untouched
+                assert tracer.transform("x = a ~> b") == "x = a ~> b"
+                # positions follow across the rewrite: the ``1`` stays on the ``1``
+                code = "f = ~> 1 + 2"
+                out, positions = tracer.transform(
+                    code, positions=[(1, code.index("1"))]
+                )
+                line, col = positions[0]
+                assert out.splitlines()[line - 1][col] == "1"
+
+        def test_custom_rewrite_composes_with_later_spec_positions():
+            # A custom spec registered by one pass must have its anchor corrected
+            # for column shifts a *later* single-token spec introduces *before* it.
+            # ``@@`` -> ``call_`` opens a marked subscript at the ``[``; the later
+            # ``++`` -> ``+`` shrinks text to its left, so the ``[`` anchor must be
+            # shifted by ``fix_positions`` or it won't bind (and won't reverse).
+            from pyccolo.syntax_augmentation import Range
+
+            class _AtRewrite(pyc.CustomRewrite):
+                def rewrite(self, code, register):
+                    idx = code.find("@@")
+                    if idx < 0:
+                        return code, []
+                    result = code[:idx] + "call_[0]" + code[idx + 2 :]
+                    # register the ``[`` anchor in post-custom coordinates
+                    starts = pyc.syntax_augmentation._line_starts(result)
+                    bracket = idx + len("call_")
+                    pos = pyc.syntax_augmentation.line_col_of(starts, bracket)
+                    register(pos.line, pos.col)
+                    return result, [(idx, idx + 2, len("call_[0]"))]
+
+                def range_for(self, node):
+                    if isinstance(node, ast.Subscript):
+                        end_l = getattr(node.value, "end_lineno", None)
+                        end_c = getattr(node.value, "end_col_offset", None)
+                        if end_l is not None and end_c is not None:
+                            return Range.singleton_span(end_l, end_c)
+                    return None
+
+                def reverse(self, node, spec, aug_range, code, line_starts):
+                    from pyccolo.syntax_augmentation import offset_of
+
+                    if not isinstance(node, ast.Subscript):
+                        return None
+                    # ``@@`` expands to the whole ``call_[0]``, so restore the
+                    # entire node span (the brace case instead keeps the macro
+                    # name and rewrites only the ``[...]``).
+                    o = offset_of(line_starts, node.lineno, node.col_offset)
+                    e = offset_of(line_starts, node.end_lineno, node.end_col_offset)
+                    return (o, e, "@@")
+
+            at_spec = pyc.AugmentationSpec(
+                aug_type=pyc.AugmentationType.custom,
+                token="@@",
+                replacement="call_[0]",
+                custom=_AtRewrite(),
+            )
+            plus_spec = pyc.AugmentationSpec(
+                aug_type=pyc.AugmentationType.binop, token="++", replacement="+"
+            )
+
+            class MixedTracer(pyc.BaseTracer):
+                global_guards_enabled = False
+
+                @classmethod
+                def syntax_augmentation_specs(cls):
+                    return [at_spec, plus_spec]
+
+            tracer = MixedTracer.instance()
+            with tracer:
+                # ``++`` before the ``@@`` shifts the marker's ``[`` left by one;
+                # the anchor must still bind so the marker reverses back to ``@@``.
+                assert _round_trip(tracer, "r = 1 ++ 2 ++ @@") == "r = 1 ++ 2 ++ @@"
