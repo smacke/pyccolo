@@ -190,6 +190,109 @@ if sys.version_info >= (3, 8):  # noqa
             assert out == "x = 1 + 2"
             assert isinstance(out, str)
 
+    # --- pure (analysis-only) transform ----------------------------------------
+    # A custom rewrite modeling pipescript's ``BraceBlockTracer._emit`` hazard:
+    # the forward rewrite registers a body into process-global state the runtime
+    # later reads -- *unless* the transform is ``pure`` (analysis-only), in which
+    # case it emits a valid marker but touches no shared state.
+    class _BlockRewrite(pyc.CustomRewrite):
+        registry: dict = {}
+        counter = 0
+        observed: list = []  # records ``is_pure_transform()`` seen per call
+
+        def rewrite(self, code, register):
+            from pyccolo.syntax_augmentation import _line_starts, line_col_of
+
+            type(self).observed.append(pyc.is_pure_transform())
+            idx = code.find("BLK")
+            if idx < 0:
+                return code, []
+            if pyc.is_pure_transform():
+                # analysis only: a valid, lintable marker but no state mutation
+                replacement = "blk(0)"
+            else:
+                type(self).counter += 1
+                type(self).registry[type(self).counter] = "body"
+                replacement = "blk(%d)" % type(self).counter
+            result = code[:idx] + replacement + code[idx + 3 :]
+            starts = _line_starts(result)
+            pos = line_col_of(starts, idx)  # anchor at the leading ``b``
+            register(pos.line, pos.col)
+            return result, [(idx, idx + 3, len(replacement))]
+
+        def range_for(self, node):
+            return None
+
+        def reverse(self, node, spec, aug_range, code, line_starts):
+            return None
+
+    block_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.custom,
+        token="BLK",
+        replacement="blk",
+        custom=_BlockRewrite(),
+    )
+
+    class _BlockTracer(pyc.BaseTracer):
+        global_guards_enabled = False
+
+        @classmethod
+        def syntax_augmentation_specs(cls):
+            return [block_spec]
+
+    def _reset_block_state(rw):
+        type(rw).registry = {}
+        type(rw).counter = 0
+        type(rw).observed = []
+
+    def test_pure_transform_leaves_callback_state_untouched():
+        tracer = _BlockTracer.instance()
+        rw = block_spec.custom
+        with tracer:
+            # seed shared state as if an execution had registered body #1
+            type(rw).counter = 1
+            type(rw).registry = {1: "live body"}
+            type(rw).observed = []
+            before = dict(type(rw).registry)
+
+            out = pyc.transform("x = BLK", pure=True)
+            assert out == "x = blk(0)"
+            # the callback saw the pure flag, but state is byte-for-byte unchanged
+            assert type(rw).observed[-1] is True
+            assert type(rw).counter == 1
+            assert type(rw).registry == before
+            # the flag is reset once the transform returns
+            assert pyc.is_pure_transform() is False
+
+    def test_default_transform_mutates_state_backward_compatible():
+        tracer = _BlockTracer.instance()
+        rw = block_spec.custom
+        with tracer:
+            _reset_block_state(rw)
+            out = pyc.transform("x = BLK")  # pure defaults to False
+            assert out == "x = blk(1)"
+            assert type(rw).observed[-1] is False
+            assert type(rw).counter == 1
+            assert type(rw).registry == {1: "body"}
+
+    def test_pure_transform_positions_path_is_also_pure():
+        tracer = _BlockTracer.instance()
+        rw = block_spec.custom
+        with tracer:
+            _reset_block_state(rw)
+            code = "x = BLK + 1"
+            out, positions = pyc.transform(
+                code, positions=[(1, code.index("1"))], pure=True
+            )
+            assert out == "x = blk(0) + 1"
+            # the tracked position still lands on the ``1`` after remapping
+            line, col = positions[0]
+            assert out.splitlines()[line - 1][col] == "1"
+            # ... and the positions-aware path touched no shared state either
+            assert type(rw).observed[-1] is True
+            assert type(rw).counter == 0
+            assert type(rw).registry == {}
+
     if sys.version_info >= (3, 9):
 
         def _round_trip(tracer, code):

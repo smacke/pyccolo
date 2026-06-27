@@ -46,6 +46,7 @@ from pyccolo.trace_stack import TraceStack
 from pyccolo.tracer import (
     BaseTracer,
     NoopTracer,
+    is_pure_transform,
     register_handler,
     register_raw_handler,
     skip_when_tracing_disabled,
@@ -192,6 +193,7 @@ def transform(
     code: str,
     tracers: Optional[List[BaseTracer]] = ...,
     positions: None = ...,
+    pure: bool = ...,
 ) -> str: ...
 
 
@@ -200,6 +202,7 @@ def transform(
     code: str,
     tracers: Optional[List[BaseTracer]],
     positions: List[Tuple[int, int]],
+    pure: bool = ...,
 ) -> Tuple[str, List[Position]]: ...
 
 
@@ -208,6 +211,7 @@ def transform(
     code: str,
     *,
     positions: List[Tuple[int, int]],
+    pure: bool = ...,
 ) -> Tuple[str, List[Position]]: ...
 
 
@@ -215,8 +219,9 @@ def transform(
     code: str,
     tracers: Optional[List[BaseTracer]] = None,
     positions: Optional[List[Tuple[int, int]]] = None,
+    pure: bool = False,
 ) -> Union[str, Tuple[str, List[Position]]]:
-    return tracer().transform(code, tracers=tracers, positions=positions)
+    return tracer().transform(code, tracers=tracers, positions=positions, pure=pure)
 
 
 @overload
@@ -224,6 +229,7 @@ def untransform(
     tree: ast.AST,
     tracers: Optional[List[BaseTracer]] = ...,
     positions: None = ...,
+    pure: bool = ...,
 ) -> str: ...
 
 
@@ -232,6 +238,7 @@ def untransform(
     tree: ast.AST,
     tracers: Optional[List[BaseTracer]],
     positions: List[Tuple[int, int]],
+    pure: bool = ...,
 ) -> Tuple[str, List[Position]]: ...
 
 
@@ -240,6 +247,7 @@ def untransform(
     tree: ast.AST,
     *,
     positions: List[Tuple[int, int]],
+    pure: bool = ...,
 ) -> Tuple[str, List[Position]]: ...
 
 
@@ -247,8 +255,9 @@ def untransform(
     tree: ast.AST,
     tracers: Optional[List[BaseTracer]] = None,
     positions: Optional[List[Tuple[int, int]]] = None,
+    pure: bool = False,
 ) -> Union[str, Tuple[str, List[Position]]]:
-    return tracer().untransform(tree, tracers=tracers, positions=positions)
+    return tracer().untransform(tree, tracers=tracers, positions=positions, pure=pure)
 
 
 def eval(code: Union[str, ast.expr, ast.Expression], *args, **kwargs) -> Any:
@@ -367,6 +376,7 @@ __all__ = [
     "instance",
     "instrumented",
     "is_outer_stmt",
+    "is_pure_transform",
     "make_guard_name",
     "multi_context",
     "parse",

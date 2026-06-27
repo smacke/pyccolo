@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
 import builtins
+import contextvars
 import functools
 import inspect
 import linecache
@@ -103,6 +104,24 @@ Skip = object()
 HIDE_PYCCOLO_FRAME = "__hide_pyccolo_frame__"
 PYCCOLO_DEV_MODE_ENV_VAR = "PYCCOLO_DEV_MODE"
 TRACED_LAMBDA_NAME = "<traced_lambda>"
+
+
+# Set while a ``pure=True`` transform/untransform runs. A ``ContextVar`` (not a
+# plain global or instance attr) so concurrent transforms on different threads /
+# async tasks -- e.g. a linter transforming on a background thread while the
+# kernel executes on another -- don't clobber each other's flag.
+_PURE_TRANSFORM: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
+    "pyccolo_pure_transform", default=False
+)
+
+
+def is_pure_transform() -> bool:
+    """True while a ``pure=True`` transform/untransform is running on this
+    thread / async context. Cooperating ``CustomRewrite.rewrite`` /
+    paired-delimiter ``emit`` callbacks must not mutate execution-relevant state
+    (e.g. process-global registries the runtime later reads) when this is set --
+    the transformed code is being inspected, not executed."""
+    return _PURE_TRANSFORM.get()
 
 
 def _find_lambda(node: ast.AST, argcount: int) -> "Optional[ast.Lambda]":
@@ -1059,6 +1078,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         code: str,
         tracers: Optional[List["BaseTracer"]] = ...,
         positions: None = ...,
+        pure: bool = ...,
     ) -> str: ...
 
     @overload
@@ -1067,6 +1087,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         code: str,
         tracers: Optional[List["BaseTracer"]],
         positions: List[Tuple[int, int]],
+        pure: bool = ...,
     ) -> Tuple[str, List[Position]]: ...
 
     @overload
@@ -1075,6 +1096,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         code: str,
         *,
         positions: List[Tuple[int, int]],
+        pure: bool = ...,
     ) -> Tuple[str, List[Position]]: ...
 
     def transform(
@@ -1082,20 +1104,35 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         code: str,
         tracers: Optional[List["BaseTracer"]] = None,
         positions: Optional[List[Tuple[int, int]]] = None,
+        pure: bool = False,
     ) -> Union[str, Tuple[str, List[Position]]]:
-        stack = _TRACER_STACK if tracers is None else tracers
-        if positions is None:
+        # ``pure=True`` signals analysis-only use (lint / format / source-map):
+        # the result is never executed, so cooperating augmenter callbacks must
+        # not perturb execution-relevant state. Setting the flag here covers
+        # *both* transform paths -- each iterates the stack calling ``preprocess``
+        # -> ``_apply_augmentations`` -> the callbacks, all within this scope.
+        # ``preprocess`` itself deliberately takes no ``pure`` param: the flag is
+        # already active across these nested calls, and the exec/eval/import paths
+        # that also call ``preprocess`` must stay impure.
+        token = _PURE_TRANSFORM.set(pure) if pure else None
+        try:
+            stack = _TRACER_STACK if tracers is None else tracers
+            if positions is None:
+                for tracer in stack:
+                    code = tracer.preprocess(code, rewriter=None)
+                return code
+            line_starts = _line_starts(code)
+            offsets = [offset_of(line_starts, line, col) for line, col in positions]
             for tracer in stack:
-                code = tracer.preprocess(code, rewriter=None)
-            return code
-        line_starts = _line_starts(code)
-        offsets = [offset_of(line_starts, line, col) for line, col in positions]
-        for tracer in stack:
-            # ``preprocess`` remaps ``offsets`` in place into the coordinates of the
-            # code it returns, which is the next tracer's input -- so they compose.
-            code = tracer.preprocess(code, rewriter=None, positions=offsets)
-        final_starts = _line_starts(code)
-        return code, [line_col_of(final_starts, off) for off in offsets]
+                # ``preprocess`` remaps ``offsets`` in place into the coordinates
+                # of the code it returns, which is the next tracer's input -- so
+                # they compose.
+                code = tracer.preprocess(code, rewriter=None, positions=offsets)
+            final_starts = _line_starts(code)
+            return code, [line_col_of(final_starts, off) for off in offsets]
+        finally:
+            if token is not None:
+                _PURE_TRANSFORM.reset(token)
 
     def _augmentation_specs_for(
         self, node: ast.AST, tracers: List["BaseTracer"]
@@ -1206,6 +1243,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         tree: ast.AST,
         tracers: Optional[List["BaseTracer"]] = ...,
         positions: None = ...,
+        pure: bool = ...,
     ) -> str: ...
 
     @overload
@@ -1214,6 +1252,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         tree: ast.AST,
         tracers: Optional[List["BaseTracer"]],
         positions: List[Tuple[int, int]],
+        pure: bool = ...,
     ) -> Tuple[str, List[Position]]: ...
 
     @overload
@@ -1222,9 +1261,28 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
         tree: ast.AST,
         *,
         positions: List[Tuple[int, int]],
+        pure: bool = ...,
     ) -> Tuple[str, List[Position]]: ...
 
     def untransform(
+        self,
+        tree: ast.AST,
+        tracers: Optional[List["BaseTracer"]] = None,
+        positions: Optional[List[Tuple[int, int]]] = None,
+        pure: bool = False,
+    ) -> Union[str, Tuple[str, List[Position]]]:
+        # ``untransform`` invokes ``spec.custom.reverse(...)`` (resugaring); honor
+        # the same ``pure`` contract as ``transform`` so a cooperating callback can
+        # tell analysis-only resugaring from one tied to execution state. See
+        # ``transform`` for why the flag is set here rather than in ``preprocess``.
+        token = _PURE_TRANSFORM.set(pure) if pure else None
+        try:
+            return self._untransform_impl(tree, tracers=tracers, positions=positions)
+        finally:
+            if token is not None:
+                _PURE_TRANSFORM.reset(token)
+
+    def _untransform_impl(
         self,
         tree: ast.AST,
         tracers: Optional[List["BaseTracer"]] = None,

@@ -1,7 +1,7 @@
 History
 =======
 
-0.0.88 (2026-06-26)
+0.0.89 (2026-06-27)
 -------------------
 * Add custom-rewrite extension point to the augmentation framework;
 
