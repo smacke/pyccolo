@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.88 (2026-06-26)
+-------------------
+* Add custom-rewrite extension point to the augmentation framework;
+
 0.0.87 (2026-06-24)
 -------------------
 * Add unary-op events (``before_unaryop`` / ``after_unaryop`` and ``before_unaryop_arg`` / ``after_unaryop_arg``), mirroring the binary-op event family;
