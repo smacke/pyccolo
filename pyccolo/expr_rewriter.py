@@ -15,7 +15,11 @@ from typing import (
 )
 
 from pyccolo import fast
-from pyccolo.extra_builtins import TRACING_ENABLED, make_guard_name
+from pyccolo.extra_builtins import (
+    PYCCOLO_BUILTIN_PREFIX,
+    TRACING_ENABLED,
+    make_guard_name,
+)
 from pyccolo.fast import (
     EmitterMixin,
     make_composite_condition,
@@ -32,6 +36,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
+
+# Parameter names for the synthesized binop/unaryop/compare lambdas. Prefixed so
+# they cannot collide with a user's variable of the same name: these lambdas are
+# ordinary (unmarked) frames on the call stack, so a plain ``x``/``y`` would
+# shadow a same-named enclosing local when another tool walks the frame stack to
+# resolve names (e.g. pipescript's dynamic free-var lookup).
+_OP_LAMBDA_X = f"{PYCCOLO_BUILTIN_PREFIX}_op_x"
+_OP_LAMBDA_Y = f"{PYCCOLO_BUILTIN_PREFIX}_op_y"
 
 
 class ExprRewriter(ast.NodeTransformer, EmitterMixin):
@@ -848,10 +860,13 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     ret=self.make_lambda(
                         body=fast.BinOp(
                             op=op,
-                            left=fast.Name("x", ast.Load()),
-                            right=fast.Name("y", ast.Load()),
+                            left=fast.Name(_OP_LAMBDA_X, ast.Load()),
+                            right=fast.Name(_OP_LAMBDA_Y, ast.Load()),
                         ),
-                        args=[fast.arg("x", None), fast.arg("y", None)],
+                        args=[
+                            fast.arg(_OP_LAMBDA_X, None),
+                            fast.arg(_OP_LAMBDA_Y, None),
+                        ],
                     ),
                     before_expr_args=[node.left, node.right],
                 )
@@ -890,9 +905,9 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     ret=self.make_lambda(
                         body=fast.UnaryOp(
                             op=op,
-                            operand=fast.Name("x", ast.Load()),
+                            operand=fast.Name(_OP_LAMBDA_X, ast.Load()),
                         ),
-                        args=[fast.arg("x", None)],
+                        args=[fast.arg(_OP_LAMBDA_X, None)],
                     ),
                     before_expr_args=[node.operand],
                 )
@@ -964,15 +979,15 @@ class ExprRewriter(ast.NodeTransformer, EmitterMixin):
                     ret=self.make_lambda(
                         body=fast.Compare(
                             ops=node.ops,
-                            left=fast.Name("x", ast.Load()),
+                            left=fast.Name(_OP_LAMBDA_X, ast.Load()),
                             comparators=[
-                                fast.Name(f"y_{i}", ast.Load())
+                                fast.Name(f"{_OP_LAMBDA_Y}_{i}", ast.Load())
                                 for i in range(len(node.comparators))
                             ],
                         ),
-                        args=[fast.arg("x", None)]
+                        args=[fast.arg(_OP_LAMBDA_X, None)]
                         + [
-                            fast.arg(f"y_{i}", None)
+                            fast.arg(f"{_OP_LAMBDA_Y}_{i}", None)
                             for i in range(len(node.comparators))
                         ],
                     ),

@@ -21,6 +21,7 @@ from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
     FUNCTION_TRACING_ENABLED,
+    NAME_ERROR_MATCHES,
     PYCCOLO_BUILTIN_PREFIX,
     TRACING_ENABLED,
     make_guard_name,
@@ -286,7 +287,8 @@ class StatementInserter(ast.NodeTransformer, EmitterMixin):
                                     ast.stmt,
                                     fast.If(
                                         test=fast.parse(  # type: ignore[attr-defined]
-                                            f'not {name_error_exc}.name.startswith("{PYCCOLO_BUILTIN_PREFIX}")'
+                                            f"not {NAME_ERROR_MATCHES}("
+                                            f'{name_error_exc}, "{PYCCOLO_BUILTIN_PREFIX}")'
                                         )
                                         .body[0]
                                         .value,

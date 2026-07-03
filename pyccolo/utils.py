@@ -1,12 +1,33 @@
 # -*- coding: utf-8 -*-
+import ctypes
 import importlib
 import inspect
+import sys
 from contextlib import ExitStack, contextmanager
-from types import CodeType, FunctionType
+from types import CodeType, FrameType, FunctionType
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Set, Type, TypeVar, Union
 
 if TYPE_CHECKING:
     from pyccolo.tracer import BaseTracer
+
+
+def set_frame_local(frame: FrameType, name: str, value: Any) -> None:
+    """Assign ``name = value`` in ``frame``'s local scope so a *running* function
+    observes the write.
+
+    A frame's ``f_locals`` is normally a read-only view from the outside: on
+    CPython < 3.13 it is a snapshot dict, and mutating it does not touch the
+    frame's fast-locals array unless ``PyFrame_LocalsToFast`` copies the snapshot
+    back. On 3.13+ (PEP 667) ``f_locals`` is a write-through proxy, so assigning
+    to it is sufficient. This is the primitive pipescript uses to give macro
+    block bodies write-back semantics into their enclosing function.
+
+    Only names that already have a local slot in ``frame`` (function parameters
+    and variables assigned somewhere in the enclosing function) are guaranteed to
+    persist; ``PyFrame_LocalsToFast`` will not create a brand-new fast slot."""
+    frame.f_locals[name] = value
+    if sys.version_info < (3, 13):
+        ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
 
 
 def resolve_tracer(ref: str) -> Type["BaseTracer"]:

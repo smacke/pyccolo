@@ -53,10 +53,12 @@ from pyccolo.extra_builtins import (
     EMIT_EVENT,
     EXEC_SAVED_THUNK,
     FUNCTION_TRACING_ENABLED,
+    NAME_ERROR_MATCHES,
     PYCCOLO_BUILTIN_PREFIX,
     TRACE_LAMBDA,
     TRACING_ENABLED,
     make_guard_name,
+    name_error_matches_prefix,
 )
 from pyccolo.handler import HandlerSpec
 from pyccolo.import_hooks import patch_meta_path_non_context
@@ -1022,6 +1024,7 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
             setattr(builtins, FUNCTION_TRACING_ENABLED, False)
         setattr(builtins, EXEC_SAVED_THUNK, self.exec_saved_thunk)
         setattr(builtins, TRACE_LAMBDA, self.trace_lambda)
+        setattr(builtins, NAME_ERROR_MATCHES, name_error_matches_prefix)
         if do_patch_meta_path is None:
             do_patch_meta_path = self.should_patch_meta_path and len(_TRACER_STACK) == 0
         if should_push:

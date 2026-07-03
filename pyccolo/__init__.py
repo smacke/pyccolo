@@ -51,7 +51,12 @@ from pyccolo.tracer import (
     register_raw_handler,
     skip_when_tracing_disabled,
 )
-from pyccolo.utils import copy_function_with_code, multi_context, resolve_tracer
+from pyccolo.utils import (
+    copy_function_with_code,
+    multi_context,
+    resolve_tracer,
+    set_frame_local,
+)
 
 
 if TYPE_CHECKING:
@@ -383,6 +388,7 @@ __all__ = [
     "register_handler",
     "register_raw_handler",
     "resolve_tracer",
+    "set_frame_local",
     "skip_when_tracing_disabled",
     "tracer",
     "tracing_context",
