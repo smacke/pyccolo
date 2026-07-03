@@ -2,6 +2,7 @@ Pyccolo
 =======
 
 [![CI Status](https://github.com/smacke/pyccolo/workflows/pyccolo/badge.svg)](https://github.com/smacke/pyccolo/actions)
+[![Documentation Status](https://readthedocs.org/projects/pyccolo/badge/?version=latest)](https://pyccolo.readthedocs.io/en/latest/?badge=latest)
 [![Checked with mypy](http://www.mypy-lang.org/static/mypy_badge.svg)](http://mypy-lang.org/)
 [![codecov](https://codecov.io/gh/smacke/pyccolo/branch/master/graph/badge.svg?token=MGORH1IXLO)](https://codecov.io/gh/smacke/pyccolo)
 [![License: BSD3](https://img.shields.io/badge/License-BSD3-maroon.svg)](https://opensource.org/licenses/BSD-3-Clause)
@@ -378,7 +379,7 @@ Subsequent calls / iterations will be instrumented again only after calling
 ## Command line interface
 
 You can execute arbitrary scripts with instrumentation enabled with the `pyc`
-command line tool. For example, to use the `OptionalChainer` tracer, given some
+command line tool. For example, to use the optional-chaining tracer, given some
 example script `bar.py`:
 
 ```python
@@ -389,15 +390,20 @@ print(bar?.foo)
 ```
 
 ```bash
-> pyc bar.py -t pyccolo.examples.OptionalChainer
+> pyc bar.py -t pyccolo.examples.optional_chaining.ScriptOptionalChainer
 ```
 
 You can also run `bar` as a module (indeed, `pyc` does this internally when given
 a file):
 
 ```bash
-> pyc -m bar -t pyccolo.examples.OptionalChainer
+> pyc -m bar -t pyccolo.examples.optional_chaining.ScriptOptionalChainer
 ```
+
+Note the use of `ScriptOptionalChainer` rather than the bare `OptionalChainer`:
+because `pyc` runs your file through Pyccolo's import machinery, the tracer must
+opt that file in by overriding `should_instrument_file` (which
+`ScriptOptionalChainer` does, and `OptionalChainer` does not).
 
 You can specify multiple tracer classes after `-t`; in case you were not already
 aware, Pyccolo is composable! :)
