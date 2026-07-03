@@ -1,9 +1,10 @@
 History
 =======
 
-0.0.89 (2026-06-27)
+0.0.90 (2026-07-03)
 -------------------
 * Add custom-rewrite extension point to the augmentation framework;
+* Harden freevar frame walks;
 
 0.0.87 (2026-06-24)
 -------------------
