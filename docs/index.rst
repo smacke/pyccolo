@@ -1,5 +1,5 @@
-Welcome to Pyccolo's documentation!
-===================================
+Pyccolo
+=======
 
 **Pyccolo** (pronounced like the instrument "piccolo") is a library for
 *declarative instrumentation* in Python: you specify the **what** of the
@@ -11,7 +11,7 @@ transformations, and aims to be:
   handler; there's no bytecode to patch and no :class:`ast.NodeTransformer` to
   hand-write;
 - **composable** — layering multiple, independently-written instrumentations
-  usually Just Works (see :doc:`composing_tracers`);
+  usually Just Works (see :doc:`/concepts/composition`);
 - **portable** — the same code runs across Python 3.6 through 3.14, with few
   exceptions, because instrumentation is embedded at the level of *source code*
   rather than bytecode.
@@ -34,38 +34,80 @@ world!"`` before every statement that executes.
        # prints "Hello, world!" 11 times
        pyc.exec("for _ in range(10): pass")
 
-**New here?** Start with :doc:`installation`, then walk through
-:doc:`quickstart`. From there, :doc:`events_and_handlers` is the conceptual
-heart of the library. Looking for a specific class or function? Jump to the
-:doc:`api_reference`, or the :doc:`cli` for the ``pyc`` command-line tool.
+Where to go from here
+---------------------
+
+This documentation is organized in four tracks, following the `Diátaxis
+<https://diataxis.fr/>`_ framework:
+
+- **Getting started** — install Pyccolo and build your first tracer.
+- **Tutorials** — learning-oriented, end-to-end builds you follow start to finish.
+- **How-to guides** — short, focused recipes for a specific task.
+- **Concepts** — the mental model: how the instrumentation actually works.
+- **Reference** — the precise, code-derived catalog of every event, method, and
+  option.
+
+If you are brand new, read :doc:`/getting_started/installation` then
+:doc:`/getting_started/first_tracer`. If you want to understand *why* it works,
+start with :doc:`/concepts/model`. If you are looking something up, jump to the
+:doc:`/reference/events` or :doc:`/reference/tracer`.
 
 .. toctree::
    :maxdepth: 2
    :caption: Getting started
 
-   installation
-   quickstart
+   getting_started/installation
+   getting_started/first_tracer
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Tutorials
+
+   tutorials/coverage_tracer
+   tutorials/optional_chaining
+
+.. toctree::
+   :maxdepth: 2
+   :caption: How-to guides
+
+   howto/override_values
+   howto/compose_tracers
+   howto/conditional_handlers
+   howto/instrument_imports
+   howto/add_syntax
+   howto/source_to_source
+   howto/sys_settrace
+   howto/performance_guards
 
 .. toctree::
    :maxdepth: 2
    :caption: Concepts
 
-   events_and_handlers
-   composing_tracers
-   predicates
-   syntax_augmentation
-   source_to_source
-   sys_settrace
-   imported_modules
-   performance
+   concepts/model
+   concepts/rewrite_pipeline
+   concepts/composition
+   concepts/exec_and_scoping
 
 .. toctree::
    :maxdepth: 2
    :caption: Reference
 
-   cli
+   reference/events
+   reference/handlers
+   reference/registration
+   reference/tracer
+   reference/config
+   reference/predicates
+   reference/augmentation
+   reference/source_api
+   reference/cli
+   reference/utilities
+
+.. toctree::
+   :maxdepth: 1
+   :caption: More
+
    examples
-   api_reference
    changelog
 
 Indices and tables

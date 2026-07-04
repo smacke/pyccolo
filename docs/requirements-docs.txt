@@ -1,4 +1,5 @@
 # docs
 sphinx
 sphinx-argparse
-sphinx-rtd-theme
+sphinx-copybutton
+furo

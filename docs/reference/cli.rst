@@ -1,9 +1,9 @@
-Command line interface
+Command-line interface
 ======================
 
 You can execute arbitrary scripts with instrumentation enabled using the ``pyc``
-command line tool (installed as both ``pyc`` and ``pyccolo``). For example, to
-run some script ``bar.py`` under the optional-chaining example tracer:
+command-line tool (installed as both ``pyc`` and ``pyccolo``). For example, to run
+some script ``bar.py`` under the optional-chaining example tracer:
 
 .. code-block:: text
 
@@ -25,14 +25,13 @@ given a file):
 
 The ``-t`` value is a fully-qualified reference to a tracer class. Note that we
 use ``ScriptOptionalChainer`` rather than the bare ``OptionalChainer``: because
-``pyc`` runs your file through Pyccolo's import machinery, the tracer must opt
-that file in by overriding
-:meth:`~pyccolo.BaseTracer.should_instrument_file` (which
+``pyc`` runs your file through Pyccolo's import machinery, the tracer must opt that
+file in by overriding :meth:`~pyccolo.BaseTracer.should_instrument_file` (which
 ``ScriptOptionalChainer`` does, and ``OptionalChainer`` does not — see
-:doc:`imported_modules`).
+:doc:`/howto/instrument_imports`).
 
-You can specify multiple tracer classes after ``-t``; in case you were not
-already aware, Pyccolo is composable! (see :doc:`composing_tracers`).
+You can specify multiple tracer classes after ``-t``; in case you were not already
+aware, Pyccolo is :doc:`composable </concepts/composition>`!
 
 Options
 -------

@@ -11,6 +11,13 @@
 # ``make html`` from a source checkout, an editable install (``pip install -e
 # '.[docs]'``) makes ``import pyccolo`` resolve just the same.
 
+# The bundled ``_ext`` directory holds the ``pyccolo-events`` extension, which
+# renders the event taxonomy straight from ``pyccolo.trace_events``.
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "_ext"))
+
 # -- Project information -----------------------------------------------------
 
 project = "pyccolo"
@@ -38,7 +45,8 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
     "sphinxarg.ext",
-    "sphinx_rtd_theme",
+    "sphinx_copybutton",
+    "pyccolo_events",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -83,9 +91,21 @@ if _ArgParseDomain is not None and "merge_domaindata" not in vars(_ArgParseDomai
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "sphinx_rtd_theme"
+html_theme = "furo"
+html_title = f"Pyccolo {version}" if version else "Pyccolo"
+
+# Furo theme options: light/dark toggle plus a "view source" link into GitHub.
+html_theme_options = {
+    "source_repository": "https://github.com/smacke/pyccolo/",
+    "source_branch": "master",
+    "source_directory": "docs/",
+}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
+
+# Open in dark mode by default (see the script for how it respects a returning
+# visitor's explicit light/auto choice).
+html_js_files = ["theme-default.js"]
