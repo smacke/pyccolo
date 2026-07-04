@@ -55,6 +55,29 @@ intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 # Keep autodoc output in source order rather than alphabetized.
 autodoc_member_order = "bysource"
 
+# sphinx-argparse's ``ArgParseDomain`` (>=0.5) does not implement
+# ``merge_domaindata``, so Sphinx's parallel read path (Read the Docs builds
+# with ``-j auto``) aborts with ``NotImplementedError``. Its domain data is just
+# a list of command tuples plus a group->tuples dict, both keyed on docname at
+# index 3, so a correct merge is a couple of lines. Patch it in if absent.
+try:
+    from sphinxarg.ext import ArgParseDomain as _ArgParseDomain
+except Exception:  # pragma: no cover - sphinxarg always present in docs builds
+    _ArgParseDomain = None
+
+if _ArgParseDomain is not None and "merge_domaindata" not in vars(_ArgParseDomain):
+
+    def _merge_domaindata(self, docnames, otherdata):
+        wanted = set(docnames)
+        for entry in otherdata.get("commands", []):
+            if entry[3] in wanted:
+                self.data["commands"].append(entry)
+        for group, entries in otherdata.get("commands-by-group", {}).items():
+            bucket = self.data["commands-by-group"].setdefault(group, [])
+            bucket.extend(entry for entry in entries if entry[3] in wanted)
+
+    _ArgParseDomain.merge_domaindata = _merge_domaindata
+
 
 # -- Options for HTML output -------------------------------------------------
 
