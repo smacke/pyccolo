@@ -2,4 +2,4 @@
 sphinx
 sphinx-argparse
 sphinx-copybutton
-furo
+sphinx-rtd-theme

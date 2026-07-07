@@ -91,21 +91,18 @@ if _ArgParseDomain is not None and "merge_domaindata" not in vars(_ArgParseDomai
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "furo"
+html_theme = "sphinx_rtd_theme"
 html_title = f"Pyccolo {version}" if version else "Pyccolo"
 
-# Furo theme options: light/dark toggle plus a "view source" link into GitHub.
+# Read the Docs theme options: keep the full nav tree expanded and deep enough
+# to reach the Diátaxis subsections. See
+# https://sphinx-rtd-theme.readthedocs.io/en/stable/configuring.html
 html_theme_options = {
-    "source_repository": "https://github.com/smacke/pyccolo/",
-    "source_branch": "master",
-    "source_directory": "docs/",
+    "collapse_navigation": False,
+    "navigation_depth": 3,
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
-
-# Open in dark mode by default (see the script for how it respects a returning
-# visitor's explicit light/auto choice).
-html_js_files = ["theme-default.js"]
