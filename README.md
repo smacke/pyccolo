@@ -2,6 +2,7 @@ Pyccolo
 =======
 
 [![CI Status](https://github.com/smacke/pyccolo/workflows/pyccolo/badge.svg)](https://github.com/smacke/pyccolo/actions)
+[![lite-badge](https://jupyterlite.rtfd.io/en/latest/_static/badge.svg)](https://smacke.github.io/pyccolo/lab/index.html?path=demo.ipynb)
 [![Documentation Status](https://readthedocs.org/projects/pyccolo/badge/?version=latest)](https://pyccolo.readthedocs.io/en/latest/?badge=latest)
 [![Checked with mypy](http://www.mypy-lang.org/static/mypy_badge.svg)](http://mypy-lang.org/)
 [![codecov](https://codecov.io/gh/smacke/pyccolo/branch/master/graph/badge.svg?token=MGORH1IXLO)](https://codecov.io/gh/smacke/pyccolo)

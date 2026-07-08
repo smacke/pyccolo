@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-.PHONY: clean build bump deploy black blackcheck imports lint typecheck check_no_typing check test tests coverage xmlcov check_ci deps devdeps
+.PHONY: clean build bump deploy black blackcheck imports lint typecheck check_no_typing check test tests coverage xmlcov check_ci deps devdeps jupyterlite jupyterlite-serve jupyterlite-dev
+
+# Port for the local JupyterLite demo server; override with `make ... LITE_PORT=8999`.
+LITE_PORT ?= 8000
 
 clean:
 	rm -rf __pycache__ build/ dist/ *.egg-info/ .coverage htmlcov
@@ -54,4 +57,14 @@ deps:
 
 devdeps:
 	pip install -e .[dev]
+
+jupyterlite:
+	bash jupyterlite/build.sh dist
+
+jupyterlite-serve:
+	@test -f dist/lab/index.html || $(MAKE) jupyterlite
+	@echo "Serving JupyterLite demo at http://127.0.0.1:$(LITE_PORT)/lab/index.html?path=demo.ipynb (Ctrl-C to stop)"
+	python -m http.server -d dist $(LITE_PORT)
+
+jupyterlite-dev: jupyterlite jupyterlite-serve
 

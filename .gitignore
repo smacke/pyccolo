@@ -23,3 +23,6 @@ nbsafety/resources/nbextension/index.js.map
 coverage.xml
 htmlcov/**
 .hypothesis
+# JupyterLite demo build artifacts (see jupyterlite/build.sh)
+.jupyterlite.doit.db
+.jupyterlite.doit.db.*

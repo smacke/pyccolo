@@ -1,0 +1,45 @@
+name: Deploy JupyterLite demo
+
+# Manual-only to avoid spending CI minutes on every push; run it from the
+# Actions tab (or `gh workflow run "Deploy JupyterLite demo"`) when you want to
+# refresh the published demo.
+on:
+  workflow_dispatch:
+
+# Allow the workflow to publish to GitHub Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: jupyterlite-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history + tags so versioneer stamps the real version on the
+          # built wheel (a shallow clone has no tags and falls back to 0+unknown).
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build the JupyterLite demo site
+        run: bash jupyterlite/build.sh dist
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
