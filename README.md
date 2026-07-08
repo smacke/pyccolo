@@ -7,13 +7,16 @@ Pyccolo
 [![Checked with mypy](http://www.mypy-lang.org/static/mypy_badge.svg)](http://mypy-lang.org/)
 [![codecov](https://codecov.io/gh/smacke/pyccolo/branch/master/graph/badge.svg?token=MGORH1IXLO)](https://codecov.io/gh/smacke/pyccolo)
 [![License: BSD3](https://img.shields.io/badge/License-BSD3-maroon.svg)](https://opensource.org/licenses/BSD-3-Clause)
-[![Python Versions](https://img.shields.io/pypi/pyversions/pyccolo.svg)](https://pypi.org/project/pyccolo)
 [![PyPI Version](https://img.shields.io/pypi/v/pyccolo.svg)](https://pypi.org/project/pyccolo)
+[![Python Versions](https://img.shields.io/pypi/pyversions/pyccolo.svg)](https://pypi.org/project/pyccolo)
 
 Pyccolo (pronounced like the instrument "piccolo") is a library for declarative
 instrumentation in Python; i.e., it lets you specify the *what* of the
-instrumentation you wish to perform, and takes care of the *how* for you. It
-brings metaprogramming to everybody via general, event-emitting AST
+instrumentation you wish to perform, and takes care of the *how* for you.
+
+## ✨ [Go here](https://smacke.github.io/pyccolo/lab/index.html?path=demo.ipynb) to try it in your browser ✨
+
+Pyccolo brings metaprogramming to everybody via general, event-emitting AST
 transformations, and aims to be:
 
 - ***ergonomic*** — you subclass `pyc.BaseTracer` and decorate a handler; there's
