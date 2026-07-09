@@ -70,6 +70,7 @@ start with :doc:`/concepts/model`. If you are looking something up, jump to the
    :maxdepth: 2
    :caption: How-to guides
 
+   howto/ipython
    howto/override_values
    howto/compose_tracers
    howto/conditional_handlers

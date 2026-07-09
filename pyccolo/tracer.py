@@ -1742,7 +1742,25 @@ class _InternalBaseTracer(_InternalBaseTracerSuper, metaclass=MetaTracerStateMac
                 frame.f_trace_lines = orig_trace_lines  # type: ignore
                 frame.f_trace_opcodes = orig_trace_opcodes  # type: ignore
         else:
-            return self._emit_event(evt, None, frame, ret=arg)
+            ret = self._emit_event(evt, None, frame, ret=arg)
+            if evt == "call":
+                return ret
+            return self._local_sys_tracer_ret(arg, ret)
+
+    def _local_sys_tracer_ret(self, arg: Any, ret: Any) -> Any:
+        """Sanitize what we hand back to CPython for a non-``call`` sys event.
+
+        CPython stores the return value as the frame's *local* trace function, so
+        it must be callable or None. But when no handler consumed the event,
+        ``_emit_event`` threads ``arg`` straight back out -- the returned value
+        for ``return``, or the ``(type, value, tb)`` triple for ``exception``.
+        Installing that as the trace function makes CPython raise
+        ``TypeError: '<X>' object is not callable`` on the frame's next event
+        (which a generator, resumed after a yield, reliably has). Keep tracing the
+        frame instead. A handler that deliberately returns ``Null`` still gets its
+        ``None`` through, and so still detaches the tracer from the frame.
+        """
+        return self.sys_tracer if ret is arg else ret
 
     if TYPE_CHECKING:
         TracerT = TypeVar("TracerT", bound="_InternalBaseTracer")
