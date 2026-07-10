@@ -911,7 +911,7 @@ class CellTracingDriver:
         self._magic_installed = True
 
     def _remove_magic(self) -> None:
-        if not self._magic_installed:
+        if not self._magic_installed or self.shell.magics_manager is None:
             return
         magics = self.shell.magics_manager.magics
         magics.get("line", {}).pop(_MAGIC_NAME, None)
