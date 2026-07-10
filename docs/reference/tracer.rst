@@ -69,7 +69,7 @@ Guards
 
 Guards let you switch instrumentation off at runtime for a function or loop once
 you no longer need it — the key to :doc:`amortizing overhead
-</howto/performance_guards>`.
+</guides/guards_and_performance>`.
 
 .. automethod:: pyccolo.BaseTracer.activate_guard
 .. automethod:: pyccolo.BaseTracer.deactivate_guard
@@ -78,7 +78,7 @@ you no longer need it — the key to :doc:`amortizing overhead
 Augmentation helpers
 --------------------
 
-Used when defining :doc:`new syntax </howto/add_syntax>`.
+Used when defining :doc:`new syntax </guides/add_syntax>`.
 
 .. automethod:: pyccolo.BaseTracer.syntax_augmentation_specs
 .. automethod:: pyccolo.BaseTracer.get_augmentations

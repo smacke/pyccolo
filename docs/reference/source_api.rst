@@ -6,7 +6,7 @@ Source-to-source API
 When you want the rewritten *source* — for a linter, formatter, or source map —
 rather than a running program, use these module-level functions. They operate
 against the active tracer stack (or the tracers you pass explicitly). See
-:doc:`/howto/source_to_source` for the how-to.
+:doc:`/guides/source_to_source` for the how-to.
 
 .. autofunction:: pyccolo.transform
 

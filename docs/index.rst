@@ -1,63 +1,104 @@
 Pyccolo
 =======
 
-**Pyccolo** (pronounced like the instrument "piccolo") is a library for
-*declarative instrumentation* in Python: you specify the **what** of the
-instrumentation you wish to perform, and Pyccolo takes care of the **how**. It
-brings metaprogramming to everybody through general, event-emitting AST
-transformations, and aims to be:
+**Pyccolo** (pronounced like the instrument "piccolo") lets you change what
+Python *does* — observe it, rewrite values as they flow, or teach the language
+brand-new syntax — without touching bytecode, patching the interpreter, or
+hand-writing an :class:`ast.NodeTransformer`. You write a small class, decorate a
+method with the moment you care about, and Pyccolo rewrites the program's source
+so that moment calls your code.
 
-- **ergonomic** — you subclass :class:`pyccolo.BaseTracer` and decorate a
-  handler; there's no bytecode to patch and no :class:`ast.NodeTransformer` to
-  hand-write;
-- **composable** — layering multiple, independently-written instrumentations
-  usually Just Works (see :doc:`/concepts/composition`);
-- **portable** — the same code runs across Python 3.6 through 3.14, with few
-  exceptions, because instrumentation is embedded at the level of *source code*
-  rather than bytecode.
+That single idea scales a long way. The same twenty-line building block underlies
+statement-level code coverage, a reactive Jupyter kernel, a pipe operator, lazy
+imports, optional chaining, and reverse-mode autodiff over ordinary NumPy — all
+listed under :doc:`examples </examples>`.
 
-Here is the smallest interesting program: a tracer that prints ``"Hello,
-world!"`` before every statement that executes.
+A tracer in fifteen seconds
+---------------------------
 
-.. code-block:: python
+Here is a tracer that makes every ``float`` literal *exact* by promoting it to a
+:class:`~decimal.Decimal` — a real behavioral change in one handler:
 
+.. testcode::
+
+   from decimal import Decimal
    import pyccolo as pyc
 
 
-   class HelloTracer(pyc.BaseTracer):
-       @pyc.before_stmt
-       def handle_stmt(self, *_, **__):
-           print("Hello, world!")
+   class ExactFloats(pyc.BaseTracer):
+       @pyc.after_float
+       def to_decimal(self, ret, *_, **__):
+           return Decimal(str(ret))
 
 
-   with HelloTracer:
-       # prints "Hello, world!" 11 times
-       pyc.exec("for _ in range(10): pass")
+   with ExactFloats:
+       print(pyc.exec("x = 0.1 + 0.2")["x"])
 
-Where to go from here
----------------------
+.. testoutput::
 
-This documentation is organized in four tracks, following the `Diátaxis
-<https://diataxis.fr/>`_ framework:
+   0.3
 
-- **Getting started** — install Pyccolo and build your first tracer.
-- **Tutorials** — learning-oriented, end-to-end builds you follow start to finish.
-- **How-to guides** — short, focused recipes for a specific task.
-- **Concepts** — the mental model: how the instrumentation actually works.
-- **Reference** — the precise, code-derived catalog of every event, method, and
+``@pyc.after_float`` subscribes ``to_decimal`` to the *"a float literal was just
+evaluated"* event; whatever the handler returns **replaces** that value. No float
+in the ``pyc.exec`` block escaped the substitution, and nothing outside the
+``with`` block was affected. That is the whole model — :doc:`events and handlers
+</concepts/model>` — and everything else is built on it.
+
+Why Pyccolo
+-----------
+
+- **Ergonomic** — subscribe to an event by decorating a method. There is no
+  bytecode to patch and no AST visitor to write by hand.
+- **Composable** — independently-written tracers layer just by nesting their
+  ``with`` blocks; their return values thread through in order. See
+  :doc:`/guides/compose_tracers`.
+- **Portable** — instrumentation lives at the level of *source code*, so the same
+  tracer runs on CPython 3.6 through 3.14 (a few features need 3.8+).
+- **Pay-as-you-go** — Pyccolo only rewrites a construct when some active tracer
+  actually listens for it, so a hundred available events cost nothing until you
+  use one.
+
+Try it in your browser
+----------------------
+
+You don't have to install anything to get a feel for it: the `live JupyterLite
+demo <https://smacke.github.io/pyccolo/lab/index.html?path=demo.ipynb>`_ runs
+Pyccolo entirely in your browser.
+
+How this documentation is organized
+-----------------------------------
+
+- **Start here** installs Pyccolo and walks through your first tracer line by
+  line.
+- **Guides** are task-oriented and example-dense: overriding values, composing
+  tracers, guards and performance, running under imports/functions/the CLI,
+  source-to-source rewriting, adding syntax, and the IPython integration.
+- **Tutorials** build complete tools end to end — a coverage tracer, optional
+  chaining, a pipe operator, quick lambdas, lazy imports, a concolic-execution
+  engine, and a variable watchpoint debugger.
+- **How it works** is the mental model: the rewrite pipeline, why tracers
+  compose, and how ``pyc.exec`` and scoping fit together.
+- **Reference** is the precise, code-derived catalog of every event, method, and
   option.
-
-If you are brand new, read :doc:`/getting_started/installation` then
-:doc:`/getting_started/first_tracer`. If you want to understand *why* it works,
-start with :doc:`/concepts/model`. If you are looking something up, jump to the
-:doc:`/reference/events` or :doc:`/reference/tracer`.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Getting started
+   :caption: Start here
 
    getting_started/installation
    getting_started/first_tracer
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Guides
+
+   guides/observe_and_override
+   guides/compose_tracers
+   guides/guards_and_performance
+   guides/tracing_real_programs
+   guides/source_to_source
+   guides/add_syntax
+   guides/ipython
 
 .. toctree::
    :maxdepth: 2
@@ -65,27 +106,17 @@ start with :doc:`/concepts/model`. If you are looking something up, jump to the
 
    tutorials/coverage_tracer
    tutorials/optional_chaining
+   tutorials/pipeline_operator
+   tutorials/quick_lambda
+   tutorials/lazy_imports
+   tutorials/concolic
+   tutorials/watchpoint_debugger
 
 .. toctree::
    :maxdepth: 2
-   :caption: How-to guides
-
-   howto/ipython
-   howto/override_values
-   howto/compose_tracers
-   howto/conditional_handlers
-   howto/instrument_imports
-   howto/add_syntax
-   howto/source_to_source
-   howto/sys_settrace
-   howto/performance_guards
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Concepts
+   :caption: How it works
 
    concepts/model
-   concepts/rewrite_pipeline
    concepts/composition
    concepts/exec_and_scoping
 

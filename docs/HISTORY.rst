@@ -1,6 +1,15 @@
 History
 =======
 
+0.0.94 (2026-07-10)
+-------------------
+* Add a native IPython/Jupyter integration: ``%load_ext pyccolo`` installs a cell-tracing driver on the running shell and ``pyc.register_ipython_tracer(...)`` (or ``%pyccolo register <tracer>``) adds tracers to it, so every cell is instrumented instead of only code inside ``pyc.exec(...)``; ``%unload_ext pyccolo`` restores the shell;
+* Expose ``cell_tracing_context`` as the driver's interface and support host takeover via ``take_over_ipython_driver``, so pyccolo and a shell-owning host (e.g. ipyflow) compose in either order and never instrument a cell twice;
+* Supply an internal ``after_module_stmt`` tracer so a bare pyccolo tracer preserves IPython's ``last_expr`` ``Out[N]`` display;
+* Fix ``_sys_tracer`` returning its ``arg`` for non-``call`` events, which CPython installed as the frame's local trace function and crashed (``TypeError: 'tuple' object is not callable``) on a raised exception or a resumed generator under a call-only tracer;
+* Add an in-browser JupyterLite (Pyodide) demo showcasing tracing, exact floats, composable tracers, optional chaining, source transform / untransform, call / return tracing, and concolic execution, published to GitHub Pages;
+* Fix ``CompositePredicate`` (from ``CompositePredicate.any`` / ``.all``) crashing when passed as a handler ``when=`` predicate: it inherited ``Predicate.clone()``, which references attributes a composite does not have, so registration raised ``AttributeError``. Added ``CompositePredicate.clone()`` so combined predicates can gate handlers;
+
 0.0.92 (2026-07-05)
 -------------------
 * Add custom-rewrite extension point to the augmentation framework;

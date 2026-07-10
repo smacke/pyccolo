@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-.PHONY: clean build bump deploy black blackcheck imports lint typecheck check_no_typing check test tests coverage xmlcov check_ci deps devdeps jupyterlite jupyterlite-serve jupyterlite-dev
+.PHONY: clean build bump deploy black blackcheck imports lint typecheck check_no_typing check test tests coverage xmlcov check_ci deps devdeps jupyterlite jupyterlite-serve jupyterlite-dev docs
 
 # Port for the local JupyterLite demo server; override with `make ... LITE_PORT=8999`.
 LITE_PORT ?= 8000
@@ -67,4 +67,7 @@ jupyterlite-serve:
 	python -m http.server -d dist $(LITE_PORT)
 
 jupyterlite-dev: jupyterlite jupyterlite-serve
+
+docs:
+	$(MAKE) -C docs html
 

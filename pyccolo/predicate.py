@@ -70,6 +70,13 @@ class CompositePredicate(Predicate):
         self.use_raw_node_id = all(pred.use_raw_node_id for pred in base_predicates)
         self.reducer = reducer
 
+    def clone(self) -> "Predicate":
+        # ``Predicate.clone`` reconstructs from ``(condition, use_raw_node_id,
+        # static)``, none of which a composite has; rebuild from the base
+        # predicates instead so a ``CompositePredicate`` can be passed as ``when=``
+        # (which clones the predicate at registration time).
+        return CompositePredicate(self.base_predicates, reducer=self.reducer)
+
     def __call__(
         self,
         node: Union[ast.AST, int],

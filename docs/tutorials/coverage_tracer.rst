@@ -64,7 +64,7 @@ candidate module's filename. Return ``True`` for the files you want to measure:
        return "pyccolo" in filename
 
 Here we cover the ``pyccolo`` package itself while skipping tests and examples.
-See :doc:`/howto/instrument_imports` for the mechanics of import instrumentation.
+See :doc:`/guides/tracing_real_programs` for the mechanics of import instrumentation.
 
 Step 3: ignore sandbox frames
 -----------------------------
@@ -157,7 +157,7 @@ lifecycle hooks. The full version lives in ``pyccolo/examples/coverage.py``.
 Where to next
 -------------
 
-- Coverage adds real overhead. :doc:`/howto/performance_guards` shows how to
+- Coverage adds real overhead. :doc:`/guides/guards_and_performance` shows how to
   deactivate instrumentation once you've seen a statement for the first time.
 - The :doc:`/reference/tracer` page catalogs every hook and method you can
   override.

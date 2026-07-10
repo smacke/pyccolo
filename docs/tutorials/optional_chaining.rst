@@ -34,7 +34,7 @@ attribute:
 ``aug_type=dot_suffix`` says the token sits where a ``.`` attribute-access dot
 would go. After this rewrite, ``bar?.foo`` parses as an ordinary
 ``ast.Attribute`` load — but one that Pyccolo has tagged as originating from
-``?.``. See :doc:`/howto/add_syntax` and :doc:`/reference/augmentation` for the
+``?.``. See :doc:`/guides/add_syntax` and :doc:`/reference/augmentation` for the
 full augmentation vocabulary.
 
 Step 2: handle the tagged access
@@ -128,12 +128,12 @@ you the desugared, plain-Python source, and ``pyc.untransform`` resugars it back
        assert pyc.untransform(tree) == "y = a?.b?.c"
 
 This is the entry point for linters, formatters, and source maps — see
-:doc:`/howto/source_to_source`.
+:doc:`/guides/source_to_source`.
 
 Where to next
 -------------
 
-- :doc:`/concepts/rewrite_pipeline` explains how a token rewrite becomes a tagged
+- :doc:`/concepts/model` explains how a token rewrite becomes a tagged
   AST node and then a handler call.
 - The full example adds ``.?`` (permissive dereference), ``?.(`` (optional call),
   and ``??`` (nullish coalescing) — a good next read in

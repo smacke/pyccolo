@@ -48,7 +48,7 @@ Some events pass extra keyword arguments. The most commonly used:
 - ``guard`` — the guard name associated with this handler at this node (or
   ``None``). Pass it to :meth:`~pyccolo.BaseTracer.activate_guard` to switch off
   further instrumentation of the enclosing function/loop; see
-  :doc:`/howto/performance_guards`.
+  :doc:`/guides/guards_and_performance`.
 - ``ret_expr`` — for some statement events, the value of the trailing
   expression.
 - ``is_last`` — for argument/operand sequences (e.g. ``before_boolop_arg``),

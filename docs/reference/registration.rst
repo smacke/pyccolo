@@ -58,7 +58,7 @@ Option                        Effect
                               :func:`register_raw_handler`).
 ``guard``                     Associate a guard with this handler so it can be
                               switched off at runtime; see
-                              :doc:`/howto/performance_guards`.
+                              :doc:`/guides/guards_and_performance`.
 ``exempt_from_guards``        Keep firing even when the enclosing guard is active.
 ============================  ==================================================
 
@@ -138,7 +138,7 @@ check dynamic.
 
 .. seealso::
 
-   :doc:`/howto/conditional_handlers` for a task-oriented walkthrough, and
+   :doc:`/guides/observe_and_override` for a task-oriented walkthrough, and
    :doc:`/reference/predicates` for the full :class:`~pyccolo.Predicate` API.
 
 ``register_raw_handler``

@@ -28,7 +28,7 @@ use ``ScriptOptionalChainer`` rather than the bare ``OptionalChainer``: because
 ``pyc`` runs your file through Pyccolo's import machinery, the tracer must opt that
 file in by overriding :meth:`~pyccolo.BaseTracer.should_instrument_file` (which
 ``ScriptOptionalChainer`` does, and ``OptionalChainer`` does not — see
-:doc:`/howto/instrument_imports`).
+:doc:`/guides/tracing_real_programs`).
 
 You can specify multiple tracer classes after ``-t``; in case you were not already
 aware, Pyccolo is :doc:`composable </concepts/composition>`!

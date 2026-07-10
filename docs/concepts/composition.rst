@@ -21,7 +21,7 @@ The Pyccolo approach
 
 Pyccolo sidesteps this entirely. Instead of each tracer rewriting the tree its own
 way, there is a **single, shared event-emission transform** installed per node (see
-:doc:`/concepts/rewrite_pipeline`). Every handler that cares about that node — no
+:doc:`/concepts/model`). Every handler that cares about that node — no
 matter which tracer it belongs to — simply subscribes to the same emitted event.
 There are no competing rewrites to reconcile, because there is only ever one
 rewrite.
@@ -59,7 +59,7 @@ the second, and so on. Above, ``AddOne`` runs first and turns ``42`` into ``43``
 ``TimesTwo`` then receives ``43`` and turns it into ``86``. This threading works
 identically whether the handlers live on one tracer (they run in definition order)
 or across the whole tracer stack (outermost context first). The step-by-step
-recipe is in :doc:`/howto/compose_tracers`.
+recipe is in :doc:`/guides/compose_tracers`.
 
 Transformational tracers
 ------------------------

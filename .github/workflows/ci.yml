@@ -67,3 +67,22 @@ jobs:
         name: codecov-umbrella
         fail_ci_if_error: true
         verbose: true
+
+  docs:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[docs,test]
+    - name: Build docs (fail on warnings; the event table is drift-guarded)
+      run: make -C docs html SPHINXOPTS="-W --keep-going"
+    - name: Run docs doctests (every worked example is executed)
+      run: make -C docs doctest SPHINXOPTS="-W --keep-going"

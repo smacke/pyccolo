@@ -4,7 +4,7 @@ Syntax augmentation
 .. currentmodule:: pyccolo
 
 These are the building blocks for defining *new surface syntax* — see
-:doc:`/howto/add_syntax` for the how-to and :doc:`/tutorials/optional_chaining`
+:doc:`/guides/add_syntax` for the how-to and :doc:`/tutorials/optional_chaining`
 for a full worked example. Syntax augmentation requires Python ≥ 3.8.
 
 ``AugmentationSpec``

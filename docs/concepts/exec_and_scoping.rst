@@ -11,7 +11,7 @@ The AST is fixed at compile time
 
 A module's abstract syntax tree is built once, when the module is compiled and
 imported — and Pyccolo's instrumentation is an AST rewrite (see
-:doc:`/concepts/rewrite_pipeline`). When your script first starts running, the
+:doc:`/concepts/model`). When your script first starts running, the
 module containing your tracer is *already compiled*, and the tracer was not active
 at that moment. So any ordinary, unquoted Python written in the same file as the
 tracer definition has no instrumentation woven into it — there was no active tracer
@@ -42,7 +42,7 @@ active:
 ``pyc.exec`` runs its code in a sandbox and returns the resulting namespace as a
 dict, so you can inspect what the executed code produced:
 
-.. code-block:: python
+.. testcode::
 
    env = pyc.exec("x = 42")
    assert env["x"] == 42
@@ -60,13 +60,13 @@ Two important cases run instrumented code without any quoting:
 - **``sys`` events.** Handlers for ``call``, ``line``, ``return_``, ``exception``,
   and ``opcode`` ride on Python's built-in tracing machinery, not on an AST
   rewrite. Nothing needs to be recompiled, so ordinary in-file code triggers them
-  directly. See :doc:`/howto/sys_settrace`.
+  directly. See :doc:`/guides/tracing_real_programs`.
 
 - **Imported modules.** Code imported *inside* a tracing context can be
   instrumented at import time, because Pyccolo controls the import and can rewrite
   the module as it loads — provided the module opts in via
   :meth:`~pyccolo.BaseTracer.should_instrument_file`. See
-  :doc:`/howto/instrument_imports`.
+  :doc:`/guides/tracing_real_programs`.
 
 Reaching into the caller's scope
 --------------------------------

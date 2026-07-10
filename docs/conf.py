@@ -42,12 +42,19 @@ master_doc = "index"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
+    "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
     "sphinxarg.ext",
     "sphinx_copybutton",
     "pyccolo_events",
 ]
+
+# Every worked example in the guides/tutorials is a runnable ``.. testcode::``
+# block executed by ``make -C docs doctest`` (wired into CI), so the docs cannot
+# silently drift from the library. These two imports are in scope for every
+# snippet, matching how a reader would ``import`` at the top of a file.
+doctest_global_setup = "import ast\nimport pyccolo as pyc"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]

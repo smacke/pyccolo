@@ -53,8 +53,8 @@ Pyccolo can rewrite and run it *while the tracer is active*.
 
 ``pyc.exec`` returns the resulting namespace as a dict, which is handy for
 inspecting results. (Code in *other* modules can be instrumented at import time
-instead — see :doc:`/howto/instrument_imports`. And ``sys``-level events like
-``call`` don't need ``pyc.exec`` at all — see :doc:`/howto/sys_settrace`.) The
+instead — see :doc:`/guides/tracing_real_programs`. And ``sys``-level events like
+``call`` don't need ``pyc.exec`` at all — see :doc:`/guides/tracing_real_programs`.) The
 full story is in :doc:`/concepts/exec_and_scoping`.
 
 Handlers can change behavior, not just observe it
@@ -64,7 +64,7 @@ A handler isn't limited to watching — for value-carrying events, the value it
 returns *replaces* the value of the instrumented expression. Here is a tracer that
 adds one to the result of every assignment's right-hand side:
 
-.. code-block:: python
+.. testcode::
 
    import pyccolo as pyc
 
@@ -82,13 +82,7 @@ adds one to the result of every assignment's right-hand side:
 The ``after_assign_rhs`` handler receives ``ret`` (the value the right-hand side
 produced) and returns ``ret + 1``, which is what actually gets bound to ``x``.
 Returning ``None`` (or nothing) would mean "don't override." This ability to
-rewrite values in flight is what makes Pyccolo more than a profiler.
-
-Where to go next
-----------------
-
-- :doc:`/concepts/model` — the events-and-handlers model, in depth.
-- :doc:`/concepts/exec_and_scoping` — why ``pyc.exec`` is needed and how scoping
-  works.
-- :doc:`/tutorials/coverage_tracer` — build a real, statement-level code-coverage
-  tool from scratch.
+rewrite values in flight is what makes Pyccolo more than a profiler — the
+:doc:`/guides/observe_and_override` guide picks up right here with the full set of
+overriding moves, and :doc:`/concepts/model` covers the events-and-handlers model
+in depth.

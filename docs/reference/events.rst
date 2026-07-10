@@ -42,7 +42,7 @@ How to read the table
   - **sys** — a native `sys.settrace
     <https://docs.python.org/3/library/sys.html#sys.settrace>`_ event; no AST
     rewriting is involved, so it fires without ``pyc.exec`` (see
-    :doc:`/howto/sys_settrace`).
+    :doc:`/guides/tracing_real_programs`).
   - **ast:** *NodeType* — you may register a handler by passing this
     :mod:`ast` node type instead of the event, via ``AST_TO_EVENT_MAPPING``
     (e.g. ``@pyc.register_handler(ast.Assign)`` is ``after_assign_rhs``).
