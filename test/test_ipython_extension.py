@@ -23,18 +23,16 @@ requires_syntax_augmentation = pytest.mark.skipif(
     reason="syntax augmentation requires Python 3.8+",
 )
 
-# The probe scripts below guard their ``assert sys.gettrace() is None`` checks with
-# ``if sys.version_info >= (3, 8)``: on Python 3.7 the IPython shell leaves a
-# residual ``sys.settrace`` hook that never clears back to ``None`` -- and it is
-# *not* pyccolo's. ``test_unload_restores_the_shell`` uses a ``before_stmt``-only
-# tracer that registers no sys-trace events (pyccolo never calls ``sys.settrace``),
-# yet the check still fails on 3.7. Everything pyccolo actually restores
-# (transformers, the compile cache, ``transform_cell``, the magics) is still
-# verified on 3.7; only that one runtime observation is gated off.
-
-
 _PREAMBLE = """
 import sys
+
+# The baseline trace this subprocess starts with -- ``None`` normally, but
+# coverage's ``CTracer`` when the suite runs under ``--cov`` (pytest-cov starts
+# coverage in subprocesses too). pyccolo must leave tracing exactly as it found
+# it, so the teardown checks below assert we are back to *this*, not hard-coded
+# ``None`` -- otherwise a coverage run trips the assertion on its own tracer.
+_baseline_trace = sys.gettrace()
+
 import pyccolo as pyc
 from pyccolo.emit_event import _TRACER_STACK
 from IPython.testing.globalipapp import get_ipython
@@ -136,8 +134,7 @@ def test_sys_trace_tracer_and_exceptions():
         assert isinstance(result.error_in_exec, ValueError), result.error_in_exec
 
         run("%pyccolo deregister all")
-        if sys.version_info >= (3, 8):  # see note by _PREAMBLE
-            assert sys.gettrace() is None
+        assert sys.gettrace() is _baseline_trace  # see note by _PREAMBLE
         """
     )
 
@@ -316,8 +313,7 @@ def test_unload_restores_the_shell():
         assert ip.input_transformers_post == orig_input, ip.input_transformers_post
         assert ip.compile.cache == orig_cache
         assert ip.transform_cell == orig_transform_cell
-        if sys.version_info >= (3, 8):  # see note by _PREAMBLE
-            assert sys.gettrace() is None
+        assert sys.gettrace() is _baseline_trace  # see note by _PREAMBLE
         assert not any(
             type(f).__name__ == "TraceFinder" for f in sys.meta_path
         ), sys.meta_path
