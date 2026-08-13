@@ -8,26 +8,32 @@ import threading
 import traceback
 from collections import Counter, defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import pyccolo as pyc
 import pyccolo.fast as fast
 from pyccolo.extra_builtins import PYCCOLO_BUILTIN_PREFIX
 
-try:
+if TYPE_CHECKING:
     from IPython import get_ipython
-except Exception:
+else:
+    try:
+        from IPython import get_ipython
+    except Exception:
 
-    def get_ipython():
-        return None
+        def get_ipython():
+            return None
 
 
-try:
+if TYPE_CHECKING:
     from ipyflow.singletons import flow
-except Exception:
+else:
+    try:
+        from ipyflow.singletons import flow
+    except Exception:
 
-    def flow():
-        return None
+        def flow():
+            return None
 
 
 logger = logging.getLogger(__name__)
