@@ -65,7 +65,8 @@ class FastAst:
     def parse(cls, code: str, *args, **kwargs) -> ast.AST:
         ret = ast.parse(textwrap.dedent(code), *args, **kwargs)
         if cls._LOCATION_OF_NODE is not None:
-            ast.copy_location(ret, cls._LOCATION_OF_NODE)
+            for node in ast.walk(ret):
+                ast.copy_location(node, cls._LOCATION_OF_NODE)
         return ret
 
     @classmethod
