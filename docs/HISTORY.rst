@@ -1,6 +1,10 @@
 History
 =======
 
+0.0.95 (2026-08-14)
+-------------------
+* fast.parse recursively updates sub-node locations;
+
 0.0.94 (2026-07-10)
 -------------------
 * Add a native IPython/Jupyter integration: ``%load_ext pyccolo`` installs a cell-tracing driver on the running shell and ``pyc.register_ipython_tracer(...)`` (or ``%pyccolo register <tracer>``) adds tracers to it, so every cell is instrumented instead of only code inside ``pyc.exec(...)``; ``%unload_ext pyccolo`` restores the shell;
