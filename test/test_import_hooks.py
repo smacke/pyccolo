@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
+import ast
 import json
 import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from importlib.util import MAGIC_NUMBER, cache_from_source
+from importlib.machinery import SourceFileLoader
+from importlib.util import MAGIC_NUMBER, cache_from_source, decode_source, source_hash
 from pathlib import Path
 from typing import Optional
 
@@ -79,8 +81,11 @@ def _run_cache_probe(
     env["PYTHONPATH"] = checkout + os.pathsep + env.get("PYTHONPATH", "")
     env["PYTHONDONTWRITEBYTECODE"] = environment.get("PYTHONDONTWRITEBYTECODE", "")
     env.pop("PYTHONPYCACHEPREFIX", None)
+    command = [sys.executable]
+    if "CACHE_HASH_POLICY" in environment:
+        command.extend(["--check-hash-based-pycs", environment["CACHE_HASH_POLICY"]])
     return subprocess.run(
-        [sys.executable, "-c", _CACHE_PROBE],
+        command + ["-c", _CACHE_PROBE],
         cwd=str(directory),
         env=env,
         capture_output=True,
@@ -130,7 +135,11 @@ def test_cached_import_preserves_nodes_after_initialization_error(
     "source, line",
     [
         (b"\xef\xbb\xbfif False:\n    reached = True\n", 1),
-        (b"# coding: latin-1\nif False:\n    reached = 'caf\xe9'\n", 2),
+        (
+            b"# coding: latin-1\nif False:\n    reached = 'caf\xe9'\n"
+            b"assert reached == 'caf\\u00e9'\n",
+            2,
+        ),
         pytest.param(
             b"if False:\n    reached = True\nassert 1 ++ 1 == 3\n",
             1,
@@ -152,7 +161,21 @@ def test_cached_import_uses_original_source_size(tmp_path, source, line):
     assert cached.stat().st_mtime_ns == before
 
 
-def test_loader_preserves_augmented_source_reads(tmp_path):
+@pytest.mark.parametrize("instrumented", [False, True])
+@pytest.mark.parametrize(
+    "source, decoded",
+    [
+        (b"value = 1 ++ 2\r\n", "value = 1 ++ 2\n"),
+        (b"\xef\xbb\xbfvalue = 1 ++ 2\n", "value = 1 ++ 2\n"),
+        (
+            b"# coding: latin-1\nvalue = 'caf\xe9'\n",
+            "# coding: latin-1\nvalue = 'café'\n",
+        ),
+    ],
+)
+def test_loader_separates_raw_and_augmented_source_reads(
+    tmp_path, source, decoded, instrumented
+):
     class AugmentingTracer(pyc.BaseTracer):
         add_spec = pyc.AugmentationSpec(
             aug_type=pyc.AugmentationType.binop, token="++", replacement="+"
@@ -161,15 +184,17 @@ def test_loader_preserves_augmented_source_reads(tmp_path):
         def should_instrument_file(self, filename: str) -> bool:
             return filename.endswith("cache_target.py")
 
-    source_path = tmp_path / "cache_target.py"
-    source_path.write_bytes(b"value = 1 ++ 2\r\n")
+    source_path = tmp_path / ("cache_target.py" if instrumented else "plain_target.py")
+    source_path.write_bytes(source)
     loader = TraceLoader([AugmentingTracer()], "cache_target", str(source_path))
-    assert loader.get_data(str(source_path)) == b"value = 1 + 2\n"
-    assert loader.get_source("cache_target") == "value = 1 + 2\n"
+    assert loader.get_data(str(source_path)) == source
+    expected = decoded.replace("++", "+") if instrumented else decoded
+    assert loader.get_source("cache_target") == expected
+    assert loader.get_augmented_source(str(source_path)) == expected
 
 
 @pytest.mark.parametrize("flags", [0, 1, 3])
-def test_cache_publication_only_corrects_timestamp_source_size(tmp_path, flags):
+def test_cache_publication_preserves_headers(tmp_path, flags):
     class CacheTracer(pyc.BaseTracer):
         requires_ast_bookkeeping = False
 
@@ -185,12 +210,211 @@ def test_cache_publication_only_corrects_timestamp_source_size(tmp_path, flags):
     cached = Path(cache_from_source(str(source_path)))
     data = MAGIC_NUMBER + flags.to_bytes(4, "little") + b"abcdefgh" + b"bytecode"
     loader.set_data(str(cached), data)
-    expected = (
-        data[:12] + len(source).to_bytes(4, "little") + data[16:]
-        if flags == 0
-        else data
+    assert cached.read_bytes() == data
+
+
+@pytest.fixture
+def compilation_loader(tmp_path):
+    class CompilationTracer(pyc.BaseTracer):
+        requires_ast_bookkeeping = False
+
+        def should_instrument_file(self, filename: str) -> bool:
+            return filename.endswith("cache_target.py")
+
+        def make_syntax_augmenter(self, ast_rewriter):
+            return lambda source: source.replace("value = 1", "value = 11")
+
+    source_path = tmp_path / "cache_target.py"
+    source_path.write_bytes(b"value = 1\r\n")
+    return TraceLoader([CompilationTracer()], "cache_target", str(source_path))
+
+
+@pytest.mark.parametrize("input_type", [bytes, bytearray, memoryview, str, ast.parse])
+@pytest.mark.parametrize("instrumented", [False, True])
+def test_source_to_code_augments_only_raw_instrumented_inputs(
+    compilation_loader, input_type, instrumented
+):
+    loader = compilation_loader
+    prepared = input_type in (str, ast.parse)
+    data = input_type("value = 11\n" if prepared else b"value = 1\n")
+    path = loader.path if instrumented else "plain_target.py"
+    namespace = {}
+    exec(loader.source_to_code(data, path), namespace)
+    assert namespace["value"] == (11 if instrumented or prepared else 1)
+
+
+@pytest.mark.parametrize("caching_allowed", [False, True])
+def test_compilation_uses_already_read_source(
+    compilation_loader, monkeypatch, caching_allowed
+):
+    loader = compilation_loader
+    loader._tracers[0].bytecode_caching_allowed = caching_allowed
+    source_path = Path(loader.path)
+    original = source_path.read_bytes()
+    reads = []
+    get_data = SourceFileLoader.get_data
+
+    def read_and_change_source(self, path):
+        data = get_data(self, path)
+        if path == str(source_path):
+            reads.append(data)
+            source_path.write_bytes(b"value = 999\n")
+        return data
+
+    monkeypatch.setattr(SourceFileLoader, "get_data", read_and_change_source)
+    namespace = {}
+    exec(loader.get_code("cache_target"), namespace)
+    assert namespace["value"] == 11
+    assert reads == [original]
+    if caching_allowed:
+        cached = next(source_path.parent.rglob("*.pyc"))
+        assert int.from_bytes(cached.read_bytes()[12:16], "little") == len(original)
+
+
+@pytest.mark.parametrize("caching_allowed", [False, True])
+@pytest.mark.parametrize("error_type", [ValueError, OSError])
+def test_augmentation_errors_propagate(compilation_loader, caching_allowed, error_type):
+    loader = compilation_loader
+    loader._tracers[0].bytecode_caching_allowed = caching_allowed
+
+    def raise_augmentation_error(source):
+        raise error_type("augmentation failed")
+
+    loader._syntax_augmenters = [(loader._tracers[0], raise_augmentation_error)]
+    source = loader.get_data(loader.path)
+    assert source == b"value = 1\r\n"
+    inspection_error = ImportError if error_type is OSError else error_type
+    with pytest.raises(inspection_error):
+        loader.get_source("cache_target")
+    with pytest.raises(error_type, match="augmentation failed"):
+        loader.source_to_code(source, loader.path)
+    with pytest.raises(error_type, match="augmentation failed"):
+        loader.get_code("cache_target")
+    assert not loader._augmentation_context
+    assert not list(Path(loader.path).parent.rglob("*.pyc"))
+
+
+def test_rewriting_fallback_compiles_augmented_text(compilation_loader, monkeypatch):
+    loader = compilation_loader
+
+    def fail_rewriting(node):
+        raise ValueError("rewriting failed")
+
+    monkeypatch.setattr(loader._ast_rewriter, "visit", fail_rewriting)
+    namespace = {}
+    exec(loader.source_to_code(b"value = 1\n", loader.path), namespace)
+    assert namespace["value"] == 11
+
+
+@pytest.mark.parametrize("input_type", [str, ast.parse])
+def test_prepared_source_preserves_tracer_selection_fallback(
+    compilation_loader, monkeypatch, input_type
+):
+    loader = compilation_loader
+
+    def fail_selection(path):
+        raise ValueError("tracer selection failed")
+
+    monkeypatch.setattr(loader, "get_tracers_for_path", fail_selection)
+    namespace = {}
+    exec(loader.source_to_code(input_type("value = 11\n"), loader.path), namespace)
+    assert namespace["value"] == 11
+
+
+def test_get_source_wraps_read_errors(compilation_loader):
+    loader = compilation_loader
+    Path(loader.path).unlink()
+    with pytest.raises(ImportError) as raised:
+        loader.get_source("cache_target")
+    assert raised.value.name == "cache_target"
+    assert isinstance(raised.value.__cause__, OSError)
+
+
+def test_augmenter_can_inspect_source_without_recursing(compilation_loader):
+    loader = compilation_loader
+    inspected = []
+
+    def augment(source):
+        inspected.append(loader.get_source("cache_target"))
+        return source.replace("value = 1", "value = 11")
+
+    loader._syntax_augmenters = [(loader._tracers[0], augment)]
+    assert loader.get_source("cache_target") == "value = 11\n"
+    namespace = {}
+    exec(loader.get_code("cache_target"), namespace)
+    assert namespace["value"] == 11
+    assert inspected == ["value = 1\n", "value = 1\n"]
+
+
+def test_decoding_can_be_deferred_until_after_augmentation(
+    compilation_loader, monkeypatch
+):
+    loader = compilation_loader
+    decoded_inputs = []
+
+    def decode_parseable_source(data):
+        decoded_inputs.append(data)
+        source = decode_source(data)
+        ast.parse(source)
+        return source
+
+    monkeypatch.setattr("pyccolo.import_hooks.decode_source", decode_parseable_source)
+    loader._syntax_augmenters = [
+        (loader._tracers[0], lambda source: source.replace("$", ""))
+    ]
+    source = b"value = $1\r\n"
+    namespace = {}
+    exec(loader.source_to_code(source, loader.path), namespace)
+    assert namespace["value"] == 1
+    assert decoded_inputs == [source, b"value = 1\r\n"]
+
+
+def test_instrumented_cache_signature_is_versioned(compilation_loader):
+    assert "cache-v2" in compilation_loader.make_cache_signature(
+        compilation_loader.path
     )
-    assert cached.read_bytes() == expected
+    assert compilation_loader.make_cache_signature("plain_target.py") == "pyccolo"
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 8),
+    reason="Binop augmentation metadata requires AST end positions",
+)
+@pytest.mark.parametrize("flags", [1, 3])
+@pytest.mark.parametrize("policy", ["default", "always", "never"])
+def test_hash_caches_use_original_source_bytes(tmp_path, flags, policy):
+    source_path = tmp_path / "cache_target.py"
+    source = b"if False:\r\n    reached = True\r\nassert 1 ++ 1 == 3\r\n"
+    source_path.write_bytes(source)
+    environment = {"CACHE_AUGMENT": "1", "CACHE_HASH_POLICY": policy}
+    _assert_cache_probe(_run_cache_probe(tmp_path, **environment))
+    cached = next(tmp_path.rglob("cache_target*.pyc"))
+    data = cached.read_bytes()
+    data = data[:4] + flags.to_bytes(4, "little") + source_hash(source) + data[16:]
+    cached.write_bytes(data)
+    before = cached.stat().st_mtime_ns
+    for writes_disabled in ("", "1"):
+        _assert_cache_probe(
+            _run_cache_probe(
+                tmp_path, PYTHONDONTWRITEBYTECODE=writes_disabled, **environment
+            )
+        )
+        assert cached.read_bytes() == data
+        assert cached.stat().st_mtime_ns == before
+
+    original_stat = source_path.stat()
+    changed_source = source.replace(b"== 3", b"== 4")
+    source_path.write_bytes(changed_source)
+    os.utime(source_path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    checks_source = policy == "always" or (policy == "default" and flags == 3)
+    error = "AssertionError" if checks_source else None
+    _assert_cache_probe(_run_cache_probe(tmp_path, **environment), error)
+    expected_hash = source_hash(changed_source if checks_source else source)
+    assert cached.read_bytes()[4:8] == flags.to_bytes(4, "little")
+    assert cached.read_bytes()[8:16] == expected_hash
+    after = cached.stat().st_mtime_ns
+    _assert_cache_probe(_run_cache_probe(tmp_path, **environment), error)
+    assert cached.stat().st_mtime_ns == after
 
 
 def test_cached_import_survives_process_exit_during_initialization(tmp_path):

@@ -11,7 +11,17 @@ from importlib.abc import MetaPathFinder
 from importlib.machinery import SourceFileLoader
 from importlib.util import decode_source, find_spec, spec_from_loader
 from types import CodeType, ModuleType
-from typing import TYPE_CHECKING, Callable, Dict, Generator, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 from pyccolo.ast_bookkeeping import AstBookkeeper
 from pyccolo.trace_events import TraceEvent
@@ -20,6 +30,7 @@ from pyccolo.utils import clone_function
 if TYPE_CHECKING:
     from typing_extensions import Buffer
 
+    from pyccolo.syntax_augmentation import CodeLines
     from pyccolo.tracer import BaseTracer
 
 logger = logging.getLogger(__name__)
@@ -62,13 +73,14 @@ class TraceLoader(SourceFileLoader):
         super().__init__(*args, **kwargs)
         self._tracers = tracers
         self._ast_rewriter = tracers[-1].make_ast_rewriter(path=None)  # type: ignore[arg-type]  # this will be set below
-        self._syntax_augmenters: List[Tuple["BaseTracer", Callable]] = []
+        self._syntax_augmenters: List[
+            Tuple["BaseTracer", Callable[["CodeLines"], "CodeLines"]]
+        ] = []
         for tracer in tracers:
             self._syntax_augmenters.append(
                 (tracer, tracer.make_syntax_augmenter(self._ast_rewriter))
             )
         self._augmentation_context: bool = False
-        self._source_size: Optional[int] = None
         self._module_id = id(self)
         self._cached_bookkeeper: Optional[AstBookkeeper] = None
         self._compiled_bookkeeper: Optional[AstBookkeeper] = None
@@ -96,7 +108,7 @@ class TraceLoader(SourceFileLoader):
                 version_dict[pkg] = str(pkg_version)
         return "-".join(
             ["pyccolo"]
-            + (["cache-v1"] if suffix_parts else [])
+            + (["cache-v2"] if suffix_parts else [])
             + sorted("-".join(v) for v in version_dict.items())
             + suffix_parts
         ).replace(".", "_")
@@ -134,6 +146,7 @@ class TraceLoader(SourceFileLoader):
             sfc_globals.pop("_pyccolo_loader", None)
 
     def get_data(self, path: str) -> bytes:
+        """Read original source bytes, or bytecode with its bookkeeping stripped."""
         path_no_ext, ext = os.path.splitext(path)
         sep = os.path.extsep
         if ext == sep + "pyc":
@@ -182,14 +195,20 @@ class TraceLoader(SourceFileLoader):
                     data = data[:start]
                 return data
             path = source_path
-        path_str = str(path)
-        if self._augmentation_context or not any(
-            tracer._should_instrument_file_impl(path_str) for tracer in self._tracers
-        ):
-            return super().get_data(path)
-        with self.syntax_augmentation_context():
-            source = self.get_augmented_source(path)
-            return bytes(source, encoding="utf-8")
+        return super().get_data(path)
+
+    def get_source(self, fullname: str) -> str:
+        """Return augmented Unicode source for inspection, not cache validation."""
+        path = self.get_filename(fullname)
+        try:
+            source_bytes = self.get_data(path)
+            if not self._augmentation_context and self.get_tracers_for_path(path):
+                return self._get_augmented_source(source_bytes, path)
+        except OSError as exc:
+            raise ImportError(
+                "source not available through get_data()", name=fullname
+            ) from exc
+        return decode_source(source_bytes)
 
     def get_filename(self, name: Optional[str] = None) -> str:
         source_path = super().get_filename(name)
@@ -204,7 +223,6 @@ class TraceLoader(SourceFileLoader):
         return source_path
 
     def get_code(self, fullname) -> Optional[CodeType]:
-        self._source_size = None
         self._cached_bookkeeper = None
         self._compiled_bookkeeper = None
         if all(tracer.bytecode_caching_allowed for tracer in self._tracers):
@@ -223,7 +241,7 @@ class TraceLoader(SourceFileLoader):
                 if any(
                     tracer.syntax_augmentation_specs() for tracer in tracers_for_path
                 ):
-                    self.get_data(bookkeeper.path)
+                    self.get_augmented_source(bookkeeper.path)
                     with self._ast_rewriter.tracer_override_context(
                         tracers_for_path, bookkeeper.path
                     ):
@@ -239,14 +257,6 @@ class TraceLoader(SourceFileLoader):
     def set_data(self, path: str, data: "Buffer", *, _mode: int = 0o666) -> None:
         """Publish bytecode and its AST IDs atomically, before module execution."""
         cache_data = bytes(data)
-        if self._source_size is not None and not (
-            int.from_bytes(cache_data[4:8], "little") & 1
-        ):
-            cache_data = (
-                cache_data[:12]
-                + (self._source_size & 0xFFFFFFFF).to_bytes(4, "little")
-                + cache_data[16:]
-            )
         source_path = pyccolo_source_from_cache(path)
         if any(
             tracer.requires_ast_bookkeeping
@@ -260,36 +270,47 @@ class TraceLoader(SourceFileLoader):
             )
         super().set_data(path, cache_data, _mode=_mode)  # type: ignore[call-arg]
 
-    def get_augmented_source(self, source_path) -> str:
-        source_bytes = super().get_data(source_path)
-        self._source_size = len(source_bytes)
-        still_needs_decode = True
-        try:
-            source = decode_source(source_bytes)
-            still_needs_decode = False
-        except SyntaxError:
-            # This allows us to handle esoteric encodings that
-            # require parsing, such as future_annotations.
-            # In this case, just guess that it's utf-8 encoded.
+    def get_augmented_source(self, source_path: str) -> str:
+        return self._get_augmented_source(super().get_data(source_path), source_path)
 
-            # This is a bit unfortunate in that it involves multiple
-            # round-trips of decoding / encoding, but it's the only
-            # way I can think of to ensure that source transformations
-            # happen in the correct order.
-            source = str(source_bytes, encoding="utf-8")
-        source_path_str = str(source_path)
-        for tracer, augmenter in self._syntax_augmenters:
-            if not tracer._should_instrument_file_impl(source_path_str):
-                continue
-            source = augmenter(source)
-        if still_needs_decode:
-            source = decode_source(bytes(source, encoding="utf-8"))
-        return source
+    def _get_augmented_source(self, source_bytes: bytes, source_path: str) -> str:
+        with self.syntax_augmentation_context():
+            still_needs_decode = True
+            try:
+                source = decode_source(source_bytes)
+                still_needs_decode = False
+            except SyntaxError:
+                # This allows us to handle esoteric encodings that
+                # require parsing, such as future_annotations.
+                # In this case, just guess that it's utf-8 encoded.
 
-    def source_to_code(self, data, path, *, _optimize=-1) -> CodeType:  # type: ignore[override]
+                # This is a bit unfortunate in that it involves multiple
+                # round-trips of decoding / encoding, but it's the only
+                # way I can think of to ensure that source transformations
+                # happen in the correct order.
+                source = str(source_bytes, encoding="utf-8")
+            source_path_str = str(source_path)
+            for tracer, augmenter in self._syntax_augmenters:
+                if not tracer._should_instrument_file_impl(source_path_str):
+                    continue
+                source = cast(str, augmenter(source))
+            if still_needs_decode:
+                source = decode_source(bytes(source, encoding="utf-8"))
+            return source
+
+    def source_to_code(  # type: ignore[override]
+        self,
+        data: Union[str, ast.Module, ast.Expression, ast.Interactive, "Buffer"],
+        path: str,
+        *,
+        _optimize: int = -1,
+    ) -> CodeType:
+        """Augment raw bytes; text and AST inputs must already be prepared."""
         self._cached_bookkeeper = None
         self._compiled_bookkeeper = None
         path_str = str(path)
+        if not isinstance(data, (str, ast.AST)) and self.get_tracers_for_path(path_str):
+            data = self._get_augmented_source(bytes(data), path_str)
         try:
             tracers_for_path = self.get_tracers_for_path(path_str)
             if tracers_for_path:

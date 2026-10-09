@@ -1,6 +1,21 @@
 History
 =======
 
+Unreleased
+----------
+* Separate source reading from import-time instrumentation: ``TraceLoader.get_data()``
+  now returns original source bytes, while ``get_source()`` and
+  ``get_augmented_source()`` continue to return augmented Unicode text.
+  Callers that previously decoded ``get_data()`` to obtain augmented source should
+  use one of those text APIs instead;
+* Treat byte-oriented ``source_to_code()`` inputs as raw source to decode and
+  augment; text and AST inputs remain already-prepared compilation inputs;
+* Preserve non-UTF-8 source literals by parsing augmented Unicode text without
+  reinterpreting its encoding declaration. Timestamp sizes and hash-based cache
+  validation now use the original source bytes. Older instrumented caches are
+  rebuilt under a new cache signature; atomic AST-bookkeeping publication and
+  augmentation annotation restoration on cache hits are retained;
+
 0.0.95 (2026-08-14)
 -------------------
 * fast.parse recursively updates sub-node locations;
