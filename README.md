@@ -350,10 +350,17 @@ with MyTracer:
 ```
 
 Imports are instrumented by registering a custom finder / loader with
-`sys.meta_path`. This loader ignores cached bytecode (which may be
-uninstrumented), and avoids generating *new* cached bytecode (which would be
-instrumented, possibly causing confusion later when instrumentation is not
-desired).
+`sys.meta_path`. Instrumented bytecode uses a separate, versioned cache name
+containing the tracer classes, so ordinary imports do not load instrumented code.
+When AST bookkeeping is required, it is stored in the same atomic cache entry as
+the bytecode, before module execution. Failed module initialization therefore does
+not leave bytecode without its node metadata. Missing or incomplete metadata
+causes recompilation from source, and source changes invalidate both together.
+Older cache formats are ignored.
+
+Set `bytecode_caching_allowed = False` on a tracer to bypass cached bytecode.
+Python's `-B` / `PYTHONDONTWRITEBYTECODE` prevents writing cache entries but still
+allows reading valid existing entries.
 
 ## Performance
 

@@ -1,5 +1,197 @@
 # -*- coding: utf-8 -*-
+import json
+import os
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Optional
+
+import pytest
+
 import pyccolo as pyc
+
+_CACHE_PROBE = """
+import ast
+import importlib
+import json
+import os
+import runpy
+import sys
+from pathlib import Path
+import pyccolo as pyc
+
+class CacheTracer(pyc.BaseTracer):
+    def should_instrument_file(self, filename):
+        return filename.endswith("cache_target.py")
+
+    def should_propagate_handler_exception(self, event, exc):
+        return True
+
+    @pyc.after_if_test
+    def branch(self, ret, node, *args, **kwargs):
+        assert isinstance(node, ast.If), repr(node)
+        decisions.append(node.lineno)
+        return True
+
+decisions = []
+error = None
+try:
+    with CacheTracer.instance():
+        for _ in range(int(os.environ.get("CACHE_ATTEMPTS", "1"))):
+            try:
+                if os.environ.get("CACHE_RUNPY"):
+                    runpy.run_module("cache_target", run_name="__main__")
+                elif "cache_target" in sys.modules:
+                    importlib.reload(sys.modules["cache_target"])
+                else:
+                    import cache_target
+            except RuntimeError as exc:
+                error = type(exc).__name__
+except BaseException as exc:
+    error = type(exc).__name__
+print(json.dumps({"decisions": decisions, "error": error,
+                  "pyccolo": str(Path(pyc.__file__).resolve())}))
+"""
+
+
+def _run_cache_probe(
+    directory: Path, **environment: str
+) -> subprocess.CompletedProcess:
+    checkout = str(Path(pyc.__file__).resolve().parent.parent)
+    env = dict(os.environ, **environment)
+    env["PYTHONPATH"] = checkout + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONDONTWRITEBYTECODE"] = environment.get("PYTHONDONTWRITEBYTECODE", "")
+    env.pop("PYTHONPYCACHEPREFIX", None)
+    return subprocess.run(
+        [sys.executable, "-c", _CACHE_PROBE],
+        cwd=str(directory),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def _assert_cache_probe(
+    process: subprocess.CompletedProcess,
+    error: Optional[str] = None,
+    line: int = 1,
+    attempts: int = 1,
+) -> None:
+    assert process.returncode == 0, process.stderr
+    result = json.loads(process.stdout)
+    assert result == {
+        "decisions": [line] * attempts,
+        "error": error,
+        "pyccolo": str(Path(pyc.__file__).resolve()),
+    }, (result, process.stderr)
+
+
+@pytest.mark.parametrize("error", [None, "RuntimeError", "SystemExit"])
+def test_cached_import_preserves_nodes_after_initialization_error(tmp_path, error):
+    source = "if False:\n    reached = True\n"
+    if error is not None:
+        source += "raise %s('initialization failed')\n" % error
+    (tmp_path / "cache_target.py").write_text(source)
+    _assert_cache_probe(_run_cache_probe(tmp_path), error)
+    cached = next(tmp_path.rglob("cache_target*.pyc"))
+    before = cached.stat().st_mtime_ns
+    for _ in range(2):
+        _assert_cache_probe(_run_cache_probe(tmp_path), error)
+        assert cached.stat().st_mtime_ns == before
+
+
+def test_cached_import_survives_process_exit_during_initialization(tmp_path):
+    (tmp_path / "cache_target.py").write_text(
+        "if False:\n    reached = True\n"
+        "import os\nos._exit(int(os.environ['CACHE_EXIT']))\n"
+    )
+    assert _run_cache_probe(tmp_path, CACHE_EXIT="17").returncode == 17
+    cached = next(tmp_path.rglob("cache_target*.pyc"))
+    before = cached.stat().st_mtime_ns
+    process = _run_cache_probe(tmp_path, CACHE_EXIT="0")
+    assert process.returncode == 0, (process.stdout, process.stderr)
+    assert process.stdout == "", process.stderr
+    assert cached.stat().st_mtime_ns == before
+
+
+def test_cached_import_refreshes_bookkeeping_when_source_changes(tmp_path):
+    source = tmp_path / "cache_target.py"
+    source.write_text("if False:\n    reached = True\n")
+    _assert_cache_probe(_run_cache_probe(tmp_path))
+    source.write_text("\n\nif False:\n    reached = True\n")
+    _assert_cache_probe(_run_cache_probe(tmp_path), line=3)
+    _assert_cache_probe(_run_cache_probe(tmp_path), line=3)
+
+
+@pytest.mark.parametrize("error", [None, "RuntimeError"])
+def test_cached_import_can_be_retried_or_reloaded(tmp_path, error):
+    source = "if False:\n    reached = True\n"
+    if error is not None:
+        source += "raise RuntimeError('initialization failed')\n"
+    (tmp_path / "cache_target.py").write_text(source)
+    for _ in range(2):
+        _assert_cache_probe(
+            _run_cache_probe(tmp_path, CACHE_ATTEMPTS="3"), error, attempts=3
+        )
+
+
+def test_cached_code_preserves_nodes_with_runpy(tmp_path):
+    (tmp_path / "cache_target.py").write_text("if False:\n    reached = True\n")
+    for _ in range(2):
+        _assert_cache_probe(_run_cache_probe(tmp_path, CACHE_RUNPY="1"))
+
+
+def test_cached_import_rebuilds_incomplete_cache(tmp_path):
+    (tmp_path / "cache_target.py").write_text("if False:\n    reached = True\n")
+    _assert_cache_probe(_run_cache_probe(tmp_path))
+    cached = next(tmp_path.rglob("cache_target*.pyc"))
+    cached.write_bytes(cached.read_bytes()[:-10])
+    _assert_cache_probe(_run_cache_probe(tmp_path))
+    _assert_cache_probe(_run_cache_probe(tmp_path))
+
+
+def test_cached_import_respects_dont_write_bytecode(tmp_path):
+    (tmp_path / "cache_target.py").write_text("if False:\n    reached = True\n")
+    for _ in range(2):
+        _assert_cache_probe(_run_cache_probe(tmp_path, PYTHONDONTWRITEBYTECODE="1"))
+    assert not list(tmp_path.rglob("*.pyc"))
+    assert not list(tmp_path.rglob("*.pkl"))
+
+
+def test_existing_cache_is_read_when_writes_are_disabled(tmp_path):
+    (tmp_path / "cache_target.py").write_text("if False:\n    reached = True\n")
+    _assert_cache_probe(_run_cache_probe(tmp_path))
+    cached = next(tmp_path.rglob("cache_target*.pyc"))
+    before = cached.stat().st_mtime_ns
+    _assert_cache_probe(_run_cache_probe(tmp_path, PYTHONDONTWRITEBYTECODE="1"))
+    assert cached.stat().st_mtime_ns == before
+
+
+def test_normal_import_does_not_load_instrumented_cache(tmp_path):
+    (tmp_path / "cache_target.py").write_text(
+        "reached = False\nif False:\n    reached = True\n"
+    )
+    _assert_cache_probe(_run_cache_probe(tmp_path), line=2)
+    process = subprocess.run(
+        [sys.executable, "-c", "import cache_target; print(cache_target.reached)"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert process.returncode == 0, process.stderr
+    assert process.stdout == "False\n"
+
+
+def test_concurrent_cache_writers_preserve_nodes(tmp_path):
+    (tmp_path / "cache_target.py").write_text("if False:\n    reached = True\n")
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(_run_cache_probe, tmp_path) for _ in range(8)]
+        for future in futures:
+            _assert_cache_probe(future.result())
+    _assert_cache_probe(_run_cache_probe(tmp_path))
 
 
 def test_basic_instrumented_import():
