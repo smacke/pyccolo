@@ -4,12 +4,14 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from importlib.util import MAGIC_NUMBER, cache_from_source
 from pathlib import Path
 from typing import Optional
 
 import pytest
 
 import pyccolo as pyc
+from pyccolo.import_hooks import TraceLoader
 
 _CACHE_PROBE = """
 import ast
@@ -22,6 +24,20 @@ from pathlib import Path
 import pyccolo as pyc
 
 class CacheTracer(pyc.BaseTracer):
+    add_spec = pyc.AugmentationSpec(
+        aug_type=pyc.AugmentationType.binop, token="++", replacement="+"
+    )
+
+    @classmethod
+    def syntax_augmentation_specs(cls):
+        if os.environ.get("CACHE_AUGMENT"):
+            return [cls.add_spec]
+        return []
+
+    @pyc.after_binop
+    def add(self, ret, node, *args, **kwargs):
+        return ret + 1 if self.add_spec in self.get_augmentations(node) else ret
+
     def should_instrument_file(self, filename):
         return filename.endswith("cache_target.py")
 
@@ -89,17 +105,92 @@ def _assert_cache_probe(
 
 
 @pytest.mark.parametrize("error", [None, "RuntimeError", "SystemExit"])
-def test_cached_import_preserves_nodes_after_initialization_error(tmp_path, error):
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_cached_import_preserves_nodes_after_initialization_error(
+    tmp_path, error, newline
+):
     source = "if False:\n    reached = True\n"
     if error is not None:
         source += "raise %s('initialization failed')\n" % error
-    (tmp_path / "cache_target.py").write_text(source)
+    source_path = tmp_path / "cache_target.py"
+    source_path.write_bytes(source.replace("\n", newline).encode("utf-8"))
     _assert_cache_probe(_run_cache_probe(tmp_path), error)
     cached = next(tmp_path.rglob("cache_target*.pyc"))
+    assert (
+        int.from_bytes(cached.read_bytes()[12:16], "little")
+        == source_path.stat().st_size
+    )
     before = cached.stat().st_mtime_ns
     for _ in range(2):
         _assert_cache_probe(_run_cache_probe(tmp_path), error)
         assert cached.stat().st_mtime_ns == before
+
+
+@pytest.mark.parametrize(
+    "source, line",
+    [
+        (b"\xef\xbb\xbfif False:\n    reached = True\n", 1),
+        (b"# coding: latin-1\nif False:\n    reached = 'caf\xe9'\n", 2),
+        pytest.param(
+            b"if False:\n    reached = True\nassert 1 ++ 1 == 3\n",
+            1,
+            marks=pytest.mark.skipif(
+                sys.version_info < (3, 8),
+                reason="Binop augmentation metadata requires AST end positions",
+            ),
+        ),
+    ],
+    ids=["utf-8-bom", "latin-1", "syntax-augmentation"],
+)
+def test_cached_import_uses_original_source_size(tmp_path, source, line):
+    (tmp_path / "cache_target.py").write_bytes(source)
+    _assert_cache_probe(_run_cache_probe(tmp_path, CACHE_AUGMENT="1"), line=line)
+    cached = next(tmp_path.rglob("cache_target*.pyc"))
+    assert int.from_bytes(cached.read_bytes()[12:16], "little") == len(source)
+    before = cached.stat().st_mtime_ns
+    _assert_cache_probe(_run_cache_probe(tmp_path, CACHE_AUGMENT="1"), line=line)
+    assert cached.stat().st_mtime_ns == before
+
+
+def test_loader_preserves_augmented_source_reads(tmp_path):
+    class AugmentingTracer(pyc.BaseTracer):
+        add_spec = pyc.AugmentationSpec(
+            aug_type=pyc.AugmentationType.binop, token="++", replacement="+"
+        )
+
+        def should_instrument_file(self, filename: str) -> bool:
+            return filename.endswith("cache_target.py")
+
+    source_path = tmp_path / "cache_target.py"
+    source_path.write_bytes(b"value = 1 ++ 2\r\n")
+    loader = TraceLoader([AugmentingTracer()], "cache_target", str(source_path))
+    assert loader.get_data(str(source_path)) == b"value = 1 + 2\n"
+    assert loader.get_source("cache_target") == "value = 1 + 2\n"
+
+
+@pytest.mark.parametrize("flags", [0, 1, 3])
+def test_cache_publication_only_corrects_timestamp_source_size(tmp_path, flags):
+    class CacheTracer(pyc.BaseTracer):
+        requires_ast_bookkeeping = False
+
+        def should_instrument_file(self, filename: str) -> bool:
+            return filename.endswith("cache_target.py")
+
+    source_path = tmp_path / "cache_target.py"
+    source = b"value = 1\r\n"
+    source_path.write_bytes(source)
+    loader = TraceLoader([CacheTracer()], "cache_target", str(source_path))
+    loader.get_data(str(source_path))
+    source_path.write_bytes(source + b"value = 2\r\n")
+    cached = Path(cache_from_source(str(source_path)))
+    data = MAGIC_NUMBER + flags.to_bytes(4, "little") + b"abcdefgh" + b"bytecode"
+    loader.set_data(str(cached), data)
+    expected = (
+        data[:12] + len(source).to_bytes(4, "little") + data[16:]
+        if flags == 0
+        else data
+    )
+    assert cached.read_bytes() == expected
 
 
 def test_cached_import_survives_process_exit_during_initialization(tmp_path):

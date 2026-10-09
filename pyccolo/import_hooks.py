@@ -68,6 +68,7 @@ class TraceLoader(SourceFileLoader):
                 (tracer, tracer.make_syntax_augmenter(self._ast_rewriter))
             )
         self._augmentation_context: bool = False
+        self._source_size: Optional[int] = None
         self._module_id = id(self)
         self._cached_bookkeeper: Optional[AstBookkeeper] = None
         self._compiled_bookkeeper: Optional[AstBookkeeper] = None
@@ -203,6 +204,7 @@ class TraceLoader(SourceFileLoader):
         return source_path
 
     def get_code(self, fullname) -> Optional[CodeType]:
+        self._source_size = None
         self._cached_bookkeeper = None
         self._compiled_bookkeeper = None
         if all(tracer.bytecode_caching_allowed for tracer in self._tracers):
@@ -217,6 +219,17 @@ class TraceLoader(SourceFileLoader):
                 tracer.ast_bookkeeper_by_fname[bookkeeper.path] = bookkeeper
                 tracer.add_bookkeeping(bookkeeper, self._module_id)
                 tracer.node_id_remapping_by_fname[bookkeeper.path] = remapping
+                tracers_for_path = self.get_tracers_for_path(bookkeeper.path)
+                if any(
+                    tracer.syntax_augmentation_specs() for tracer in tracers_for_path
+                ):
+                    self.get_data(bookkeeper.path)
+                    with self._ast_rewriter.tracer_override_context(
+                        tracers_for_path, bookkeeper.path
+                    ):
+                        self._ast_rewriter._handle_all_augmentations(
+                            bookkeeper.ast_node_by_id
+                        )
             return code
         else:
             source_path = self.get_filename(fullname)
@@ -226,6 +239,14 @@ class TraceLoader(SourceFileLoader):
     def set_data(self, path: str, data: "Buffer", *, _mode: int = 0o666) -> None:
         """Publish bytecode and its AST IDs atomically, before module execution."""
         cache_data = bytes(data)
+        if self._source_size is not None and not (
+            int.from_bytes(cache_data[4:8], "little") & 1
+        ):
+            cache_data = (
+                cache_data[:12]
+                + (self._source_size & 0xFFFFFFFF).to_bytes(4, "little")
+                + cache_data[16:]
+            )
         source_path = pyccolo_source_from_cache(path)
         if any(
             tracer.requires_ast_bookkeeping
@@ -241,6 +262,7 @@ class TraceLoader(SourceFileLoader):
 
     def get_augmented_source(self, source_path) -> str:
         source_bytes = super().get_data(source_path)
+        self._source_size = len(source_bytes)
         still_needs_decode = True
         try:
             source = decode_source(source_bytes)
