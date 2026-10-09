@@ -318,8 +318,9 @@ class TraceLoader(SourceFileLoader):
                 with self._ast_rewriter.tracer_override_context(
                     tracers_for_path, path_str
                 ):
+                    data_ast = data if isinstance(data, ast.AST) else ast.parse(data)
                     code = compile(
-                        self._ast_rewriter.visit(ast.parse(data)),
+                        self._ast_rewriter.visit(data_ast),
                         path,
                         "exec",
                         dont_inherit=True,
